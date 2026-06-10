@@ -2,6 +2,7 @@
 import React from 'react';
 import { useOBS } from '../context/OBSContext';
 import PreviewBox from './PreviewBox';
+import SettingsBackup from './SettingsBackup';
 
 const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor2Enabled, toggleMonitor2 }) => {
     const {
@@ -142,6 +143,9 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
                     </button>
                 </div>
             </div>
+
+            {/* Settings Export / Import */}
+            <SettingsBackup />
         </div>
     );
 };

@@ -3,6 +3,12 @@ import React, { useRef, useState } from 'react';
 export default function SettingsBackup() {
     const fileInputRef = useRef(null);
     const [status, setStatus] = useState(null); // { type: 'success'|'error', msg }
+    const [importing, setImporting] = useState(false);
+
+    function flash(type, msg) {
+        setStatus({ type, msg });
+        setTimeout(() => setStatus(null), 4000);
+    }
 
     async function handleExport() {
         try {
@@ -18,17 +24,17 @@ export default function SettingsBackup() {
             a.download = filename;
             a.click();
             URL.revokeObjectURL(url);
-            setStatus({ type: 'success', msg: `Exported: ${filename}` });
+            flash('success', 'Exported');
         } catch (e) {
-            setStatus({ type: 'error', msg: `Export failed: ${e.message}` });
+            flash('error', e.message);
         }
-        setTimeout(() => setStatus(null), 4000);
     }
 
     async function handleImport(e) {
         const file = e.target.files?.[0];
         if (!file) return;
         e.target.value = '';
+        setImporting(true);
         try {
             const text = await file.text();
             const json = JSON.parse(text);
@@ -39,36 +45,44 @@ export default function SettingsBackup() {
             });
             const data = await res.json();
             if (!data.success) throw new Error(data.error || 'Import failed');
-            setStatus({ type: 'success', msg: `Imported ${data.stateKeys} settings + ${data.schedulesCount} schedules. Reloading...` });
+            flash('success', `Imported ${data.stateKeys} settings + ${data.schedulesCount} schedules`);
             setTimeout(() => window.location.reload(), 1500);
         } catch (e) {
-            setStatus({ type: 'error', msg: `Import failed: ${e.message}` });
-            setTimeout(() => setStatus(null), 5000);
+            flash('error', e.message);
+        } finally {
+            setImporting(false);
         }
     }
 
     return (
-        <div className="settings-backup-bar">
-            <span className="settings-backup-label">Settings</span>
-
-            <button className="settings-backup-btn export" onClick={handleExport} title="Download all settings as JSON">
-                ⬇ Export
-            </button>
-
-            <button className="settings-backup-btn import" onClick={() => fileInputRef.current?.click()} title="Restore settings from JSON file">
-                ⬆ Import
-            </button>
-
-            <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json,application/json"
-                style={{ display: 'none' }}
-                onChange={handleImport}
-            />
-
+        <div className="flex flex-col gap-1 items-end">
+            <span className="text-xs text-cyan-400 font-semibold mb-1">Settings</span>
+            <div className="flex gap-1">
+                <button
+                    onClick={handleExport}
+                    title="Export all settings to JSON file"
+                    className="px-2 py-1 rounded text-xs font-medium transition-all bg-blue-700 hover:bg-blue-600 text-white"
+                >
+                    ⬇ Export
+                </button>
+                <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={importing}
+                    title="Import settings from JSON file"
+                    className={`px-2 py-1 rounded text-xs font-medium transition-all text-white ${importing ? 'bg-gray-600 cursor-wait' : 'bg-green-700 hover:bg-green-600'}`}
+                >
+                    {importing ? '...' : '⬆ Import'}
+                </button>
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".json,application/json"
+                    style={{ display: 'none' }}
+                    onChange={handleImport}
+                />
+            </div>
             {status && (
-                <span className={`settings-backup-status ${status.type}`}>
+                <span className={`text-xs px-2 py-0.5 rounded font-medium ${status.type === 'success' ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}`}>
                     {status.type === 'success' ? '✓' : '✗'} {status.msg}
                 </span>
             )}
