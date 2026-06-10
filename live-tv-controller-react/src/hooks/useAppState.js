@@ -41,7 +41,6 @@ function initWebSocket() {
     wsConnection = new WebSocket(wsUrl);
 
     wsConnection.onopen = () => {
-        console.log('[StateWS] Connected');
         isWsConnected = true;
         // Reset reconnect delay on successful connection
         wsReconnectDelay = WS_INITIAL_RECONNECT_DELAY;
@@ -68,7 +67,6 @@ function initWebSocket() {
     };
 
     wsConnection.onclose = () => {
-        console.log(`[StateWS] Disconnected, reconnecting in ${wsReconnectDelay / 1000}s...`);
         isWsConnected = false;
 
         // Schedule reconnect with exponential backoff

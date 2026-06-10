@@ -39,7 +39,6 @@ function App() {
         try {
           const data = JSON.parse(event.newValue);
           if (data.playerType === 'delay' && (data.event === 'videoEnded' || data.event === 'videoError')) {
-            console.log(`DelayPlayer event: ${data.event}`);
             sendPlayerCommand('delayLivePlayerCommand', 'pause');
 
             const nextAction = !sourceState["Live Player"] ? 'switch_to_loop' : 'hide_delay';
@@ -53,10 +52,8 @@ function App() {
 
             // Only switch to Loop Player if Live Player is NOT active
             if (!sourceState["Live Player"]) {
-              console.log('Live Player is not active. Switching to Loop Player.');
               setSourceVisibility("Loop Player", true);
             } else {
-              console.log('Live Player is active. Just hiding Delay Live.');
               setSourceVisibility("Delay Live", false);
             }
           }
@@ -70,7 +67,6 @@ function App() {
         try {
           const data = JSON.parse(event.newValue);
           if (data.event === 'videoEnded' || data.event === 'videoError') {
-            console.log(`LivePlayer event: ${data.event}. Switching to Loop Player.`);
 
             // Log the event
             if (data.event === 'videoEnded') {

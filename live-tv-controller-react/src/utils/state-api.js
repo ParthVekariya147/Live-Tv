@@ -131,7 +131,6 @@ export async function importFromLocalStorage() {
             body: JSON.stringify({ localStorageData })
         });
         const data = await res.json();
-        console.log(`[StateAPI] Imported ${data.imported} keys from localStorage`);
         return data.imported;
     } catch (error) {
         console.error('[StateAPI] Error importing from localStorage:', error);

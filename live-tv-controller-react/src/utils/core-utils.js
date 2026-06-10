@@ -79,7 +79,6 @@ export function escapeCsvValue(value) {
 export function copyToClipboard(text) {
     if (navigator.clipboard) {
         navigator.clipboard.writeText(text).then(() => {
-            console.log(`Copied to clipboard: ${text}`);
         }).catch(err => {
             console.error("Failed to copy to clipboard:", err);
         });
@@ -91,7 +90,6 @@ export function copyToClipboard(text) {
         textarea.select();
         try {
             document.execCommand("copy");
-            console.log(`Copied to clipboard: ${text}`);
         } catch (err) {
             console.error("Failed to copy to clipboard:", err);
         }
@@ -148,7 +146,6 @@ export function parseYtInitialData(htmlText) {
     for (const regex of fallbackStrategies) {
         const matches = htmlText.match(regex);
         if (matches && matches.length > 0) {
-            console.log(`Found ${matches.length} potential video items using fallback strategy`);
             // Try to construct a minimal valid response
             const potentialVideos = extractVideosFromHtmlDeeply(htmlText);
             if (potentialVideos.length > 0) {
@@ -445,7 +442,6 @@ export function extractVideoItems(ytInitialData) {
                     .map(item => normalizeLockupViewModelItem(
                         item.richItemRenderer.content.lockupViewModel
                     ));
-                console.log('[extractVideoItems] Using new lockupViewModel format, count:', videoItems.length);
                 return videoItems;
             }
 
@@ -454,7 +450,6 @@ export function extractVideoItems(ytInitialData) {
                 targetTab.tabRenderer?.content?.sectionListRenderer?.contents[0]
                     ?.itemSectionRenderer?.contents || [];
             if (legacyItems.length > 0) {
-                console.log('[extractVideoItems] Using legacy videoRenderer format, count:', legacyItems.length);
                 return legacyItems;
             }
         }

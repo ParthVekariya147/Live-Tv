@@ -54,7 +54,6 @@ const LocalPlayerCard = () => {
         if (saved) {
             try {
                 const parsed = JSON.parse(saved);
-                console.log('LocalPCPlayer LOAD: playlist from localStorage:', parsed.playlist);
                 if (parsed.playlist && parsed.playlist.length > 0) {
                     setPlaylist(parsed.playlist);
                 }
@@ -81,7 +80,6 @@ const LocalPlayerCard = () => {
         if (savedEndActions) {
             try {
                 const parsedEndActions = JSON.parse(savedEndActions);
-                console.log('LocalPCPlayer LOAD: endActions:', parsedEndActions);
                 setEndActions(parsedEndActions);
             } catch (e) {
                 console.error('LocalPCPlayer LOAD: Error parsing endActions:', e);
@@ -93,14 +91,12 @@ const LocalPlayerCard = () => {
         // Use setTimeout to ensure this runs after React processes state updates
         setTimeout(() => {
             isInitialized.current = true;
-            console.log('LocalPCPlayer: Initialization complete, saving enabled');
         }, 100);
     }, []);
 
     // Save main player state (excludes endActions) - only after initialization
     useEffect(() => {
         if (!isInitialized.current) {
-            console.log('LocalPCPlayer SAVE: Skipping save, not initialized yet');
             return;
         }
 
@@ -117,7 +113,6 @@ const LocalPlayerCard = () => {
             isMuted,
             isStopped
         };
-        console.log('LocalPCPlayer SAVE: Saving state:', state);
         localStorage.setItem('localPCPlayerState', JSON.stringify(state));
     }, [playlist, currentIndex, isPlaying, isMuted, isStopped]);
 
@@ -127,7 +122,6 @@ const LocalPlayerCard = () => {
         // Only save if we have at least one non-null value (user has set something)
         const hasAnyValue = endActions.some(action => action !== null);
         if (hasAnyValue) {
-            console.log('LocalPCPlayer SAVE: endActions:', endActions);
             localStorage.setItem('localPCPlayerEndActions', JSON.stringify(endActions));
         }
     }, [endActions]);
@@ -161,7 +155,6 @@ const LocalPlayerCard = () => {
         // Guard: Ignore any visibility effects within 500ms of mount
         const timeSinceMount = Date.now() - mountTime.current;
         if (timeSinceMount < 500) {
-            console.log('LocalPCPlayer: Ignoring visibility effect within 500ms of mount, time:', timeSinceMount);
             prevIsVisible.current = isVisible;
             return;
         }
@@ -170,14 +163,12 @@ const LocalPlayerCard = () => {
         // Only send commands when visibility actually CHANGES
         if (prevIsVisible.current === undefined) {
             // First mount - just record current value, don't send any commands
-            console.log('LocalPCPlayer: Initial mount, visibility:', isVisible, '- not sending commands');
             prevIsVisible.current = isVisible;
             return;
         }
 
         // Check if visibility actually changed
         if (prevIsVisible.current === isVisible) {
-            console.log('LocalPCPlayer: Visibility unchanged, skipping');
             return;
         }
 
@@ -185,10 +176,8 @@ const LocalPlayerCard = () => {
         prevIsVisible.current = isVisible;
 
         if (isVisible) {
-            console.log('LocalPCPlayer: Visibility CHANGED to visible, resuming playback');
             resumePlayback();
         } else {
-            console.log('LocalPCPlayer: Visibility CHANGED to hidden, pausing');
             sendPlayerCommand('localPCPlayerCommand', 'pause');
             setIsPlaying(false);
             setIsStopped(false);
@@ -203,7 +192,6 @@ const LocalPlayerCard = () => {
                 try {
                     const data = JSON.parse(event.newValue);
                     if (data.playerType === 'local' && data.event === 'videoEnded') {
-                        console.log('LocalPCPlayer: Video ended.');
                         handleVideoEnded();
                     }
                 } catch (e) {
@@ -225,11 +213,9 @@ const LocalPlayerCard = () => {
 
         const nextIdx = currentIdx + 1;
 
-        console.log(`LocalPCPlayer: handleVideoEnded - currentIdx=${currentIdx}, playlistLength=${currentPlaylist.length}, endActions=`, currentEndActions);
 
         if (nextIdx < currentPlaylist.length) {
             // More videos in playlist - play next
-            console.log(`LocalPCPlayer: Playing next video at index ${nextIdx}`);
             setCurrentIndex(nextIdx);
             const nextVideo = currentPlaylist[nextIdx];
             if (nextVideo && nextVideo.path) {
@@ -249,7 +235,6 @@ const LocalPlayerCard = () => {
             const currentDay = new Date().getDay(); // 0 = Sunday, 6 = Saturday
             const targetScene = currentEndActions[currentDay];
 
-            console.log(`LocalPCPlayer: Playlist ended. Day=${currentDay} (${daysMap[currentDay]}), targetScene="${targetScene}"`);
 
             sendPlayerCommand('localPCPlayerCommand', 'stop');
             setIsPlaying(false);
@@ -260,7 +245,6 @@ const LocalPlayerCard = () => {
             if (isVisibleRef.current) {
                 const currentSourceState = sourceStateRef.current;
                 if (targetScene && sourceNames.includes(targetScene) && targetScene !== "Local Player") {
-                    console.log(`LocalPCPlayer: Switching to "${targetScene}" for ${daysMap[currentDay]}`);
                     // Log the source change
                     logSourceChange(targetScene, true, 'playlist_ended', 'Local Player');
                     logVideoEnd('Local Player', null, `switch_to_${targetScene}`);
@@ -274,7 +258,6 @@ const LocalPlayerCard = () => {
                     setStatusText(`Switched to ${targetScene}`);
                 } else {
                     // Default: Switch to Loop Player if no valid end action configured
-                    console.log(`LocalPCPlayer: No valid end action for ${daysMap[currentDay]}. Defaulting to Loop Player.`);
                     // Log the source change
                     logSourceChange('Loop Player', true, 'playlist_ended_default', 'Local Player');
                     logVideoEnd('Local Player', null, 'switch_to_Loop Player');

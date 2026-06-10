@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "lastModified": "2026-06-10T15:54:17.307Z",
+  "lastModified": "2026-06-10T17:48:22.178Z",
   "schedulerEnabled": true,
   "schedules": [
     {
@@ -13,8 +13,8 @@
       "scheduledDay": null,
       "title": "Local",
       "enabled": true,
-      "lastTriggered": "2026-01-24-22:52",
-      "lastTriggeredAt": "2026-01-24T17:22:01.283Z",
+      "lastTriggered": "2026-06-10-22:52",
+      "lastTriggeredAt": "2026-06-10T17:22:00.997Z",
       "createdAt": "2026-01-23T17:10:08.541Z"
     },
     {
@@ -69,8 +69,8 @@
       "scheduledDay": null,
       "title": "Refresh Katha Content",
       "enabled": true,
-      "lastTriggered": null,
-      "lastTriggeredAt": "2026-01-24T16:13:00.725Z",
+      "lastTriggered": "2026-06-10-21:43",
+      "lastTriggeredAt": "2026-06-10T17:31:50.792Z",
       "createdAt": "2026-01-24T16:04:11.423Z",
       "skipIfLivePlaying": false
     },
@@ -83,8 +83,8 @@
       "days": [],
       "title": "Load Katha to Delay Player",
       "enabled": true,
-      "lastTriggered": null,
-      "lastTriggeredAt": "2026-01-24T16:09:00.309Z",
+      "lastTriggered": "2026-06-10-21:39",
+      "lastTriggeredAt": "2026-06-10T17:31:50.807Z",
       "createdAt": "2026-01-24T16:04:42.396Z",
       "skipIfLivePlaying": false
     },
@@ -103,8 +103,8 @@
       "scheduledDay": null,
       "title": "",
       "enabled": true,
-      "lastTriggered": "2026-01-24-21:45",
-      "lastTriggeredAt": "2026-01-24T16:15:00.840Z",
+      "lastTriggered": "2026-06-10-21:45",
+      "lastTriggeredAt": "2026-06-10T16:31:00.600Z",
       "createdAt": "2026-01-24T16:13:40.084Z"
     }
   ],
@@ -251,6 +251,66 @@
       "status": "success",
       "reason": "catch-up",
       "executionTimeMs": 2,
+      "error": null
+    },
+    {
+      "id": 1781109060584,
+      "timestamp": "2026-06-10T16:31:00.584Z",
+      "scheduleId": 1769270651423,
+      "source": "Katha Refresh",
+      "action": "katha_refresh",
+      "title": "Refresh Katha Content",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 7,
+      "error": null
+    },
+    {
+      "id": 1781109060595,
+      "timestamp": "2026-06-10T16:31:00.595Z",
+      "scheduleId": 1769270682396,
+      "source": "Katha Player",
+      "action": "katha_player",
+      "title": "Load Katha to Delay Player",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 6,
+      "error": null
+    },
+    {
+      "id": 1781109060606,
+      "timestamp": "2026-06-10T16:31:00.606Z",
+      "scheduleId": 1769271220084,
+      "source": "Local Player",
+      "action": "hide",
+      "title": "",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 6,
+      "error": null
+    },
+    {
+      "id": 1781112710801,
+      "timestamp": "2026-06-10T17:31:50.801Z",
+      "scheduleId": 1769270651423,
+      "source": "Katha Refresh",
+      "action": "katha_refresh",
+      "title": "Refresh Katha Content",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 9,
+      "error": null
+    },
+    {
+      "id": 1781112710814,
+      "timestamp": "2026-06-10T17:31:50.814Z",
+      "scheduleId": 1769270682396,
+      "source": "Katha Player",
+      "action": "katha_player",
+      "title": "Load Katha to Delay Player",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 7,
       "error": null
     }
   ]

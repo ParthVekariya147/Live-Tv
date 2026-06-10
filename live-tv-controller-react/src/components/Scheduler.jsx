@@ -77,14 +77,12 @@ const Scheduler = () => {
 
     // Handle trigger from server - execute OBS action
     const handleServerTrigger = useCallback((triggerData) => {
-        console.log('[Scheduler] Server trigger received:', triggerData);
 
         // Read from ref to always get the LATEST sourceState (avoids stale closure bug)
         // Check if Live Player is active - skip ALL triggers (including those targeting Live Player)
         // This ensures Live Player priority is maintained and it won't be hidden by any schedule
         const currentSourceState = sourceStateRef.current;
         if (currentSourceState["Live Player"] === true) {
-            console.log('[Scheduler] Skipping trigger - Live Player is currently active/visible');
             logWarn('SCHEDULER_TRIGGER_SKIPPED', LogCategory.SCHEDULER,
                 { ...triggerData, reason: 'Live Player is active/visible', skippedAt: new Date().toISOString() },
                 `[FRONTEND] Skipped: ${triggerData.action} ${triggerData.source} - Live Player is active/visible`);
@@ -108,7 +106,6 @@ const Scheduler = () => {
         const targetVisibility = triggerData.action === 'show';
         setSourceVisibility(triggerData.source, targetVisibility, 'scheduler');
 
-        console.log(`[Scheduler] Executed: ${triggerData.action} ${triggerData.source}`);
 
         // Log successful execution
         logInfo('SCHEDULER_TRIGGER_EXECUTED', LogCategory.SCHEDULER,
@@ -126,7 +123,6 @@ const Scheduler = () => {
 
     // Handle WebSocket messages
     const handleWsMessage = useCallback((data) => {
-        console.log('[Scheduler] WS Message:', data.type);
 
         switch (data.type) {
             case 'WS_CONNECTED':

@@ -143,12 +143,10 @@ export const OBSProvider = ({ children }) => {
             obsReconnectTimeoutRef.current = null;
         }
 
-        console.log("Connecting to OBS...");
         const ws = new WebSocket("ws://localhost:4455");
         socketRef.current = ws;
 
         ws.onopen = () => {
-            console.log("Connected to OBS");
             setIsConnected(true);
             setConnectionError(null);
             logOBSConnection(true, 'localhost:4455');
@@ -178,7 +176,6 @@ export const OBSProvider = ({ children }) => {
             // Restore saved active source from localStorage
             const savedActiveSource = localStorage.getItem(ACTIVE_SOURCE_KEY);
             if (savedActiveSource && SOURCE_NAMES.includes(savedActiveSource)) {
-                console.log(`Restoring active source from localStorage: ${savedActiveSource}`);
                 // We'll apply this after the initial fetch populates sourceIds
                 // Use a short timeout to allow first poll to complete
                 setTimeout(() => {
@@ -222,7 +219,6 @@ export const OBSProvider = ({ children }) => {
         };
 
         ws.onclose = () => {
-            console.log(`Disconnected from OBS. Reconnecting in ${obsReconnectDelayRef.current / 1000}s...`);
             setIsConnected(false);
             logOBSConnection(false, 'localhost:4455');
 
@@ -290,7 +286,6 @@ export const OBSProvider = ({ children }) => {
             return;
         }
 
-        console.log(`Setting source "${sourceName}" visibility to ${visible} (trigger: ${trigger})`);
 
         // Send command to OBS for the target source
         sendRequest("SetSceneItemEnabled", {
@@ -319,7 +314,6 @@ export const OBSProvider = ({ children }) => {
                 if (s !== sourceName && currentSourceIds[s]) {
                     // Only send command if the other source is currently visible
                     if (currentSourceState[s]) {
-                        console.log(`Turning off source "${s}" for exclusivity.`);
                         sendRequest("SetSceneItemEnabled", {
                             sceneName: SCENE_NAME,
                             sceneItemId: currentSourceIds[s],
@@ -334,7 +328,6 @@ export const OBSProvider = ({ children }) => {
             // If none, turn on Loop Player as default
             const anyOtherVisible = SOURCE_NAMES.some(s => s !== sourceName && currentSourceState[s]);
             if (!anyOtherVisible) {
-                console.log(`No sources visible after turning off "${sourceName}". Enabling Loop Player.`);
                 if (currentSourceIds["Loop Player"]) {
                     sendRequest("SetSceneItemEnabled", {
                         sceneName: SCENE_NAME,

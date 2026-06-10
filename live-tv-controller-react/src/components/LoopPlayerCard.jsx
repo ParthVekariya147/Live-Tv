@@ -90,13 +90,11 @@ const LoopPlayerCard = () => {
         // Guard: Ignore any visibility effects within 500ms of mount
         const timeSinceMount = Date.now() - mountTime.current;
         if (timeSinceMount < 500) {
-            console.log('LoopPlayer: Ignoring visibility effect within 500ms of mount, time:', timeSinceMount);
             prevIsVisible.current = isVisible;
             return;
         }
 
         if (prevIsVisible.current === undefined) {
-            console.log('LoopPlayer: Initial mount, visibility:', isVisible, '- not sending commands');
             prevIsVisible.current = isVisible;
             return;
         }
@@ -145,7 +143,6 @@ const LoopPlayerCard = () => {
                         // We can just format specific stats if needed, or pass raw
                     }
                     if (data.playerType === 'loop' && (data.event === 'videoEnded' || data.event === 'videoError')) {
-                        console.log("Loop Video Ended/Error, next...");
                         handleNext();
                     }
                 } catch (err) { }

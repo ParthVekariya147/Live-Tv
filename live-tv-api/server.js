@@ -1,4 +1,13 @@
 import http from "http";
+import { warmCache, fetchStreamChannel, fetchKathaChannel } from "./lib/youtube.js";
+
+// ─── Crash protection — log and keep running ─────────────────────────────────
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught exception — keeping server alive:", err);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[FATAL] Unhandled rejection — keeping server alive:", reason);
+});
 
 const PORT = process.env.PORT || 3000;
 
@@ -131,4 +140,13 @@ server.listen(PORT, () => {
     console.log(`live-tv-api running at http://localhost:${PORT}`);
     console.log(`GET http://localhost:${PORT}/api/live`);
     console.log(`GET http://localhost:${PORT}/api/videos`);
+
+    // Warm cache on startup — first real request returns instantly
+    warmCache().catch((e) => console.error("[Startup] warmCache error:", e));
+
+    // Background refresh every 90s — cache stays fresh indefinitely
+    setInterval(() => {
+        fetchStreamChannel().catch((e) => console.error("[BG] streams:", e));
+        fetchKathaChannel().catch((e) => console.error("[BG] katha:", e));
+    }, 90 * 1000);
 });

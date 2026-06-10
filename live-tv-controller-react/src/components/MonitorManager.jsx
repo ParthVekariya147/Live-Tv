@@ -163,7 +163,6 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
                 videoIdToAutoLoad !== currentLoadedId &&
                 videoIdToAutoLoad !== lastAutoLoadedIdRef.current
             ) {
-                console.log(`[MonitorManager] Auto-loading "${videoIdToAutoLoad}" (priority: ${livePlayerPriority})`);
                 lastAutoLoadedIdRef.current = videoIdToAutoLoad;
 
                 const videoTitle = liveEvents.find(e => e.videoId === videoIdToAutoLoad)?.title || 'Unknown';

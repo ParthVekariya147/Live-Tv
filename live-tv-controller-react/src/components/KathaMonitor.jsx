@@ -103,7 +103,6 @@ const KathaMonitor = () => {
             wsRef.current = new WebSocket(wsUrl);
 
             wsRef.current.onopen = () => {
-                console.log('[KathaMonitor] WebSocket connected');
                 // Reset reconnect delay on successful connection
                 wsReconnectDelayRef.current = WS_INITIAL_RECONNECT_DELAY;
             };
@@ -117,10 +116,8 @@ const KathaMonitor = () => {
                         const { action, source } = message.data;
 
                         if (action === 'katha_refresh' || source === 'Katha Refresh') {
-                            console.log('[KathaMonitor] Server triggered: Refresh Content');
                             loadKathaContent();
                         } else if (action === 'katha_player' || source === 'Katha Player') {
-                            console.log('[KathaMonitor] Server triggered: Load to Delay Player');
                             loadToDelayPlayer();
                         }
                     }
@@ -130,7 +127,6 @@ const KathaMonitor = () => {
             };
 
             wsRef.current.onclose = () => {
-                console.log(`[KathaMonitor] WebSocket disconnected, reconnecting in ${wsReconnectDelayRef.current / 1000}s...`);
 
                 // Schedule reconnect with exponential backoff
                 wsReconnectRef.current = setTimeout(() => {
@@ -180,7 +176,6 @@ const KathaMonitor = () => {
                 }
 
                 isInitialized.current = true;
-                console.log('[KathaMonitor] Loaded schedules from server');
             } catch (e) {
                 console.error('[KathaMonitor] Error loading schedules:', e);
                 isInitialized.current = true;
@@ -216,7 +211,6 @@ const KathaMonitor = () => {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ...existing, ...scheduleData })
                 });
-                console.log(`[KathaMonitor] Updated ${type} schedule`);
             } else {
                 // Create new
                 await fetch('/api/schedules', {
@@ -224,7 +218,6 @@ const KathaMonitor = () => {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(scheduleData)
                 });
-                console.log(`[KathaMonitor] Created ${type} schedule`);
             }
         } catch (e) {
             console.error(`[KathaMonitor] Error saving ${type} schedule:`, e);

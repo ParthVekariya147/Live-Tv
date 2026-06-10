@@ -98,13 +98,11 @@ const DelayPlayerCard = () => {
         // Guard: Ignore any visibility effects within 500ms of mount
         const timeSinceMount = Date.now() - mountTime.current;
         if (timeSinceMount < 500) {
-            console.log('DelayPlayer: Ignoring visibility effect within 500ms of mount, time:', timeSinceMount);
             prevIsVisible.current = isVisible;
             return;
         }
 
         if (prevIsVisible.current === undefined) {
-            console.log('DelayPlayer: Initial mount, visibility:', isVisible, '- not sending commands');
             prevIsVisible.current = isVisible;
             return;
         }

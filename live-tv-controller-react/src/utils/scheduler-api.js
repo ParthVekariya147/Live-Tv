@@ -190,13 +190,11 @@ export const connectWebSocket = () => {
     }
 
     const wsUrl = getWsUrl();
-    console.log('[Scheduler WS] Connecting to:', wsUrl);
 
     try {
         wsConnection = new WebSocket(wsUrl);
 
         wsConnection.onopen = () => {
-            console.log('[Scheduler WS] Connected');
             // Reset reconnect delay on successful connection
             wsReconnectDelay = WS_INITIAL_RECONNECT_DELAY;
             notifyListeners({ type: 'WS_CONNECTED' });
@@ -207,7 +205,6 @@ export const connectWebSocket = () => {
                 const data = JSON.parse(event.data);
                 // Don't log SCHEDULER_TICK to reduce noise (every 1 second)
                 if (data.type !== 'SCHEDULER_TICK') {
-                    console.log('[Scheduler WS] Message:', data.type);
                 }
                 notifyListeners(data);
             } catch (e) {
@@ -216,7 +213,6 @@ export const connectWebSocket = () => {
         };
 
         wsConnection.onclose = () => {
-            console.log(`[Scheduler WS] Disconnected, reconnecting in ${wsReconnectDelay / 1000}s...`);
             notifyListeners({ type: 'WS_DISCONNECTED' });
 
             // Schedule reconnect with exponential backoff

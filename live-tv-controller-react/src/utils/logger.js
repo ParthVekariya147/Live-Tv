@@ -87,7 +87,6 @@ const sendLog = async (logEntry) => {
     } catch (error) {
         console.error('Error sending log:', error);
         // Fallback: log to console
-        console.log('[LOG]', logEntry);
         return { success: false, error: error.message };
     }
 };
