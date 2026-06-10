@@ -1408,3 +1408,56 @@ input[type="number"]:focus {
   font-size: 0.7rem;
   margin-bottom: 6px;
 }
+/* ============================================
+   Settings Backup Bar
+   ============================================ */
+.settings-backup-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: #1a202c;
+  border: 1px solid #2d3748;
+  border-radius: 8px;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}
+
+.settings-backup-label {
+  font-size: 0.75rem;
+  color: #718096;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 4px;
+}
+
+.settings-backup-btn {
+  padding: 5px 14px;
+  border-radius: 5px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s;
+}
+.settings-backup-btn:hover { opacity: 0.85; }
+
+.settings-backup-btn.export {
+  background: #2b6cb0;
+  color: #fff;
+}
+
+.settings-backup-btn.import {
+  background: #276749;
+  color: #fff;
+}
+
+.settings-backup-status {
+  font-size: 0.78rem;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+.settings-backup-status.success { background: #1c4532; color: #9ae6b4; }
+.settings-backup-status.error   { background: #742a2a; color: #fed7d7; }

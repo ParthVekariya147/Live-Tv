@@ -442,6 +442,53 @@ app.post('/api/state/reset', (req, res) => {
 });
 
 // ============================================
+// SETTINGS EXPORT / IMPORT
+// ============================================
+
+// GET /api/settings/export - Download all settings as a single JSON
+app.get('/api/settings/export', (req, res) => {
+    try {
+        const payload = {
+            exportedAt: new Date().toISOString(),
+            version: '1.0',
+            state: stateService.getAll(),
+            schedules: scheduler.getAllSchedules(),
+        };
+        const filename = `live-tv-settings-${new Date().toISOString().slice(0, 10)}.json`;
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Type', 'application/json');
+        res.json(payload);
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// POST /api/settings/import - Restore all settings from exported JSON
+app.post('/api/settings/import', (req, res) => {
+    try {
+        const { state, schedules } = req.body;
+        if (!state && !schedules) {
+            return res.status(400).json({ success: false, error: 'Invalid settings file — missing state or schedules' });
+        }
+        if (state && typeof state === 'object') {
+            // Skip runtime-only keys that should not be overwritten
+            const skip = new Set(['obs.connected']);
+            Object.entries(state).forEach(([k, v]) => {
+                if (!skip.has(k)) stateService.set(k, v);
+            });
+        }
+        if (Array.isArray(schedules) && schedules.length > 0) {
+            scheduler.setAllSchedules(schedules);
+            broadcast('SCHEDULES_UPDATED', { schedules: scheduler.getAllSchedules() });
+        }
+        broadcast('STATE_UPDATED', { state: stateService.getAll() });
+        res.json({ success: true, stateKeys: Object.keys(state || {}).length, schedulesCount: (schedules || []).length });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ============================================
 // OBS STATUS ENDPOINTS
 // ============================================
 

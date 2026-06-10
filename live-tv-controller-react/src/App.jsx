@@ -9,6 +9,7 @@ import MonitorManager from './components/MonitorManager';
 import KathaMonitor from './components/KathaMonitor';
 import Scheduler from './components/Scheduler';
 import LogViewer from './components/LogViewer';
+import SettingsBackup from './components/SettingsBackup';
 
 function App() {
   const { isConnected, SCENE_NAME, sourceState, setSourceVisibility } = useOBS();
@@ -134,6 +135,11 @@ function App() {
       {/* Log Viewer - Collapsible at bottom */}
       <div className="w-full px-2">
         <LogViewer mode="collapsed" maxHeight="350px" />
+      </div>
+
+      {/* Settings Export / Import */}
+      <div className="w-full px-2">
+        <SettingsBackup />
       </div>
 
       <div className="footer">
