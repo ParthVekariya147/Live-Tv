@@ -1,10 +1,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useOBS } from '../context/OBSContext';
-import { fetchVideoDetails, sendPlayerCommand, LIVE_PLAYER_EVENT_KEY } from '../utils/core-utils';
+import { sendPlayerCommand, LIVE_PLAYER_EVENT_KEY } from '../utils/core-utils';
 import { usePlayerTime } from '../utils/usePlayerHooks';
+import { useVideoInfo } from '../hooks/useVideoInfo';
 import { logVideoLoad, logVideoPlay } from '../utils/logger';
 import PlayerControlBtn from './common/PlayerControlBtn';
+import ThumbnailLoader from './common/ThumbnailLoader';
 
 const DEFAULT_LIVE_VIDEO_ID = "T3wvnwSSw8g";
 
@@ -21,10 +23,8 @@ const LivePlayerCard = () => {
     const [isMuted, setIsMuted] = useState(false);
     const [isStopped, setIsStopped] = useState(false);
 
-    const [videoInfo, setVideoInfo] = useState({
-        title: "No video loaded",
-        thumbnail: "https://placehold.co/300x170?text=No+Video"
-    });
+    const { title: videoTitle, thumbnail: videoThumbnail, loading: thumbLoading } = useVideoInfo(videoId);
+    const [loadingAction, setLoadingAction] = useState(false);
     const [statusText, setStatusText] = useState("Not loaded");
 
     // Use custom hook for time updates
@@ -41,7 +41,6 @@ const LivePlayerCard = () => {
                 setIsPlaying(parsed.isPlaying ?? true);
                 setIsMuted(parsed.isMuted ?? false);
                 setIsStopped(parsed.isStopped ?? false);
-                if (parsed.videoId) updateVideoInfo(parsed.videoId);
             } catch (e) { }
         }
         isInitialized.current = true;
@@ -56,12 +55,10 @@ const LivePlayerCard = () => {
 
     // Listen for auto-load events from MonitorManager
     useEffect(() => {
-        const handleAutoLoad = async (event) => {
+        const handleAutoLoad = (event) => {
             const { videoId: newVideoId } = event.detail;
             if (newVideoId) {
                 setVideoId(newVideoId);
-                await updateVideoInfo(newVideoId);
-                // Send player commands to actually load and play
                 sendPlayerCommand('livePlayerCommand', 'loadVideo', newVideoId);
                 sendPlayerCommand('livePlayerCommand', 'play');
                 sendPlayerCommand('livePlayerCommand', 'unmute');
@@ -77,9 +74,8 @@ const LivePlayerCard = () => {
     }, []);
 
     // Resume playback when OBS visibility changes - sends actual player commands
-    const resumePlayback = async () => {
+    const resumePlayback = () => {
         if (videoId) {
-            await updateVideoInfo(videoId);
             sendPlayerCommand('livePlayerCommand', 'loadVideo', videoId);
             sendPlayerCommand('livePlayerCommand', 'play');
             sendPlayerCommand('livePlayerCommand', 'unmute');
@@ -124,22 +120,15 @@ const LivePlayerCard = () => {
         }
     }, [isVisible]);
 
-    const updateVideoInfo = async (vid) => {
-        const details = await fetchVideoDetails(vid);
-        setVideoInfo(prev => ({ ...prev, title: details.title, thumbnail: details.thumbnail }));
-    };
-
-    const handleLoadAndPlay = async () => {
-        // Load video - only play if source is visible
+    const handleLoadAndPlay = () => {
         if (!videoId) {
             setStatusText("Please enter a YouTube Video ID.");
             return;
         }
 
-        await updateVideoInfo(videoId);
+        setLoadingAction(true);
 
         if (isVisible) {
-            // Source is visible - load and play immediately
             sendPlayerCommand('livePlayerCommand', 'loadVideo', videoId);
             sendPlayerCommand('livePlayerCommand', 'play');
             sendPlayerCommand('livePlayerCommand', 'unmute');
@@ -147,15 +136,14 @@ const LivePlayerCard = () => {
             setIsStopped(false);
             setIsMuted(false);
             setStatusText("Video loaded, playing.");
-
-            // Log the video load
-            logVideoLoad('Live Player', videoId, videoInfo.title, 'manual');
+            logVideoLoad('Live Player', videoId, videoTitle, 'manual');
             logVideoPlay('Live Player', videoId, 'manual');
         } else {
-            // Source is hidden - just prepare, don't play
             setStatusText("Loaded - will play when source is visible.");
-            logVideoLoad('Live Player', videoId, videoInfo.title, 'manual_prepared');
+            logVideoLoad('Live Player', videoId, videoTitle, 'manual_prepared');
         }
+
+        setTimeout(() => setLoadingAction(false), 800);
     };
 
     const handlePlayPause = () => {
@@ -201,8 +189,8 @@ const LivePlayerCard = () => {
     return (
         <div className="player-control-card">
             <h3>Live Player</h3>
-            <img src={videoInfo.thumbnail} alt="Thumbnail" className="video-thumbnail" />
-            <p className="video-title">{videoInfo.title}</p>
+            <ThumbnailLoader src={videoThumbnail} alt="Live Player Thumbnail" loading={thumbLoading} />
+            <p className="video-title">{thumbLoading ? 'Loading...' : (videoTitle || 'No video loaded')}</p>
             <p className="video-time-display">{timeInfo.currentTime} / {timeInfo.remainingTime}</p>
 
             <input
@@ -227,7 +215,13 @@ const LivePlayerCard = () => {
             </div>
 
             <div className="btn-group mt-2">
-                <PlayerControlBtn className="btn-primary" onClick={handleLoadAndPlay}>Load</PlayerControlBtn>
+                <PlayerControlBtn
+                    className={`btn-primary${loadingAction ? ' btn-loading' : ''}`}
+                    onClick={handleLoadAndPlay}
+                    disabled={loadingAction}
+                >
+                    {loadingAction ? <><span className="btn-spinner" /> Loading</> : 'Load'}
+                </PlayerControlBtn>
                 <PlayerControlBtn className={isPlaying ? "btn-success" : "btn-danger"} onClick={handlePlayPause}>
                     {isPlaying ? "Playing" : "Paused"}
                 </PlayerControlBtn>

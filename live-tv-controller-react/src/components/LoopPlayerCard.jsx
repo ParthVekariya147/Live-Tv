@@ -1,10 +1,12 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useOBS } from '../context/OBSContext';
-import { fetchVideoDetails, sendPlayerCommand, PLAYER_EVENT_KEY } from '../utils/core-utils';
+import { sendPlayerCommand, PLAYER_EVENT_KEY } from '../utils/core-utils';
 import { usePlayerTime } from '../utils/usePlayerHooks';
+import { useVideoInfo } from '../hooks/useVideoInfo';
 import { logVideoLoad, logVideoPlay, logPlaylistAction } from '../utils/logger';
 import PlayerControlBtn from './common/PlayerControlBtn';
+import ThumbnailLoader from './common/ThumbnailLoader';
 
 const LoopPlayerCard = () => {
     const { sourceState, setSourceVisibility } = useOBS();
@@ -21,14 +23,10 @@ const LoopPlayerCard = () => {
     const [isPlaying, setIsPlaying] = useState(true);
     const [isMuted, setIsMuted] = useState(false);
     const [isStopped, setIsStopped] = useState(false);
+    const [loadingAction, setLoadingAction] = useState(false);
 
-    // Video Info
-    const [videoInfo, setVideoInfo] = useState({
-        title: "No video loaded",
-        thumbnail: "https://placehold.co/300x170?text=No+Video",
-        currentTime: "00:00:00",
-        remainingTime: "00:00:00"
-    });
+    const currentVideoId = playlist[currentIndex] || '';
+    const { title: videoTitle, thumbnail: videoThumbnail, loading: thumbLoading } = useVideoInfo(currentVideoId);
     const [statusText, setStatusText] = useState("Not loaded");
 
     // Use custom hook for time updates
@@ -47,7 +45,6 @@ const LoopPlayerCard = () => {
                     setIsPlaying(parsed.isPlaying ?? true);
                     setIsMuted(parsed.isMuted ?? false);
                     setIsStopped(parsed.isStopped ?? false);
-                    updateVideoInfo(parsed.playlist[parsed.currentIndex || 0]);
                     hasUserData.current = true; // Mark that we have valid user data
                 }
             } catch (e) {
@@ -117,11 +114,10 @@ const LoopPlayerCard = () => {
     }, [isVisible]);
 
     // Resume playback of existing playlist without parsing inputValue
-    const resumePlayback = async () => {
+    const resumePlayback = () => {
         if (playlist.length > 0) {
             const vid = playlist[currentIndex] || playlist[0];
             if (vid) {
-                await updateVideoInfo(vid);
                 sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
                 sendPlayerCommand('loopPlayerCommand', 'play');
                 sendPlayerCommand('loopPlayerCommand', 'unmute');
@@ -152,17 +148,7 @@ const LoopPlayerCard = () => {
         return () => window.removeEventListener('storage', handleStorage);
     }, [currentIndex, playlist]); // Dependencies might need check
 
-    const updateVideoInfo = async (videoId) => {
-        const details = await fetchVideoDetails(videoId);
-        setVideoInfo(prev => ({
-            ...prev,
-            title: details.title,
-            thumbnail: details.thumbnail
-        }));
-    };
-
-    const handleLoadAndPlay = async () => {
-        // Load video - only play if source is visible
+    const handleLoadAndPlay = () => {
         let currentList = playlist;
         if (inputValue) {
             currentList = inputValue.split(',').map(s => s.trim()).filter(Boolean);
@@ -173,10 +159,9 @@ const LoopPlayerCard = () => {
         if (currentList.length > 0) {
             const vid = currentList[currentIndex] || currentList[0];
             if (vid) {
-                await updateVideoInfo(vid);
+                setLoadingAction(true);
 
                 if (isVisible) {
-                    // Source is visible - load and play immediately
                     sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
                     sendPlayerCommand('loopPlayerCommand', 'play');
                     sendPlayerCommand('loopPlayerCommand', 'unmute');
@@ -184,15 +169,14 @@ const LoopPlayerCard = () => {
                     setIsStopped(false);
                     setIsMuted(false);
                     setStatusText("Video loaded, playing.");
-
-                    // Log the video load
-                    logVideoLoad('Loop Player', vid, videoInfo.title, 'manual', { playlistIndex: currentIndex, playlistSize: currentList.length });
+                    logVideoLoad('Loop Player', vid, videoTitle, 'manual', { playlistIndex: currentIndex, playlistSize: currentList.length });
                     logVideoPlay('Loop Player', vid, 'manual');
                 } else {
-                    // Source is hidden - just prepare, don't play
                     setStatusText("Loaded - will play when source is visible.");
-                    logVideoLoad('Loop Player', vid, videoInfo.title, 'manual_prepared', { playlistIndex: currentIndex, playlistSize: currentList.length });
+                    logVideoLoad('Loop Player', vid, videoTitle, 'manual_prepared', { playlistIndex: currentIndex, playlistSize: currentList.length });
                 }
+
+                setTimeout(() => setLoadingAction(false), 800);
             }
         } else {
             setStatusText("No videos in playlist");
@@ -232,12 +216,8 @@ const LoopPlayerCard = () => {
         let nextIdx = currentIndex + 1;
         if (nextIdx >= playlist.length) nextIdx = 0;
         setCurrentIndex(nextIdx);
-        // Play next
         const vid = playlist[nextIdx];
-        if (vid) {
-            updateVideoInfo(vid);
-            sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
-        }
+        if (vid) sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
     };
 
     const handlePrev = () => {
@@ -245,10 +225,7 @@ const LoopPlayerCard = () => {
         if (prevIdx < 0) prevIdx = playlist.length - 1;
         setCurrentIndex(prevIdx);
         const vid = playlist[prevIdx];
-        if (vid) {
-            updateVideoInfo(vid);
-            sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
-        }
+        if (vid) sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
     };
 
     const handleJump = () => {
@@ -257,11 +234,10 @@ const LoopPlayerCard = () => {
             setStatusText(`Enter index 1-${playlist.length}`);
             return;
         }
-        const targetIdx = idx - 1; // Convert to 0-indexed
+        const targetIdx = idx - 1;
         setCurrentIndex(targetIdx);
         const vid = playlist[targetIdx];
         if (vid) {
-            updateVideoInfo(vid);
             sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
             sendPlayerCommand('loopPlayerCommand', 'play');
             setIsPlaying(true);
@@ -278,12 +254,6 @@ const LoopPlayerCard = () => {
         setInputValue("");
         setIsPlaying(false);
         setIsStopped(true);
-        setVideoInfo({
-            title: "No video loaded",
-            thumbnail: "https://placehold.co/300x170?text=No+Video",
-            currentTime: "00:00:00",
-            remainingTime: "00:00:00"
-        });
         hasUserData.current = false;
         localStorage.removeItem('loopPlayerState');
         setStatusText("Playlist reset");
@@ -304,12 +274,8 @@ const LoopPlayerCard = () => {
     return (
         <div className="player-control-card">
             <h3>Loop Player</h3>
-            <img
-                src={videoInfo.thumbnail}
-                alt="Thumbnail"
-                className="video-thumbnail"
-            />
-            <p className="video-title">{videoInfo.title}</p>
+            <ThumbnailLoader src={videoThumbnail} alt="Loop Player Thumbnail" loading={thumbLoading} />
+            <p className="video-title">{thumbLoading ? 'Loading...' : (videoTitle || 'No video loaded')}</p>
             <p className="video-time-display">{timeInfo.currentTime} / {timeInfo.remainingTime}</p>
             <p className="video-info-display">{playlist.length > 0 ? `Video ${currentIndex + 1} of ${playlist.length}` : ''}</p>
 
@@ -322,7 +288,13 @@ const LoopPlayerCard = () => {
             />
 
             <div className="btn-group mt-2">
-                <PlayerControlBtn className="btn-primary" onClick={handleLoadAndPlay}>Load</PlayerControlBtn>
+                <PlayerControlBtn
+                    className={`btn-primary${loadingAction ? ' btn-loading' : ''}`}
+                    onClick={handleLoadAndPlay}
+                    disabled={loadingAction}
+                >
+                    {loadingAction ? <><span className="btn-spinner" /> Loading</> : 'Load'}
+                </PlayerControlBtn>
                 <PlayerControlBtn className={isPlaying ? "btn-success" : "btn-danger"} onClick={handlePlayPause}>
                     {isPlaying ? "Playing" : "Paused"}
                 </PlayerControlBtn>

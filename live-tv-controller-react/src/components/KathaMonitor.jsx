@@ -67,6 +67,7 @@ function formatTimeRemaining(ms) {
 const KathaMonitor = () => {
     const [videos, setVideos] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [loadingToPlayer, setLoadingToPlayer] = useState(false);
     const [error, setError] = useState(null);
     const [statusText, setStatusText] = useState("Katha Monitor Ready");
     const [dateFilter, setDateFilter] = useState("today");
@@ -360,6 +361,7 @@ const KathaMonitor = () => {
     };
 
     const loadToDelayPlayer = async () => {
+        setLoadingToPlayer(true);
         setStatusText("Attempting to load Katha to Delay Player...");
 
         try {
@@ -397,6 +399,8 @@ const KathaMonitor = () => {
             }
         } catch (err) {
             setStatusText(`Error loading Katha: ${err.message}`);
+        } finally {
+            setLoadingToPlayer(false);
         }
     };
 
@@ -413,10 +417,14 @@ const KathaMonitor = () => {
                     {loading ? "Loading..." : "Refresh List"}
                 </button>
                 <button
-                    className="common-btn-style btn-primary flex-1"
+                    className={`common-btn-style btn-primary flex-1${loadingToPlayer ? ' btn-loading' : ''}`}
                     onClick={loadToDelayPlayer}
+                    disabled={loadingToPlayer}
                 >
-                    Load to Player
+                    {loadingToPlayer
+                        ? <><span className="btn-spinner" /> Loading...</>
+                        : 'Load to Player'
+                    }
                 </button>
             </div>
 

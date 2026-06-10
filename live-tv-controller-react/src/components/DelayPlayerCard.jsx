@@ -1,10 +1,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useOBS } from '../context/OBSContext';
-import { fetchVideoDetails, sendPlayerCommand, timeToSeconds, DELAY_PLAYER_EVENT_KEY } from '../utils/core-utils';
+import { sendPlayerCommand, timeToSeconds, DELAY_PLAYER_EVENT_KEY } from '../utils/core-utils';
 import { usePlayerTime } from '../utils/usePlayerHooks';
+import { useVideoInfo } from '../hooks/useVideoInfo';
 import { logVideoLoad, logVideoPlay } from '../utils/logger';
 import PlayerControlBtn from './common/PlayerControlBtn';
+import ThumbnailLoader from './common/ThumbnailLoader';
 
 const DelayPlayerCard = () => {
     const { sourceState, setSourceVisibility } = useOBS();
@@ -19,11 +21,9 @@ const DelayPlayerCard = () => {
     const [isPlaying, setIsPlaying] = useState(true);
     const [isMuted, setIsMuted] = useState(false);
     const [isStopped, setIsStopped] = useState(false);
+    const [loadingAction, setLoadingAction] = useState(false);
 
-    const [videoInfo, setVideoInfo] = useState({
-        title: "No video loaded",
-        thumbnail: "https://placehold.co/300x170?text=No+Video"
-    });
+    const { title: videoTitle, thumbnail: videoThumbnail, loading: thumbLoading } = useVideoInfo(videoId);
     const [statusText, setStatusText] = useState("Not loaded");
 
     // Use custom hook for time updates
@@ -42,7 +42,6 @@ const DelayPlayerCard = () => {
                     setIsPlaying(parsed.isPlaying ?? true);
                     setIsMuted(parsed.isMuted ?? false);
                     setIsStopped(parsed.isStopped ?? false);
-                    updateVideoInfo(parsed.videoId);
                     hasUserData.current = true; // Mark that we have valid user data
                 }
             } catch (e) { }
@@ -59,7 +58,6 @@ const DelayPlayerCard = () => {
             const prefillData = e.detail;
             if (prefillData.videoId) {
                 setVideoId(prefillData.videoId);
-                updateVideoInfo(prefillData.videoId);
                 hasUserData.current = true; // KathaMonitor prefill counts as user data
             }
             if (prefillData.startTime) {
@@ -125,9 +123,8 @@ const DelayPlayerCard = () => {
     }, [isVisible]);
 
     // Resume playback of existing video without modifying state
-    const resumePlayback = async () => {
+    const resumePlayback = () => {
         if (videoId) {
-            await updateVideoInfo(videoId);
             const startSeconds = startTime ? timeToSeconds(startTime) : 0;
             const endSeconds = endTime ? timeToSeconds(endTime) : null;
             sendPlayerCommand('delayLivePlayerCommand', 'loadVideo', videoId, startSeconds, endSeconds);
@@ -137,41 +134,33 @@ const DelayPlayerCard = () => {
         }
     };
 
-    const updateVideoInfo = async (vid) => {
-        const details = await fetchVideoDetails(vid);
-        setVideoInfo(prev => ({ ...prev, title: details.title, thumbnail: details.thumbnail }));
-    };
-
-    const handleLoadAndPlay = async () => {
-        // Load video - only play if source is visible
+    const handleLoadAndPlay = () => {
         if (!videoId) {
             setStatusText("Please enter a YouTube Video ID.");
             return;
         }
 
-        await updateVideoInfo(videoId);
+        setLoadingAction(true);
         hasUserData.current = true;
 
         const startSeconds = startTime ? timeToSeconds(startTime) : 0;
         const endSeconds = endTime ? timeToSeconds(endTime) : null;
 
         if (isVisible) {
-            // Source is visible - load and play immediately
             sendPlayerCommand('delayLivePlayerCommand', 'loadVideo', videoId, startSeconds, endSeconds);
             sendPlayerCommand('delayLivePlayerCommand', 'unmute');
             setIsPlaying(true);
             setIsStopped(false);
             setIsMuted(false);
             setStatusText("Video loaded, playing.");
-
-            // Log the video load
-            logVideoLoad('Delay Live', videoId, videoInfo.title, 'manual', { startTime, endTime });
+            logVideoLoad('Delay Live', videoId, videoTitle, 'manual', { startTime, endTime });
             logVideoPlay('Delay Live', videoId, 'manual');
         } else {
-            // Source is hidden - just prepare, don't play
             setStatusText("Loaded - will play when source is visible.");
-            logVideoLoad('Delay Live', videoId, videoInfo.title, 'manual_prepared', { startTime, endTime });
+            logVideoLoad('Delay Live', videoId, videoTitle, 'manual_prepared', { startTime, endTime });
         }
+
+        setTimeout(() => setLoadingAction(false), 800);
     };
 
     const handlePlayPause = () => {
@@ -217,8 +206,8 @@ const DelayPlayerCard = () => {
     return (
         <div className="player-control-card">
             <h3>Delay Live Player</h3>
-            <img src={videoInfo.thumbnail} alt="Thumbnail" className="video-thumbnail" />
-            <p className="video-title">{videoInfo.title}</p>
+            <ThumbnailLoader src={videoThumbnail} alt="Delay Player Thumbnail" loading={thumbLoading} />
+            <p className="video-title">{thumbLoading ? 'Loading...' : (videoTitle || 'No video loaded')}</p>
             <p className="video-time-display">{timeInfo.currentTime} / {timeInfo.remainingTime}</p>
 
             <input
@@ -244,7 +233,13 @@ const DelayPlayerCard = () => {
             />
 
             <div className="btn-group mt-2">
-                <PlayerControlBtn className="btn-primary" onClick={handleLoadAndPlay}>Load</PlayerControlBtn>
+                <PlayerControlBtn
+                    className={`btn-primary${loadingAction ? ' btn-loading' : ''}`}
+                    onClick={handleLoadAndPlay}
+                    disabled={loadingAction}
+                >
+                    {loadingAction ? <><span className="btn-spinner" /> Loading</> : 'Load'}
+                </PlayerControlBtn>
                 <PlayerControlBtn className={isPlaying ? "btn-success" : "btn-danger"} onClick={handlePlayPause}>
                     {isPlaying ? "Playing" : "Paused"}
                 </PlayerControlBtn>
