@@ -26,12 +26,14 @@ export default async function handler(req, res) {
     const live      = getLiveStreams(allVideos);
     const upcoming  = getUpcoming(allVideos);
     const source    = allVideos[0]?.source ?? "none";
+    const stale     = allVideos.some(v => v.stale);
 
     return res.status(200).json({
       success:    true,
       channelId,
       channelUrl: `https://www.youtube.com/channel/${channelId}/streams`,
       source,
+      stale,
       live,
       upcoming,
       updatedAt:  new Date().toISOString(),

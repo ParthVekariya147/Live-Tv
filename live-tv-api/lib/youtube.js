@@ -10,6 +10,22 @@ export const CHANNELS = {
   videos:  "UCQXWP4gEdEwlb6vodwrU75A",
 };
 
+// ─── In-memory cache — serves last known good data when all sources fail ─────
+const cache = new Map(); // key → { videos, fetchedAt }
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+function cacheGet(key) {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  const age = Date.now() - entry.fetchedAt;
+  if (age > CACHE_TTL_MS) return null; // expired
+  return entry;
+}
+
+function cacheSet(key, videos) {
+  cache.set(key, { videos, fetchedAt: Date.now() });
+}
+
 // Piped instances — tried in order, first success wins
 // If all fail → falls back to YouTube RSS
 const PIPED_INSTANCES = [
@@ -340,6 +356,7 @@ function normalizeVideoRenderer(vr, channelId) {
 
 async function fetchChannels(channelIds) {
   const ids = Array.isArray(channelIds) ? channelIds : [channelIds];
+  const cacheKey = ids.join(",");
 
   // 1. Try Piped for all channels in parallel
   const pipedResults = await Promise.allSettled(
@@ -347,7 +364,7 @@ async function fetchChannels(channelIds) {
   );
 
   const allVideos = [];
-  const needsFallback = []; // channels where Piped failed
+  const needsFallback = [];
 
   pipedResults.forEach((result, i) => {
     const channelId = ids[i];
@@ -362,30 +379,33 @@ async function fetchChannels(channelIds) {
     }
   });
 
-  if (needsFallback.length === 0) return allVideos;
+  if (needsFallback.length === 0) {
+    cacheSet(cacheKey, allVideos);
+    return allVideos;
+  }
 
-  // 2. YouTube scrape for failed channels (only scrapes /streams tab — good for live detection)
+  // 2. YouTube scrape fallback
   console.warn(`[API] Piped failed — trying YouTube scrape for: ${needsFallback.join(", ")}`);
   const scrapeResults = await Promise.allSettled(
     needsFallback.map((id) => fetchYouTubeScrape(id))
   );
 
-  const needsRss = []; // channels where scrape also failed OR returned nothing
-
+  const needsRss = [];
   scrapeResults.forEach((result, i) => {
     const channelId = needsFallback[i];
     if (result.status === "fulfilled" && result.value !== null && result.value.length > 0) {
-      // Scrape returned live/upcoming items — use them
       allVideos.push(...result.value);
     } else {
-      // Scrape failed or returned empty (e.g. videos-only channel with no live streams)
       needsRss.push(channelId);
     }
   });
 
-  if (needsRss.length === 0) return allVideos;
+  if (needsRss.length === 0) {
+    cacheSet(cacheKey, allVideos);
+    return allVideos;
+  }
 
-  // 3. RSS fallback for channels where scrape returned nothing
+  // 3. RSS fallback
   console.warn(`[API] YouTube scrape empty/failed — falling back to RSS for: ${needsRss.join(", ")}`);
   const rssResults = await Promise.allSettled(
     needsRss.map((id) => fetchRSSChannel(id))
@@ -396,15 +416,30 @@ async function fetchChannels(channelIds) {
     }
   });
 
-  return allVideos;
+  if (allVideos.length > 0) {
+    cacheSet(cacheKey, allVideos);
+    return allVideos;
+  }
+
+  // All sources failed — return cached data if available
+  const cached = cacheGet(cacheKey);
+  if (cached) {
+    const ageMin = Math.round((Date.now() - cached.fetchedAt) / 60000);
+    console.warn(`[API] All sources failed — serving cached data (${ageMin}m old) for: ${cacheKey}`);
+    return cached.videos.map(v => ({ ...v, stale: true }));
+  }
+
+  return allVideos; // empty — nothing we can do
 }
 
 export function fetchStreamChannel() {
   return fetchChannels(CHANNELS.streams);
 }
 
-// Katha channel only needs past videos (no live detection) — skip scrape, use Piped→RSS
+// Katha channel only needs past videos — skip scrape, use Piped→RSS
 export async function fetchKathaChannel() {
+  const cacheKey = `katha:${CHANNELS.videos}`;
+
   const piped = await fetchPipedChannel(CHANNELS.videos);
   if (piped) {
     const videos = [];
@@ -412,10 +447,28 @@ export async function fetchKathaChannel() {
       const v = normalizePiped(stream, CHANNELS.videos, piped.data.name);
       if (v) videos.push(v);
     });
-    if (videos.length > 0) return videos;
+    if (videos.length > 0) {
+      cacheSet(cacheKey, videos);
+      return videos;
+    }
   }
+
   console.warn("[API] Piped failed for katha — falling back to RSS");
-  return (await fetchRSSChannel(CHANNELS.videos)) || [];
+  const rss = await fetchRSSChannel(CHANNELS.videos);
+  if (rss && rss.length > 0) {
+    cacheSet(cacheKey, rss);
+    return rss;
+  }
+
+  // All sources failed — return cached data if available
+  const cached = cacheGet(cacheKey);
+  if (cached) {
+    const ageMin = Math.round((Date.now() - cached.fetchedAt) / 60000);
+    console.warn(`[API] All sources failed for katha — serving cached data (${ageMin}m old)`);
+    return cached.videos.map(v => ({ ...v, stale: true }));
+  }
+
+  return [];
 }
 
 export function fetchChannelById(channelId) {

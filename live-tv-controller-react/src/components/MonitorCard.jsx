@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { copyToClipboard } from '../utils/core-utils.js';
 
-const MonitorCard = ({ id, title, enabled, data, error, channelOptions, selectedChannelId, onChannelChange }) => {
+const MonitorCard = ({ id, title, enabled, data, error, stale, channelOptions, selectedChannelId, onChannelChange }) => {
     const [searchTerms, setSearchTerms] = useState("");
 
     useEffect(() => {
@@ -27,12 +27,13 @@ const MonitorCard = ({ id, title, enabled, data, error, channelOptions, selected
 
     if (!enabled) {
         displayTitle = `Live Event Monitor ${id} is Off`;
-    } else if (error) {
-        displayTitle = error;
-        videoId = error;
-        channelName = error;
-        channelUrl = error;
-        thumbnail = "https://placehold.co/280x157.5/FF0000/FFFFFF?text=Error";
+    } else if (error && !data) {
+        // Only show red error state when there's NO data at all (first-load failure)
+        displayTitle = "Retrying...";
+        videoId = "—";
+        channelName = "—";
+        channelUrl = "—";
+        thumbnail = "https://placehold.co/280x157.5/333333/FFFFFF?text=Connecting...";
         isErrorState = true;
     } else if (data) {
         displayTitle = data.title;
@@ -53,7 +54,19 @@ const MonitorCard = ({ id, title, enabled, data, error, channelOptions, selected
 
     return (
         <div className="player-control-card">
-            <h3 className="live-monitor-card-h3">{title}</h3>
+            <h3 className="live-monitor-card-h3 flex items-center gap-2">
+                {title}
+                {enabled && stale && (
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-900 text-yellow-300 font-medium">
+                        ⟳ Retrying
+                    </span>
+                )}
+                {enabled && error && data && (
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-orange-900 text-orange-300 font-medium" title={error}>
+                        ⚠ Stale
+                    </span>
+                )}
+            </h3>
 
             {channelOptions && onChannelChange && (
                 <div className="flex flex-col w-full px-2 mb-2">

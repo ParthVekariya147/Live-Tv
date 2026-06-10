@@ -6,6 +6,7 @@ import { logLiveMonitorEvent, logVideoLoad } from '../utils/logger';
 import { useOBS } from '../context/OBSContext';
 
 const LIVE_DETAILS_POLL_INTERVAL_MS = 30000;
+const RETRY_DELAY_MS = 10000; // retry after 10s on failure
 const LOCAL_API_BASE = "http://localhost:3000";
 const LIVE_CHANNEL_SELECT_KEY = "liveSelectedChannelId";
 
@@ -69,6 +70,10 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
     const [monitor2Data, setMonitor2Data] = useState(null);
     const [upcomingEventData, setUpcomingEventData] = useState(null);
     const [error, setError] = useState(null);
+    const [stale, setStale] = useState(false);
+    const retryTimerRef = useRef(null);
+    // Keep last known good data so UI never goes blank on transient failures
+    const lastGoodData = useRef({ m1: null, m2: null, upcoming: null });
     const [selectedChannelId, setSelectedChannelId] = useState(
         () => localStorage.getItem(LIVE_CHANNEL_SELECT_KEY) || CHANNEL_OPTIONS[0].id
     );
@@ -97,10 +102,12 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
                 signal: AbortSignal.timeout(15000),
             });
             if (!response.ok) {
-                throw new Error(`Local API HTTP ${response.status}`);
+                throw new Error(`API error ${response.status}`);
             }
 
             const payload = await response.json();
+            setStale(payload.stale === true);
+
             const liveEvents = (payload.live || [])
                 .map((video) =>
                     normalizeLiveVideo(video, { isLive: true, isUpcoming: false })
@@ -114,12 +121,14 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
                 })
             );
 
-            // Sort upcoming by start time
             upcomingEvents.sort((a, b) => (a.startTime || 0) - (b.startTime || 0));
 
             const liveEvent1 = liveEvents.length > 0 ? liveEvents[0] : null;
             const liveEvent2 = liveEvents.length > 1 ? liveEvents[1] : null;
             const nextUpcomingEvent = upcomingEvents.length > 0 ? upcomingEvents[0] : null;
+
+            // Save as last good data
+            lastGoodData.current = { m1: liveEvent1, m2: liveEvent2, upcoming: nextUpcomingEvent };
 
             setMonitor1Data(liveEvent1);
             setMonitor2Data(liveEvent2);
@@ -170,8 +179,24 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
             }
 
         } catch (err) {
-            console.error('[MonitorManager] Fetch error:', err);
-            setError(err.message);
+            if (err.name === 'AbortError') return; // component unmounted, ignore
+            console.warn('[MonitorManager] Fetch failed:', err.message);
+
+            // Keep last known good data visible — do NOT wipe the UI
+            if (lastGoodData.current.m1 !== undefined) {
+                setMonitor1Data(lastGoodData.current.m1);
+                setMonitor2Data(lastGoodData.current.m2);
+                setUpcomingEventData(lastGoodData.current.upcoming);
+            }
+            setStale(true);
+            setError(`Retrying... (${err.message})`);
+
+            // Auto-retry after 10s (in addition to the normal poll interval)
+            if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+            retryTimerRef.current = setTimeout(() => {
+                setError(null);
+                fetchLiveVideoDetails();
+            }, RETRY_DELAY_MS);
         }
     }, [monitor1Enabled, monitor2Enabled, setSourceVisibility, selectedChannelId]);
 
@@ -198,12 +223,13 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
                     enabled={monitor1Enabled}
                     data={monitor1Data}
                     error={error}
+                    stale={stale}
                     channelOptions={CHANNEL_OPTIONS}
                     selectedChannelId={selectedChannelId}
                     onChannelChange={handleChannelChange}
                 />
             </div>
-            <div className="table-cell-wrapper"><MonitorCard id={2} title="Live Event Monitor 2" enabled={monitor2Enabled} data={monitor2Data} error={error} /></div>
+            <div className="table-cell-wrapper"><MonitorCard id={2} title="Live Event Monitor 2" enabled={monitor2Enabled} data={monitor2Data} error={error} stale={stale} /></div>
             <div className="table-cell-wrapper"><UpcomingEventMonitor enabled={monitor1Enabled || monitor2Enabled} data={upcomingEventData} error={error} /></div>
         </>
     );
