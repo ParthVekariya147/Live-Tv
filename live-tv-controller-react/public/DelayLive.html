@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Delay Live Player</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      /* Hide scrollbars */
+      background-color: black;
+    }
+
+    #player {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="player"></div>
+
+  <script>
+    let player;
+    const PLAYER_KEY = "delayLivePlayerCommand"; // Unique key for this player in localStorage
+    const EVENT_REPORT_KEY = "delayLivePlayerEvent"; // Key to report events back to controller
+    let durationTimer; // To manage the end time of playback
+    let videoDuration;
+    let timeUpdateInterval = null; // 24/7 Reliability: Track interval for cleanup
+    // Store current start/end seconds in variables (not from localStorage on each play)
+    let currentStartSeconds = 0;
+    let currentEndSeconds = null;
+    let isLoadingVideo = false; // Flag to prevent videoEnded during loading
+    let lastLoadedVideoId = null; // Track last loaded video to prevent duplicate ended events
+
+    // Function to load the YouTube IFrame API asynchronously
+    function loadYouTubeAPI() {
+      const tag = document.createElement("script");
+      tag.src = "https://www.youtube.com/iframe_api"; // Corrected YouTube API URL
+      const firstScriptTag = document.getElementsByTagName("script")[0];
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    }
+
+    // This function is called by the YouTube API when it's ready
+    function onYouTubeIframeAPIReady() {
+      console.log("YouTube IFrame API is ready for DelayLivePlayer.");
+      // Player will be created when a video is loaded via localStorage command
+    }
+
+    function createPlayer(videoId, startSeconds = 0, endSeconds = null) {
+      // Store the times in variables for later use
+      currentStartSeconds = startSeconds;
+      currentEndSeconds = endSeconds;
+
+      if (player) {
+        player.destroy();
+      }
+      player = new YT.Player("player", {
+        videoId: videoId,
+        playerVars: {
+          autoplay: 1, // Autoplay the video
+          controls: 0, // Hide video controls
+          disablekb: 1, // Disable keyboard controls
+          fs: 0, // Disable fullscreen button
+          iv_load_policy: 3, // Hide video annotations by default
+          modestbranding: 1, // Hide YouTube logo
+          rel: 0, // Do not show related videos
+          showinfo: 0, // Hide video title and uploader info
+          start: startSeconds || 0, // Start time in seconds
+          end: endSeconds || undefined, // End time in seconds, or undefined if not set
+        },
+        events: {
+          onReady: onPlayerReady,
+          onStateChange: onPlayerStateChange,
+          onError: onPlayerError,
+        },
+      });
+    }
+
+    function onPlayerReady(event) {
+      console.log("DelayLivePlayer is ready!");
+      event.target.playVideo(); // Autoplay on ready
+      // Use stored times instead of re-reading from localStorage
+      startDurationTimer(event.target, currentStartSeconds, currentEndSeconds);
+    }
+
+    function onPlayerStateChange(event) {
+      let state;
+      switch (event.data) {
+        case YT.PlayerState.ENDED:
+          state = "ended";
+          clearDurationTimer();
+          // Only report videoEnded if not in loading state
+          if (!isLoadingVideo) {
+            // Report video ended event to the controller
+            reportEvent("videoEnded", {
+              videoId: player.getVideoData().video_id,
+            });
+            // Explicitly pause the video here, instead of looping, so the controller can take over
+            if (player) {
+              player.pauseVideo();
+              console.log(
+                "DelayLivePlayer: Video ended, paused and reported to controller."
+              );
+            }
+          } else {
+            console.log("DelayLivePlayer: Ignoring ENDED state during video loading.");
+          }
+          break;
+        case YT.PlayerState.PLAYING:
+          state = "playing";
+          isLoadingVideo = false; // Video started playing, loading complete
+          // Use stored times instead of re-reading from localStorage
+          startDurationTimer(event.target, currentStartSeconds, currentEndSeconds);
+          break;
+        case YT.PlayerState.PAUSED:
+          state = "paused";
+          clearDurationTimer();
+          break;
+        case YT.PlayerState.BUFFERING:
+          state = "buffering";
+          break;
+        case YT.PlayerState.CUED:
+          state = "cued";
+          break;
+        case YT.PlayerState.UNSTARTED:
+          state = "unstarted";
+          break;
+        default:
+          state = "unknown";
+      }
+      console.log("DelayLivePlayer state changed:", state);
+    }
+
+    function onPlayerError(event) {
+      console.error("DelayLivePlayer error:", event.data);
+      clearDurationTimer();
+      reportEvent("videoError", {
+        error: event.data,
+        videoId: player ? player.getVideoData().video_id : "N/A",
+      });
+    }
+
+    // Modified to receive start and end seconds directly, so it uses the *current* effective range
+    function startDurationTimer(playerInstance, startSec, endSec) {
+      clearDurationTimer(); // Clear any existing timer
+
+      if (endSec !== null && endSec !== undefined && endSec > 0) {
+        durationTimer = setInterval(() => {
+          const currentTime = playerInstance.getCurrentTime();
+          // If current time exceeds endSeconds, report to controller and pause
+          if (currentTime >= endSec) {
+            console.log(
+              `DelayLivePlayer: Reached end time ${endSec}. Reporting 'videoEnded' to controller.`
+            );
+            reportEvent("videoEnded", {
+              videoId: playerInstance.getVideoData().video_id,
+            });
+            playerInstance.pauseVideo(); // Pause the video
+            clearDurationTimer(); // Stop checking once ended
+          }
+        }, 500); // Check every 500ms
+      }
+    }
+
+    function clearDurationTimer() {
+      if (durationTimer) {
+        clearInterval(durationTimer);
+        durationTimer = null;
+      }
+    }
+
+    // Function to report events back to the main controller
+    function reportEvent(eventName, data = {}) {
+      const eventData = {
+        playerType: "delay",
+        event: eventName,
+        timestamp: Date.now(),
+        ...data,
+      };
+      localStorage.setItem(EVENT_REPORT_KEY, JSON.stringify(eventData));
+      // Clear the item after a short delay to ensure the 'storage' event fires cleanly
+      setTimeout(() => {
+        localStorage.removeItem(EVENT_REPORT_KEY);
+      }, 100);
+    }
+
+    // Event listener for changes in localStorage
+    window.addEventListener("storage", (event) => {
+      if (event.key === PLAYER_KEY && event.newValue) {
+        try {
+          const commandData = JSON.parse(event.newValue);
+          if (commandData && commandData.command) {
+            console.log("DelayLivePlayer received command:", commandData);
+            switch (commandData.command) {
+              case "loadVideo":
+                // Safety check: ensure YT API is ready
+                if (typeof YT === "undefined" || typeof YT.Player === "undefined") {
+                  console.error("DelayLivePlayer: YouTube IFrame API (YT.Player) is not yet ready. Cannot create player.");
+                  return;
+                }
+
+                const videoId = commandData.videoId;
+                const startSeconds =
+                  commandData.startSeconds !== undefined
+                    ? parseInt(commandData.startSeconds)
+                    : 0;
+                const endSeconds =
+                  commandData.endSeconds !== undefined && commandData.endSeconds > 0
+                    ? parseInt(commandData.endSeconds)
+                    : null;
+
+                if (videoId) {
+                  // Store times in variables
+                  currentStartSeconds = startSeconds;
+                  currentEndSeconds = endSeconds;
+                  isLoadingVideo = true; // Set loading flag
+                  lastLoadedVideoId = videoId;
+
+                  if (player && typeof player.loadVideoById === 'function') {
+                    // Reuse existing player for efficiency
+                    console.log(`DelayLivePlayer: Loading video ${videoId} via loadVideoById from ${startSeconds} to ${endSeconds}`);
+                    player.loadVideoById({
+                      videoId: videoId,
+                      startSeconds: startSeconds,
+                      endSeconds: endSeconds || undefined
+                    });
+                    // Start duration timer for custom end handling
+                    startDurationTimer(player, startSeconds, endSeconds);
+                  } else {
+                    // Create new player
+                    createPlayer(videoId, startSeconds, endSeconds);
+                    console.log(`DelayLivePlayer: Created new player for video ${videoId} from ${startSeconds} to ${endSeconds}`);
+                  }
+                } else {
+                  console.warn("DelayLivePlayer: No videoId provided for loadVideo command.");
+                }
+                break;
+              case "play":
+                if (player) {
+                  player.playVideo();
+                  // Retrieve last loaded start/end times to re-establish timer
+                  const lastLoadCommand = JSON.parse(
+                    localStorage.getItem(PLAYER_KEY) || "{}"
+                  );
+                  const lastStartSec =
+                    lastLoadCommand.startSeconds !== undefined
+                      ? parseInt(lastLoadCommand.startSeconds)
+                      : 0;
+                  const lastEndSec =
+                    lastLoadCommand.endSeconds !== undefined
+                      ? parseInt(lastLoadCommand.endSeconds)
+                      : null;
+                  startDurationTimer(player, lastStartSec, lastEndSec);
+                }
+                break;
+              case "pause":
+                if (player) {
+                  player.pauseVideo();
+                  clearDurationTimer(); // Stop timer on pause
+                }
+                break;
+              case "stop":
+                if (player) {
+                  player.stopVideo();
+                  clearDurationTimer(); // Stop timer on stop
+                  player.destroy(); // Destroy player to clear current video
+                  player = null;
+                }
+                break;
+              case "mute":
+                if (player) {
+                  player.mute();
+                }
+                break;
+              case "unmute":
+                if (player) {
+                  player.unMute();
+                }
+                break;
+              case "destroy":
+                // 24/7 Reliability: Clear intervals before destroy
+                if (timeUpdateInterval) {
+                  clearInterval(timeUpdateInterval);
+                  timeUpdateInterval = null;
+                }
+                if (player) {
+                  player.destroy();
+                  player = null;
+                }
+                clearDurationTimer(); // Clear timer if player is destroyed
+                break;
+            }
+          }
+        } catch (e) {
+          console.error(
+            "Error parsing localStorage command for DelayLivePlayer:",
+            e
+          );
+        }
+      }
+    });
+    // 24/7 Reliability: Store interval ID for cleanup
+    timeUpdateInterval = setInterval(() => {
+      // FIX 3: Add a guard clause to ensure the player object exists and is ready
+      if (!player || typeof player.getPlayerState !== "function") {
+        return;
+      }
+      if (!videoDuration) videoDuration = player.getDuration()
+      const currentTime = player.getCurrentTime()
+      // FIX 2: Check state using the correct method and constant
+      if (player.getPlayerState() === YT.PlayerState.PLAYING) {
+        reportEvent("timeUpdate", {
+          // FIX 2: Get time using the correct method
+          currentTime,
+          remainingTime: videoDuration - currentTime
+        });
+      }
+    }, 1000);
+
+    // Load the YouTube API when the page loads
+    loadYouTubeAPI();
+  </script>
+</body>
+
+</html>

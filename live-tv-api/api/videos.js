@@ -1,5 +1,5 @@
 // api/videos.js  →  GET /api/videos
-// Returns: recent (non-live) videos from both channels — used by Katha Monitor
+// Returns: last 30 recent videos from the Katha Monitor channel
 //
 // RESPONSE FORMAT — this never changes, only lib/youtube.js changes:
 // {
@@ -9,18 +9,22 @@
 //   "updatedAt": "ISO string"
 // }
 
-import { fetchAllChannels, getRecentVideos } from "../lib/youtube.js";
+import { CHANNELS, fetchKathaChannel, getRecentVideos } from "../lib/youtube.js";
 
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
-    const allVideos = await fetchAllChannels();
-    const videos    = getRecentVideos(allVideos);
+    const allVideos = await fetchKathaChannel();
+    const videos    = getRecentVideos(allVideos, 30);
     const source    = allVideos[0]?.source ?? "none";
 
     return res.status(200).json({
       success:   true,
+      channelId: CHANNELS.videos,
+      channelUrl: `https://www.youtube.com/channel/${CHANNELS.videos}/videos`,
+      limit:     30,
+      count:     videos.length,
       source,
       data:      videos,
       updatedAt: new Date().toISOString(),

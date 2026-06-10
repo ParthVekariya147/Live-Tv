@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Local PC Player</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: black;
+    }
+
+    #localVideoPlayer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- NOTE: Video starts UNMUTED - we handle autoplay policy by trying muted fallback only if needed -->
+  <video id="localVideoPlayer" autoplay playsinline></video>
+
+  <script>
+    const videoPlayer = document.getElementById("localVideoPlayer");
+    const PLAYER_KEY_LOCAL = "localPCPlayerCommand";
+    const EVENT_REPORT_KEY_LOCAL = "localPCPlayerEvent";
+
+    // Time tracking variables
+    let startTime = 0;
+    let endTime = null;
+    let timeCheckInterval = null;
+    let isPausedByCommand = false; // Track if pause was requested by controller
+
+    function reportEvent(eventName, data = {}) {
+      const eventData = {
+        playerType: "local",
+        event: eventName,
+        timestamp: Date.now(),
+        ...data,
+      };
+      console.log("LocalPCPlayer: Reporting event:", eventData);
+      localStorage.setItem(EVENT_REPORT_KEY_LOCAL, JSON.stringify(eventData));
+      setTimeout(() => {
+        localStorage.removeItem(EVENT_REPORT_KEY_LOCAL);
+      }, 100);
+    }
+
+    function checkAndHandleEndTime() {
+      if (endTime !== null && videoPlayer.currentTime >= endTime) {
+        videoPlayer.pause();
+        clearInterval(timeCheckInterval);
+        reportEvent("videoEnded");
+      }
+    }
+
+    function startTimeChecking() {
+      clearInterval(timeCheckInterval);
+      if (endTime !== null) {
+        timeCheckInterval = setInterval(checkAndHandleEndTime, 250);
+      }
+    }
+
+    function stopTimeChecking() {
+      clearInterval(timeCheckInterval);
+    }
+
+    videoPlayer.addEventListener("loadedmetadata", () => {
+      console.log("LocalPCPlayer: Video metadata loaded:", {
+        duration: videoPlayer.duration,
+        startTime: startTime,
+        endTime: endTime,
+        src: videoPlayer.src
+      });
+
+      // Set initial position
+      if (startTime > 0) {
+        videoPlayer.currentTime = startTime;
+      }
+
+      reportEvent("videoLoaded", {
+        duration: videoPlayer.duration,
+        startTime: startTime,
+        endTime: endTime,
+      });
+    });
+
+    videoPlayer.addEventListener("play", () => {
+      console.log("LocalPCPlayer: Video playing, unmuted:", !videoPlayer.muted);
+      isPausedByCommand = false;
+      startTimeChecking();
+    });
+
+    // FIXED: Only report videoEnded on actual natural video end, NOT on pause
+    videoPlayer.addEventListener("pause", () => {
+      console.log("LocalPCPlayer: Video paused, isPausedByCommand:", isPausedByCommand);
+      stopTimeChecking();
+      // Do NOT report videoEnded on pause - only report on actual end or stop
+    });
+
+    videoPlayer.addEventListener("seeked", () => {
+      console.log("LocalPCPlayer: Video seeked to:", videoPlayer.currentTime);
+      checkAndHandleEndTime();
+    });
+
+    // FIXED: Only report videoEnded here - when video actually finishes
+    videoPlayer.addEventListener("ended", () => {
+      console.log("LocalPCPlayer: Video ended naturally");
+      stopTimeChecking();
+      reportEvent("videoEnded");
+    });
+
+    videoPlayer.addEventListener("error", (e) => {
+      let errorMessage = "Unknown video error.";
+      if (videoPlayer.error) {
+        switch (videoPlayer.error.code) {
+          case MediaError.MEDIA_ERR_ABORTED:
+            errorMessage = "Video fetch aborted.";
+            break;
+          case MediaError.MEDIA_ERR_NETWORK:
+            errorMessage = "Network error during video download.";
+            break;
+          case MediaError.MEDIA_ERR_DECODE:
+            errorMessage = "Video decoding error.";
+            break;
+          case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+            errorMessage = "Video source not supported.";
+            break;
+        }
+      }
+      console.error("LocalPCPlayer: Video error:", errorMessage, videoPlayer.src);
+      stopTimeChecking();
+      reportEvent("videoError", { message: errorMessage });
+    });
+
+    // Play video with proper autoplay handling - tries unmuted first, falls back to muted
+    async function playVideoWithSound() {
+      try {
+        // Try playing unmuted first
+        videoPlayer.muted = false;
+        await videoPlayer.play();
+        console.log("LocalPCPlayer: Playing with sound SUCCESS");
+      } catch (e) {
+        console.warn("LocalPCPlayer: Unmuted play failed, trying muted:", e.message);
+        try {
+          // Fallback: play muted (browser autoplay policy)
+          videoPlayer.muted = true;
+          await videoPlayer.play();
+          console.log("LocalPCPlayer: Playing muted (autoplay policy)");
+          // Try to unmute after a short delay (user interaction may have happened)
+          setTimeout(() => {
+            videoPlayer.muted = false;
+            console.log("LocalPCPlayer: Attempted late unmute");
+          }, 500);
+        } catch (e2) {
+          console.error("LocalPCPlayer: All play attempts failed:", e2.message);
+        }
+      }
+    }
+
+    window.addEventListener("storage", (event) => {
+      if (event.key === PLAYER_KEY_LOCAL && event.newValue) {
+        try {
+          const data = JSON.parse(event.newValue);
+          console.log("LocalPCPlayer: Received command:", data);
+
+          switch (data.command) {
+            case "loadVideo":
+              if (data.videoPath) {
+                // Stop any existing time checking
+                stopTimeChecking();
+                isPausedByCommand = false;
+
+                // Update time constraints
+                startTime = data?.startSeconds || 0;
+                endTime = data?.endSeconds || null;
+
+                console.log("LocalPCPlayer: Loading video:", {
+                  path: data.videoPath,
+                  startTime: startTime,
+                  endTime: endTime,
+                });
+
+                videoPlayer.src = data.videoPath;
+                videoPlayer.load();
+
+                // Play with sound using our robust method
+                playVideoWithSound();
+              }
+              break;
+
+            case "play":
+              isPausedByCommand = false;
+              playVideoWithSound();
+              break;
+
+            case "pause":
+              isPausedByCommand = true;
+              videoPlayer.pause();
+              break;
+
+            case "stop":
+              stopTimeChecking();
+              isPausedByCommand = true;
+              videoPlayer.pause();
+              videoPlayer.currentTime = 0;
+              videoPlayer.src = "";
+              startTime = 0;
+              endTime = null;
+              videoPlayer.load();
+              break;
+
+            case "mute":
+              videoPlayer.muted = true;
+              console.log("LocalPCPlayer: Muted");
+              break;
+
+            case "unmute":
+              videoPlayer.muted = false;
+              console.log("LocalPCPlayer: Unmuted");
+              break;
+
+            case "setVolume":
+              if (typeof data.volume === "number") {
+                videoPlayer.volume = Math.max(0, Math.min(data.volume / 100, 1));
+                console.log("LocalPCPlayer: Volume set to", videoPlayer.volume);
+              }
+              break;
+
+            case "seekTo":
+              if (typeof data.seconds === "number") {
+                const targetTime = Math.max(
+                  startTime,
+                  Math.min(data.seconds, endTime || videoPlayer.duration)
+                );
+                videoPlayer.currentTime = targetTime;
+                console.log("LocalPCPlayer: Seeked to", targetTime);
+              }
+              break;
+
+            case "getCurrentTime":
+              reportEvent("timeUpdate", {
+                currentTime: videoPlayer.currentTime,
+                startTime: startTime,
+                endTime: endTime,
+              });
+              break;
+          }
+        } catch (e) {
+          console.error("LocalPCPlayer: Command parsing error:", e);
+        }
+      }
+    });
+
+    // Regular time updates
+    setInterval(() => {
+      if (!videoPlayer.paused && videoPlayer.src) {
+        const remainingTime = (endTime ?? videoPlayer.duration) - videoPlayer.currentTime;
+        reportEvent("timeUpdate", {
+          currentTime: videoPlayer.currentTime,
+          remainingTime,
+          startTime,
+          endTime,
+        });
+      }
+    }, 1000);
+
+    // Initial setup - start unmuted
+    console.log("LocalPCPlayer: Initialized and ready");
+  </script>
+</body>
+
+</html>

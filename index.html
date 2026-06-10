@@ -350,6 +350,17 @@
       <!-- NEW: Live Event Monitor 1 Card -->
       <div class="player-control-card">
         <h3 class="live-monitor-card-h3">Live Event Monitor 1</h3>
+
+        <!-- Channel selector dropdown -->
+        <div class="flex flex-col w-full px-2 mb-2">
+          <label class="live-monitor-label mb-1">Monitor Channel:</label>
+          <select id="liveChannelSelect" class="input-field">
+            <option value="UC7HQ3mzdsyvLU0Y7a2t3N7A">Swaminarayan</option>
+            <option value="UCQXWP4gEdEwlb6vodwrU75A">Swaminarayan Bhagwan</option>
+          </select>
+          <span id="liveChannelSelectStatus" class="text-xs text-gray-400 mt-1"></span>
+        </div>
+
         <img
           id="video-thumbnail-display-1"
           src="https://placehold.co/280x157.5/333333/FFFFFF?text=No+Thumbnail"

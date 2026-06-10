@@ -1,15 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global box-sizing reset */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 /* Base styles for the entire page */
 body {
   font-family: "Inter", Arial, sans-serif;
-  background: #1a202c; /* Dark background */
-  color: #e2e8f0; /* Light text */
-  padding: 10px; /* Reduced overall padding */
+  background: #1a202c;
+  /* Dark background */
+  color: #e2e8f0;
+  /* Light text */
+  padding: 10px;
+  /* Reduced overall padding */
   margin: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   min-height: 100vh;
-  justify-content: flex-start; /* Align to top initially, adjust as content grows */
+  justify-content: flex-start;
+  /* Align to top initially, adjust as content grows */
+  width: 100%;
+  max-width: 100%;
 }
 
 /* Main layout container for OBS controls */
@@ -17,26 +34,38 @@ body {
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 1350px; /* Adjusted max width for the simplified layout */
+  /* Full width layout */
   gap: 10px;
-  align-items: center; /* Center items horizontally within main-layout */
-  background-color: #2d3748; /* Slightly lighter dark background for container */
-  border-radius: 1rem; /* Rounded corners */
-  padding: 10px; /* Reduced padding */
+  align-items: center;
+  /* Center items horizontally within main-layout */
+  background-color: #2d3748;
+  /* Slightly lighter dark background for container */
+  border-radius: 1rem;
+  /* Rounded corners */
+  padding: 10px;
+  /* Reduced padding */
   box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
-  margin-top: 10px; /* Space from top of body */
-  margin-bottom: 10px; /* Space before main container */
+  margin-top: 10px;
+  /* Space from top of body */
+  margin-bottom: 10px;
+  /* Space before main container */
+  box-sizing: border-box;
 }
 
 /* Top section for OBS Live Video Preview, Page Title, and Output Buttons */
 #top-section-container {
   display: flex;
-  flex-direction: row; /* Horizontal alignment */
-  align-items: center; /* Vertically center items */
-  justify-content: center; /* Center the group horizontally */
+  flex-direction: row;
+  /* Horizontal alignment */
+  align-items: center;
+  /* Vertically center items */
+  justify-content: center;
+  /* Center the group horizontally */
   width: 100%;
-  gap: 10px; /* Space between OBS Live/Title and Output Buttons */
-  flex-wrap: wrap; /* Allow wrapping on smaller screens */
+  gap: 10px;
+  /* Space between OBS Live/Title and Output Buttons */
+  flex-wrap: wrap;
+  /* Allow wrapping on smaller screens */
 }
 
 /* Container for OBS Live Video Preview and its label */
@@ -44,14 +73,19 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  flex-shrink: 0; /* Prevent shrinking */
+  flex-shrink: 0;
+  /* Prevent shrinking */
 }
 
 #virtualCamVideoElement {
-  width: 280px; /* Standard size for OBS preview */
-  height: 157.5px; /* 16:9 ratio */
-  border: 2px solid #7b1fa2; /* Purple border for Virtual Cam preview */
-  border-radius: 8px; /* Rounded corners */
+  width: 280px;
+  /* Standard size for OBS preview */
+  height: 157.5px;
+  /* 16:9 ratio */
+  border: 2px solid #7b1fa2;
+  /* Purple border for Virtual Cam preview */
+  border-radius: 8px;
+  /* Rounded corners */
   background-color: #333;
   object-fit: cover;
   display: flex;
@@ -69,7 +103,8 @@ body {
 }
 
 #virtualCamErrorMessage {
-  color: #ff6347; /* Tomato color for errors */
+  color: #ff6347;
+  /* Tomato color for errors */
   font-size: 13px;
   margin-top: 5px;
   text-align: center;
@@ -79,42 +114,56 @@ body {
 /* Container for Page Title and OBS Output Buttons */
 #title-and-output-buttons {
   display: flex;
-  flex-direction: column; /* Changed to column for better stacking on smaller screens */
+  flex-direction: column;
+  /* Changed to column for better stacking on smaller screens */
   align-items: center;
-  gap: 10px; /* Space between title and buttons */
-  flex-grow: 1; /* Allow to grow */
-  justify-content: center; /* Center content within this flexible container */
+  gap: 10px;
+  /* Space between title and buttons */
+  flex-grow: 1;
+  /* Allow to grow */
+  justify-content: center;
+  /* Center content within this flexible container */
 }
 
 /* Page title */
 #title {
-  font-size: 32px; /* Slightly larger title */
+  font-size: 32px;
+  /* Slightly larger title */
   font-weight: bold;
   user-select: none;
-  color: #00adb5; /* default connected cyan */
+  color: #00adb5;
+  /* default connected cyan */
   text-align: center;
-  flex-shrink: 0; /* Prevent title from shrinking */
+  flex-shrink: 0;
+  /* Prevent title from shrinking */
 }
 
 /* OBS Output Buttons (vertical alignment) */
 #obs-output-buttons {
   display: flex;
-  flex-direction: column; /* Vertical alignment */
-  gap: 10px; /* Space between buttons */
-  flex-shrink: 0; /* Prevent shrinking */
+  flex-direction: column;
+  /* Vertical alignment */
+  gap: 10px;
+  /* Space between buttons */
+  flex-shrink: 0;
+  /* Prevent shrinking */
 }
 
 /* General toggle button styles for OBS controls */
 .toggle-btn {
-  padding: 10px 20px; /* Larger padding */
+  padding: 10px 20px;
+  /* Larger padding */
   font-size: 16px;
-  border-radius: 8px; /* More rounded corners */
+  border-radius: 8px;
+  /* More rounded corners */
   border: none;
   cursor: pointer;
-  min-width: 180px; /* Wider buttons */
+  min-width: 180px;
+  /* Wider buttons */
   transition: background-color 0.3s ease, transform 0.1s ease,
     box-shadow 0.3s ease;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Subtle shadow */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+  /* Subtle shadow */
   font-weight: 600;
 }
 
@@ -132,80 +181,139 @@ body {
 .off {
   background-color: #607d8b;
   color: white;
-} /* Grey */
+}
+
+/* Grey */
 .on-loop {
   background-color: #00796b;
   color: white;
-} /* Dark Teal */
+}
+
+/* Dark Teal */
 .on-live {
   background-color: #0288d1;
   color: white;
-} /* Dark Blue */
+}
+
+/* Dark Blue */
 .on-orda {
   background-color: #388e3c;
   color: white;
-} /* Dark Green */
+}
+
+/* Dark Green */
 .on-delaylive {
   background-color: #e67e22;
   color: white;
-} /* Orange */
+}
+
+/* Orange */
 .on-stream {
   background-color: #d32f2f;
   color: white;
-} /* Red */
+}
+
+/* Red */
 .on-record {
   background-color: #fbc02d;
   color: black;
-} /* Yellow */
+}
+
+/* Yellow */
 .on-virtualcam {
   background-color: #7b1fa2;
   color: white;
-} /* Purple */
+}
+
+/* Purple */
 .on-monitor {
   background-color: #00adb5;
   color: white;
-} /* Cyan for monitor */
+}
+
+/* Cyan for monitor */
 .on-obs-live {
   background-color: #b5ac00;
   color: white;
-} /* Cyan for monitor */
+}
+
+/* Cyan for monitor */
 
 #main-control-buttons {
   display: flex;
   justify-content: center;
-  gap: 5px; /* Increased gap */
+  gap: 5px;
+  /* Increased gap */
   flex-wrap: wrap;
-  margin-top: 10px; /* More vertical margin */
+  margin-top: 10px;
+  /* More vertical margin */
 }
 
-/* Player Control Cards */
+/* Player Control Cards - Table Layout */
 .player-cards-container {
-  background-color: #2d3748; /* Slightly lighter dark background for container */
-  border-radius: 10px; /* Rounded corners */
-  padding: 10px; /* Reduced padding */
-  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
+  display: table;
+  table-layout: fixed;
   width: 100%;
-  max-width: 1350px; /* Increased max-width for the container */
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px; /* Gap between player cards */
+  background-color: #2d3748;
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
   margin-bottom: 10px;
+  box-sizing: border-box;
+  border-spacing: 10px;
+}
+
+.player-cards-row {
+  display: table-row;
+}
+
+/* Table cell wrappers for proper table layout */
+.table-cell-wrapper {
+  display: table-cell;
+  vertical-align: top;
+  width: 25%;
+  padding: 5px;
+}
+
+.table-cell-wrapper>.player-control-card {
+  width: 100%;
+}
+
+/* Monitor Cards - Table Layout */
+.monitors-row-container {
+  display: table;
+  table-layout: fixed;
+  width: 100%;
+  padding: 10px;
+  background-color: #2d3748;
+  border-radius: 10px;
+  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
+  margin: 10px auto;
+  box-sizing: border-box;
+  border-spacing: 5px;
+}
+
+.monitors-row-container>.table-cell-wrapper {
+  display: table-cell;
+  vertical-align: top;
+  width: 25%;
+  padding: 5px;
 }
 
 .player-control-card {
-  width: 320px; /* Fixed width for consistent sizing in horizontal layout */
-  flex-shrink: 0; /* Prevent shrinking in flex container */
+  width: 100%;
   height: auto;
-  padding: 5px;
-  background-color: #2d3748;
+  padding: 10px;
+  background-color: #1a202c;
   border-radius: 0.75rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.5rem;
+  box-sizing: border-box;
 }
+
 .player-control-card h3 {
   font-size: 1rem;
   font-weight: bold;
@@ -214,47 +322,63 @@ body {
   margin-bottom: 0.5rem;
   margin-top: 0.2rem;
 }
+
 /* Updated input field style for better text visibility and requested colors */
 .input-field {
-  padding: 0.2rem 0.6rem; /* Reduced padding to decrease height */
-  font-size: 0.8rem; /* Slightly smaller font size */
-  color: #ffffff; /* Ensure text is visible */
+  padding: 0.2rem 0.6rem;
+  /* Reduced padding to decrease height */
+  font-size: 0.8rem;
+  /* Slightly smaller font size */
+  color: #ffffff;
+  /* Ensure text is visible */
   background: #091120;
   border-radius: 10px;
   box-shadow: 0px 2px 4px rgba(255, 255, 255, 0.4);
-  width: 100%; /* Ensure it takes full width of its container */
-  border: 1px solid #4a5568; /* Slightly lighter border */
-  outline: none; /* Remove default outline */
+  width: 100%;
+  /* Ensure it takes full width of its container */
+  border: 1px solid #4a5568;
+  /* Slightly lighter border */
+  outline: none;
+  /* Remove default outline */
   transition: border-color 0.3s ease;
 }
+
 .input-field:focus {
-  border-color: #90cdf4; /* Highlight on focus */
+  border-color: #90cdf4;
+  /* Highlight on focus */
 }
 
 .player-control-card .btn-group {
   display: flex;
-  flex-wrap: wrap; /* Allow buttons to wrap */
+  flex-wrap: wrap;
+  /* Allow buttons to wrap */
   justify-content: center;
-  gap: 6px; /* Smaller gap for multiple buttons */
+  gap: 6px;
+  /* Smaller gap for multiple buttons */
   width: 100%;
 }
+
 /* New common style for all player buttons */
 .common-btn-style {
   padding: 6px 10px;
   font-size: 0.8rem;
-  border-radius: 0.5rem; /* More rounded for player buttons */
+  border-radius: 0.5rem;
+  /* More rounded for player buttons */
   border: none;
   cursor: pointer;
   transition: background-color 0.3s ease, transform 0.1s ease,
     box-shadow 0.3s ease;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   font-weight: 600;
-  color: white; /* Default text color for all common buttons */
+  color: white;
+  /* Default text color for all common buttons */
 }
+
 .common-btn-style:hover {
   transform: translateY(-1px);
   box-shadow: 0 5px 8px rgba(0, 0, 0, 0.2);
 }
+
 .common-btn-style:active {
   transform: translateY(0);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -263,34 +387,54 @@ body {
 /* Specific styles for player control buttons */
 .btn-primary {
   background-color: #2563eb;
-} /* blue-600 */
+}
+
+/* blue-600 */
 .btn-primary:hover {
   background-color: #1d4ed8;
-} /* blue-700 */
+}
+
+/* blue-700 */
 .btn-danger {
   background-color: #dc2626;
-} /* red-600 */
+}
+
+/* red-600 */
 .btn-danger:hover {
   background-color: #b91c1c;
-} /* red-700 */
+}
+
+/* red-700 */
 .btn-success {
   background-color: #16a34a;
-} /* green-600 */
+}
+
+/* green-600 */
 .btn-success:hover {
   background-color: #15803d;
-} /* green-700 */
+}
+
+/* green-700 */
 .btn-neutral {
   background-color: #6b7280;
-} /* A slightly darker gray for neutral */
+}
+
+/* A slightly darker gray for neutral */
 .btn-neutral:hover {
   background-color: #4b5563;
-} /* gray-700 */
+}
+
+/* gray-700 */
 .btn-orange {
   background-color: #f97316;
-} /* orange-500 */
+}
+
+/* orange-500 */
 .btn-orange:hover {
   background-color: #ea580c;
-} /* orange-600 */
+}
+
+/* orange-600 */
 
 .player-status {
   font-size: 0.75rem;
@@ -302,25 +446,31 @@ body {
 /* Styles for thumbnail and title */
 .video-thumbnail {
   width: 300px;
-  height: 157px; /* 16:9 aspect ratio for 300px width */
+  height: 157px;
+  /* 16:9 aspect ratio for 300px width */
   object-fit: cover;
   border-width: 2px;
   border-radius: 10px;
   border-color: rgb(176, 6, 255);
   margin-bottom: 0.5rem;
-  background-color: #000; /* Fallback background */
+  background-color: #000;
+  /* Fallback background */
 }
+
 .video-title {
   font-size: 0.9rem;
   font-weight: 500;
-  color: #a0aec0; /* text-gray-400 */
+  color: #a0aec0;
+  /* text-gray-400 */
   text-align: center;
   margin-bottom: 0.5rem;
-  min-height: 2.5rem; /* Give some space even if no title */
+  min-height: 2.5rem;
+  /* Give some space even if no title */
   display: flex;
   align-items: center;
   justify-content: center;
-  line-height: 1.2; /* Adjust line height for better readability */
+  line-height: 1.2;
+  /* Adjust line height for better readability */
 }
 
 /* New style for video ID and index display */
@@ -329,41 +479,70 @@ body {
   color: #cbd5e0;
   text-align: center;
   margin-bottom: 0.5rem;
-  min-height: 1.2rem; /* Ensure consistent spacing */
+  min-height: 1.2rem;
+  /* Ensure consistent spacing */
+}
+
+/* Video time display (current time / remaining time) */
+.video-time-display {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #00adb5;
+  /* Cyan for time display */
+  text-align: center;
+  margin-bottom: 0.25rem;
+  font-family: 'Consolas', 'Monaco', monospace;
+  /* Monospace for time alignment */
+  letter-spacing: 0.5px;
 }
 
 /* Scheduler section container */
 #scheduler-section {
-  background-color: #2d3748; /* Changed to match other containers */
-  padding: 10px; /* Changed to match other containers */
-  border-radius: 1rem; /* Changed to match other containers */
+  background-color: #2d3748;
+  /* Changed to match other containers */
+  padding: 10px;
+  /* Changed to match other containers */
+  border-radius: 1rem;
+  /* Changed to match other containers */
   width: 100%;
-  max-width: 1350px; /* Retained max-width */
-  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2); /* Changed to match other containers */
-  margin-bottom: 10px; /* Space before footer */
+  /* Full width layout */
+  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
+  /* Changed to match other containers */
+  margin-bottom: 10px;
+  /* Space before footer */
+  box-sizing: border-box;
 }
 
 /* Scheduler header container with toggle and import/export buttons */
 #scheduler-header-container {
   display: flex;
   align-items: center;
-  background-color: #2d3748; /* Changed to match main container, removing extra layer */
-  border: none; /* Removed border */
-  border-radius: 0; /* Removed border-radius */
-  padding: 0; /* Removed padding */
+  background-color: #2d3748;
+  /* Changed to match main container, removing extra layer */
+  border: none;
+  /* Removed border */
+  border-radius: 0;
+  /* Removed border-radius */
+  padding: 0;
+  /* Removed padding */
   margin-bottom: 10px;
   position: relative;
-  flex-wrap: wrap; /* Allow wrapping for responsiveness */
-  justify-content: center; /* Center items on smaller screens */
-  gap: 15px; /* Added gap */
+  flex-wrap: wrap;
+  /* Allow wrapping for responsiveness */
+  justify-content: center;
+  /* Center items on smaller screens */
+  gap: 15px;
+  /* Added gap */
 }
 
 #scheduler-header-container .header-center {
   display: flex;
   align-items: center;
   gap: 20px;
-  margin-left: auto; /* Removed to allow flex-wrap to center */
-  margin-right: auto; /* Removed to allow flex-wrap to center */
+  margin-left: auto;
+  /* Removed to allow flex-wrap to center */
+  margin-right: auto;
+  /* Removed to allow flex-wrap to center */
   flex-wrap: wrap;
   justify-content: center;
 }
@@ -372,22 +551,21 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  /* position: absolute; */ /* Removed */
-  /* right: 20px; */ /* Removed */
-  /* top: 50%; */ /* Removed */
-  /* transform: translateY(-50%); */ /* Removed */
-  flex-wrap: wrap; /* Allow wrapping for buttons */
-  /* margin-left: auto; Push to right on larger screens */
+  flex-wrap: wrap;
+  /* Allow wrapping for buttons */
 }
+
 @media (max-width: 960px) {
   #scheduler-header-container .header-right {
-    margin-left: unset; /* Remove margin on smaller screens */
+    margin-left: unset;
+    /* Remove margin on smaller screens */
   }
 }
 
 /* Scheduler section heading */
 #scheduler-section h3 {
-  color: #00adb5; /* Cyan heading color */
+  color: #00adb5;
+  /* Cyan heading color */
   margin: 0;
   font-size: 20px;
 }
@@ -395,41 +573,55 @@ body {
 /* Form for adding new schedules */
 #add-schedule-form {
   display: flex;
-  flex-wrap: wrap; /* Allow elements to wrap */
-  gap: 15px; /* Space between form elements */
-  justify-content: center; /* Center the form elements */
+  flex-wrap: wrap;
+  /* Allow elements to wrap */
+  gap: 15px;
+  /* Space between form elements */
+  justify-content: center;
+  /* Center the form elements */
   margin-bottom: 10px;
   padding-bottom: 10px;
-  border-bottom: 1px solid #444; /* Separator line */
+  border-bottom: 1px solid #444;
+  /* Separator line */
 }
 
-#add-schedule-form > div {
+#add-schedule-form>div {
   /* Styling for individual form input containers */
   display: flex;
   flex-direction: column;
   gap: 5px;
-  flex-grow: 1; /* Allow items to grow */
-  min-width: 150px; /* Minimum width before wrapping */
-  max-width: 22%; /* Adjust based on desired number of columns */
+  flex-grow: 1;
+  /* Allow items to grow */
+  min-width: 150px;
+  /* Minimum width before wrapping */
+  max-width: 22%;
+  /* Adjust based on desired number of columns */
 }
 
 #add-schedule-form label {
-  font-size: 0.8rem; /* Matched player card label font size */
+  font-size: 0.8rem;
+  /* Matched player card label font size */
   align-items: center;
-  color: #02eef7; /* Matched player card text-gray-400 */
+  color: #02eef7;
+  /* Matched player card text-gray-400 */
 }
 
 /* Styling for the days selection box */
 .days-selection-box {
-  background-color: #2d3748; /* Changed to match other containers */
-  border: 1px solid #4a5568; /* Changed to match input field border */
-  border-radius: 0.75rem; /* Matched player card border-radius */
-  padding: 0.75rem; /* Matched player card padding */
+  background-color: #2d3748;
+  /* Changed to match other containers */
+  border: 1px solid #4a5568;
+  /* Changed to match input field border */
+  border-radius: 0.75rem;
+  /* Matched player card border-radius */
+  padding: 0.75rem;
+  /* Matched player card padding */
   margin-top: 5px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); /* Matched player card box-shadow */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  /* Matched player card box-shadow */
 }
 
 #schedule-days-container {
@@ -438,7 +630,7 @@ body {
   gap: 5px;
 }
 
-#schedule-days-container > div {
+#schedule-days-container>div {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -448,8 +640,10 @@ body {
   display: flex;
   align-items: center;
   gap: 3px;
-  font-size: 0.8rem; /* Matched player card label font size */
-  color: #00ffff; /* Matched player card player-status color */
+  font-size: 0.8rem;
+  /* Matched player card label font size */
+  color: #00ffff;
+  /* Matched player card player-status color */
 }
 
 #schedule-days-container input[type="checkbox"] {
@@ -461,36 +655,46 @@ body {
 /* Table for displaying scheduled tasks */
 #schedule-list-table {
   width: 100%;
-  border-collapse: collapse; /* Collapse borders for clean look */
+  border-collapse: collapse;
+  /* Collapse borders for clean look */
   margin-top: 10px;
 }
 
 #schedule-list-table th,
 #schedule-list-table td {
-  border: 1px solid #4a5568; /* Matched input field border */
-  padding: 0.6rem; /* Adjusted padding */
+  border: 1px solid #4a5568;
+  /* Matched input field border */
+  padding: 0.6rem;
+  /* Adjusted padding */
   text-align: left;
-  font-size: 0.8rem; /* Adjusted font size */
-  color: #e2e8f0; /* Light text */
+  font-size: 0.8rem;
+  /* Adjusted font size */
+  color: #e2e8f0;
+  /* Light text */
 }
 
 #schedule-list-table th {
-  background-color: #2d3748; /* Changed to match container background */
-  color: #90cdf4; /* Matched player card h3 color */
+  background-color: #2d3748;
+  /* Changed to match container background */
+  color: #90cdf4;
+  /* Matched player card h3 color */
   font-weight: bold;
 }
 
 #schedule-list-table td {
-  background-color: #1a202c; /* Darker background for cells */
+  background-color: #1a202c;
+  /* Darker background for cells */
 }
 
 #schedule-list-table tr:nth-child(even) td {
-  background-color: #091120; /* Alternate row background, matching input-field */
+  background-color: #091120;
+  /* Alternate row background, matching input-field */
 }
 
 /* Button styles for schedule actions (edit, delete, toggle) */
 #schedule-list-table .delete-btn {
-  background-color: #dc2626; /* Red for delete */
+  background-color: #dc2626;
+  /* Red for delete */
   color: white;
   padding: 6px 10px;
   font-size: 0.8rem;
@@ -504,7 +708,8 @@ body {
 }
 
 #schedule-list-table .edit-btn {
-  background-color: #2563eb; /* Blue for edit */
+  background-color: #2563eb;
+  /* Blue for edit */
   color: white;
   padding: 6px 10px;
   font-size: 0.8rem;
@@ -532,16 +737,19 @@ body {
 }
 
 #schedule-list-table .delete-btn:hover {
-  background-color: #b91c1c; /* Darker red on hover */
+  background-color: #b91c1c;
+  /* Darker red on hover */
   transform: translateY(-1px);
   box-shadow: 0 5px 8px rgba(0, 0, 0, 0.2);
 }
 
 #schedule-list-table .edit-btn:hover {
-  background-color: #1d4ed8; /* Darker blue on hover */
+  background-color: #1d4ed8;
+  /* Darker blue on hover */
   transform: translateY(-1px);
   box-shadow: 0 5px 8px rgba(0, 0, 0, 0.2);
 }
+
 #schedule-list-table .schedule-toggle-btn:active {
   transform: translateY(0);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -551,19 +759,27 @@ body {
 .on-scheduler {
   background-color: #028a99;
   color: white;
-} /* Cyan for on state */
+}
+
+/* Cyan for on state */
 .off-scheduler {
   background-color: #ff5252;
   color: white;
-} /* Red for off state */
+}
+
+/* Red for off state */
 .on-individual-schedule {
   background-color: #028a99;
   color: white;
-} /* Cyan for enabled schedule */
+}
+
+/* Cyan for enabled schedule */
 .off-individual-schedule {
   background-color: #ff5252;
   color: white;
-} /* Red for disabled schedule */
+}
+
+/* Red for disabled schedule */
 
 /* Import/Export area controls */
 #importExportAreaControls {
@@ -580,24 +796,35 @@ body {
   width: 80%;
   max-width: 600px;
   height: 100px;
-  padding: 0.6rem; /* Matched input field padding */
-  font-size: 0.8rem; /* Matched input field font size */
-  border-radius: 0.75rem; /* Matched player card border-radius */
-  border: 1px solid #4a5568; /* Matched input field border */
-  background-color: #091120; /* Matched input field background */
-  color: #ffffff; /* Matched input field text color */
-  box-shadow: 0px 2px 4px rgba(255, 255, 255, 0.4); /* Matched input field shadow */
+  padding: 0.6rem;
+  /* Matched input field padding */
+  font-size: 0.8rem;
+  /* Matched input field font size */
+  border-radius: 0.75rem;
+  /* Matched player card border-radius */
+  border: 1px solid #4a5568;
+  /* Matched input field border */
+  background-color: #091120;
+  /* Matched input field background */
+  color: #ffffff;
+  /* Matched input field text color */
+  box-shadow: 0px 2px 4px rgba(255, 255, 255, 0.4);
+  /* Matched input field shadow */
   outline: none;
   transition: border-color 0.3s ease;
   resize: vertical;
-  display: none; /* Hidden by default */
+  display: none;
+  /* Hidden by default */
 }
+
 #importDataArea:focus {
-  border-color: #90cdf4; /* Highlight on focus */
+  border-color: #90cdf4;
+  /* Highlight on focus */
 }
 
 #loadImportedDataBtn {
-  display: none; /* Hidden by default */
+  display: none;
+  /* Hidden by default */
 }
 
 /* Footer styling */
@@ -621,6 +848,7 @@ body {
   align-items: center;
   z-index: 1000;
 }
+
 .modal-content {
   background-color: #2d3748;
   padding: 2rem;
@@ -631,10 +859,12 @@ body {
   width: 90%;
   color: #e2e8f0;
 }
+
 .modal-message {
   margin-bottom: 1.5rem;
   font-size: 1.1rem;
 }
+
 .modal-actions button {
   margin: 0 0.5rem;
 }
@@ -645,15 +875,23 @@ select,
 input[type="text"],
 input[type="number"] {
   /* Added number input type */
-  padding: 0.2rem 0.6rem; /* Matched input-field padding */
-  font-size: 0.8rem; /* Matched input-field font size */
-  color: #ffffff; /* Matched input-field color */
-  background: #091120; /* Matched input-field background */
-  border-radius: 20px; /* Matched input-field border-radius */
-  box-shadow: 0px 2px 4px rgba(255, 255, 255, 0.4); /* Matched input-field shadow */
+  padding: 0.2rem 0.6rem;
+  /* Matched input-field padding */
+  font-size: 0.8rem;
+  /* Matched input-field font size */
+  color: #ffffff;
+  /* Matched input-field color */
+  background: #091120;
+  /* Matched input-field background */
+  border-radius: 20px;
+  /* Matched input-field border-radius */
+  box-shadow: 0px 2px 4px rgba(255, 255, 255, 0.4);
+  /* Matched input-field shadow */
   width: 100%;
-  border: 1px solid #4a5568; /* Matched input-field border */
-  outline: none; /* Remove default outline */
+  border: 1px solid #4a5568;
+  /* Matched input-field border */
+  outline: none;
+  /* Remove default outline */
   transition: border-color 0.3s ease;
 }
 
@@ -663,171 +901,235 @@ input[type="text"]:focus,
 input[type="number"]:focus {
   /* Added number input type */
   outline: none;
-  border-color: #90cdf4; /* Highlight on focus */
-  box-shadow: 0 0 0 2px rgba(0, 173, 181, 0.5); /* Re-added original shadow on focus */
+  border-color: #90cdf4;
+  /* Highlight on focus */
+  box-shadow: 0 0 0 2px rgba(0, 173, 181, 0.5);
+  /* Re-added original shadow on focus */
 }
+
 /* Specific button colors for scheduler (using common-btn-style for general appearance) */
 .bg-purple-600 {
   background-color: #9333ea;
 }
+
 .bg-purple-600:hover {
   background-color: #7e22ce;
 }
+
 .bg-blue-600 {
   background-color: #2563eb;
 }
+
 .bg-blue-600:hover {
   background-color: #1d4ed8;
 }
+
 .bg-green-600 {
   background-color: #16a34a;
 }
+
 .bg-green-600:hover {
   background-color: #15803d;
 }
+
 .bg-red-600 {
   background-color: #dc2626;
 }
+
 .bg-red-600:hover {
   background-color: #b91c1c;
 }
 
 /* Styles specific to Live Event Monitor card */
 .live-monitor-card-h3 {
-  color: #00adb5; /* Cyan heading color */
+  color: #00adb5;
+  /* Cyan heading color */
   margin: 0 0 10px 0;
   font-size: 18px;
   text-align: center;
 }
+
 .live-monitor-thumbnail {
   width: 100%;
   height: auto;
   border-radius: 0.5rem;
   margin-bottom: 0.5rem;
 }
+
 .live-monitor-text-display {
-  font-size: 1.125rem; /* text-lg */
-  font-weight: 600; /* font-semibold */
-  color: #e2e8f0; /* text-white */
+  font-size: 1.125rem;
+  /* text-lg */
+  font-weight: 600;
+  /* font-semibold */
+  color: #e2e8f0;
+  /* text-white */
   word-break: break-word;
 }
+
 .live-monitor-label {
-  color: #a0aec0; /* text-gray-400 */
-  font-size: 0.875rem; /* text-sm */
+  color: #a0aec0;
+  /* text-gray-400 */
+  font-size: 0.875rem;
+  /* text-sm */
   margin-bottom: 0.25rem;
 }
+
 .live-monitor-channel-url {
-  color: #63b3ed; /* text-blue-400 */
+  color: #63b3ed;
+  /* text-blue-400 */
   text-decoration: underline;
 }
+
 .live-monitor-search-input {
   padding: 0.5rem;
   border-radius: 0.375rem;
-  background-color: #4a5568; /* bg-gray-700 */
-  color: #e2e8f0; /* text-white */
-  border: 1px solid #6b7280; /* border-gray-600 */
+  background-color: #4a5568;
+  /* bg-gray-700 */
+  color: #e2e8f0;
+  /* text-white */
+  border: 1px solid #6b7280;
+  /* border-gray-600 */
   resize: vertical;
   width: 100%;
 }
+
 .live-monitor-search-input:focus {
   outline: none;
-  border-color: #00adb5; /* focus:ring-teal-500 */
+  border-color: #00adb5;
+  /* focus:ring-teal-500 */
   box-shadow: 0 0 0 2px rgba(0, 173, 181, 0.5);
 }
+
 .error-message {
-  color: #fc8181; /* Red for error messages */
+  color: #fc8181;
+  /* Red for error messages */
   font-weight: bold;
 }
 
 /* Responsive adjustments */
 @media (max-width: 1350px) {
   .player-cards-container {
-    max-width: 1350px; /* Adjust for smaller desktops/large tablets */
+    max-width: 1350px;
+    /* Adjust for smaller desktops/large tablets */
   }
+
   .player-control-card {
-    width: 280px; /* Adjust card width for smaller horizontal space */
+    width: 280px;
+    /* Adjust card width for smaller horizontal space */
   }
+
   .player-control-card .video-thumbnail {
-    width: 250px; /* Adjust thumbnail width */
-    height: 140.625px; /* 16:9 aspect ratio */
+    width: 250px;
+    /* Adjust thumbnail width */
+    height: 140.625px;
+    /* 16:9 aspect ratio */
   }
+
   /* Adjust live monitor card for smaller screens */
   .player-control-card .live-monitor-thumbnail {
     width: 250px;
     height: 140.625px;
   }
 }
+
 @media (max-width: 960px) {
   #main-obs-layout {
     max-width: 600px;
   }
+
   #top-section-container {
-    flex-direction: column; /* Stack OBS preview and title/buttons vertically */
+    flex-direction: column;
+    /* Stack OBS preview and title/buttons vertically */
     gap: 10px;
   }
+
   #title-and-output-buttons {
     width: 100%;
   }
+
   #obs-output-buttons {
-    flex-direction: row; /* Keep OBS output buttons horizontal */
+    flex-direction: row;
+    /* Keep OBS output buttons horizontal */
     flex-wrap: wrap;
     justify-content: center;
   }
+
   .toggle-btn {
-    min-width: 150px; /* Slightly smaller min-width for OBS buttons */
+    min-width: 150px;
+    /* Slightly smaller min-width for OBS buttons */
   }
+
   .common-btn-style {
     padding: 5px 8px;
     font-size: 0.75rem;
   }
+
   .player-cards-container {
     max-width: 600px;
   }
+
   .player-control-card {
-    width: 100%; /* Full width on smaller screens for player cards */
-    max-width: 350px; /* But limit max width for single card */
+    width: 100%;
+    /* Full width on smaller screens for player cards */
+    max-width: 350px;
+    /* But limit max width for single card */
   }
+
   .player-control-card .video-thumbnail {
-    width: 100%; /* Full width thumbnail */
-    height: auto; /* Auto height to maintain aspect ratio */
-    max-width: 300px; /* Max width for thumbnail */
+    width: 100%;
+    /* Full width thumbnail */
+    height: auto;
+    /* Auto height to maintain aspect ratio */
+    max-width: 300px;
+    /* Max width for thumbnail */
   }
+
   /* Adjust live monitor card for smaller screens */
   .player-control-card .live-monitor-thumbnail {
     width: 100%;
     height: auto;
     max-width: 300px;
   }
+
   #scheduler-header-container {
     flex-direction: column;
     gap: 10px;
   }
+
   #scheduler-header-container .header-right {
     position: static;
     transform: none;
     width: 100%;
     justify-content: center;
   }
-  #add-schedule-form > div {
-    max-width: 48%; /* Two columns on smaller screens */
+
+  #add-schedule-form>div {
+    max-width: 48%;
+    /* Two columns on smaller screens */
   }
+
   .days-selection-box {
-    max-width: 100%; /* Full width for days selection */
+    max-width: 100%;
+    /* Full width for days selection */
   }
+
   #schedule-list-table th,
   #schedule-list-table td {
     padding: 8px;
     font-size: 12px;
   }
+
   .toggle-btn {
     min-width: unset;
     width: 100%;
   }
 }
+
 @media (max-width: 640px) {
   body {
     padding: 5px;
   }
+
   #main-obs-layout,
   .player-cards-container,
   #scheduler-section {
@@ -835,48 +1137,63 @@ input[type="number"]:focus {
     margin-left: 5px;
     margin-right: 5px;
   }
+
   #title {
     font-size: 28px;
   }
+
   .toggle-btn {
     padding: 10px 20px;
     font-size: 14px;
-    min-width: unset; /* Remove min-width to allow shrinking */
-    flex-grow: 1; /* Allow buttons to grow and fill space */
+    min-width: unset;
+    /* Remove min-width to allow shrinking */
+    flex-grow: 1;
+    /* Allow buttons to grow and fill space */
   }
+
   .player-control-card h3 {
     font-size: 0.9rem;
   }
+
   .video-title {
     font-size: 0.8rem;
   }
+
   .video-info-display,
   .player-status {
     font-size: 0.7rem;
   }
-  #add-schedule-form > div {
-    max-width: 100%; /* Single column on very small screens */
+
+  #add-schedule-form>div {
+    max-width: 100%;
+    /* Single column on very small screens */
   }
 }
 
 /* New styles for drag-and-drop */
 #schedule-list-table tbody tr {
-  cursor: grab; /* Indicates draggable item */
-  position: relative; /* Needed for drag-over pseudo-elements if used */
+  cursor: grab;
+  /* Indicates draggable item */
+  position: relative;
+  /* Needed for drag-over pseudo-elements if used */
 }
 
 #schedule-list-table tbody tr.dragging {
-  opacity: 0.5; /* Reduce opacity of the dragged item */
-  border: 2px dashed #00ffff; /* Add a dashed border */
+  opacity: 0.5;
+  /* Reduce opacity of the dragged item */
+  border: 2px dashed #00ffff;
+  /* Add a dashed border */
 }
 
 /* Visual feedback for drop target */
 #schedule-list-table tbody tr.drag-over-top {
-  border-top: 2px solid #00ffff; /* Highlight the top edge for insertion before */
+  border-top: 2px solid #00ffff;
+  /* Highlight the top edge for insertion before */
 }
 
 #schedule-list-table tbody tr.drag-over-bottom {
-  border-bottom: 2px solid #00ffff; /* Highlight the bottom edge for insertion after */
+  border-bottom: 2px solid #00ffff;
+  /* Highlight the bottom edge for insertion after */
 }
 
 /* Styles for local PC playlist items */
@@ -891,20 +1208,26 @@ input[type="number"]:focus {
   border: 1px solid #4a5568;
   cursor: grab;
 }
+
 .local-pc-video-item.dragging {
   opacity: 0.5;
   border: 2px dashed #00ffff;
 }
+
 .local-pc-video-item.drag-over-top {
   border-top: 2px solid #00ffff;
 }
+
 .local-pc-video-item.drag-over-bottom {
   border-bottom: 2px solid #00ffff;
 }
+
 .local-pc-video-item .input-field {
   flex-grow: 1;
-  margin-bottom: 0; /* Override default margin */
+  margin-bottom: 0;
+  /* Override default margin */
 }
+
 .local-pc-video-item .delete-btn {
   background-color: #dc2626;
   color: white;
@@ -914,9 +1237,11 @@ input[type="number"]:focus {
   border: none;
   cursor: pointer;
 }
+
 .local-pc-video-item .delete-btn:hover {
   background-color: #b91c1c;
 }
+
 .local-pc-video-item .drag-handle {
   cursor: grab;
   font-size: 1.2rem;
@@ -933,32 +1258,45 @@ input[type="number"]:focus {
   height: 40px;
   animation: spin 1s linear infinite;
 }
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
   }
 }
+
 .katha-date-filter-button {
-  padding: 6px 12px; /* Smaller padding to fit card */
-  font-size: 0.8rem; /* Smaller font size */
-  border-radius: 0.5rem; /* More rounded corners */
-  background-color: #4a5568; /* Gray background */
-  color: #e2e8f0; /* Light text */
+  padding: 6px 12px;
+  /* Smaller padding to fit card */
+  font-size: 0.8rem;
+  /* Smaller font size */
+  border-radius: 0.5rem;
+  /* More rounded corners */
+  background-color: #4a5568;
+  /* Gray background */
+  color: #e2e8f0;
+  /* Light text */
   font-weight: 500;
   transition: background-color 0.3s ease, box-shadow 0.3s ease;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   cursor: pointer;
 }
+
 .katha-date-filter-button.active {
-  background-color: #3b82f6; /* Blue active state */
+  background-color: #3b82f6;
+  /* Blue active state */
   color: white;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
 }
+
 .katha-date-filter-button:hover {
-  background-color: #64748b; /* Darker gray on hover */
+  background-color: #64748b;
+  /* Darker gray on hover */
 }
+
 .katha-video-card {
-  background-color: #1a202c; /* Darker background for individual video cards */
+  background-color: #1a202c;
+  /* Darker background for individual video cards */
   border-radius: 0.5rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   overflow: hidden;
@@ -966,85 +1304,107 @@ input[type="number"]:focus {
   display: flex;
   flex-direction: column;
 }
+
 .katha-video-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
+
 .katha-video-thumbnail {
   width: 100%;
-  height: 120px; /* Fixed height for consistency */
-  object-fit: cover;
+  height: 120px;
+  /* Fixed height for consistency */
   border-bottom: 1px solid #4a5568;
 }
+
 .katha-video-title {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #90cdf4; /* Light blue for titles */
+  color: #90cdf4;
+  /* Light blue for titles */
   margin-bottom: 0.5rem;
   line-height: 1.3;
-  min-height: 2.6rem; /* Ensure consistent height for titles */
+  min-height: 2.6rem;
+  /* Ensure consistent height for titles */
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .katha-video-info {
   font-size: 0.8rem;
   color: #cbd5e0;
   margin-bottom: 0.5rem;
 }
+
 .katha-timestamp {
   font-weight: bold;
-  color: #a78bfa; /* Purple for timestamp */
+  color: #a78bfa;
+  /* Purple for timestamp */
 }
+
 .katha-copy-btn {
-  background-color: #2563eb; /* Blue for copy buttons */
+  background-color: #2563eb;
+  /* Blue for copy buttons */
   color: white;
   padding: 4px 8px;
   font-size: 0.75rem;
   border-radius: 0.375rem;
   transition: background-color 0.2s ease;
 }
+
 .katha-copy-btn:hover {
   background-color: #1d4ed8;
 }
+
 .katha-error-message {
-  background-color: #fed7d7; /* Light red */
-  border: 1px solid #fc8181; /* Red border */
-  color: #c53030; /* Dark red text */
+  background-color: #fed7d7;
+  /* Light red */
+  border: 1px solid #fc8181;
+  /* Red border */
+  color: #c53030;
+  /* Dark red text */
   padding: 0.75rem;
   border-radius: 0.375rem;
   margin-top: 1rem;
   font-size: 0.875rem;
 }
 
-
+/* Katha Scheduler Items */
 .scheduler-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 0.75rem;
-    padding: 0.5rem;
-    background-color: rgba(255, 255, 255, 0.05);
-    border-radius: 8px;
-  }
-  .scheduler-label {
-    flex-grow: 1;
-    color: #cbd5e1; /* gray-300 */
-    font-size: 0.9rem;
-  }
-  .scheduler-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .scheduler-time-input {
-    width: 100px; /* Adjust as needed */
-  }
-  .toggle-btn.on-scheduler {
-    background-color: #16a34a; /* green-600 */
-  }
-   .toggle-btn.off-scheduler {
-    background-color: #dc2626; /* red-600 */
-  }
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.scheduler-label {
+  font-size: 0.8rem;
+  color: #cbd5e0;
+}
+
+.scheduler-controls {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  align-items: center;
+}
+
+.scheduler-time-input {
+  flex: 1;
+  min-width: 100px;
+}
+
+/* Compact pending timeouts */
+.pending-timeouts-card {
+  font-size: 0.75rem;
+  padding: 8px !important;
+  margin-bottom: 8px !important;
+}
+
+.pending-timeouts-card h4 {
+  font-size: 0.7rem;
+  margin-bottom: 6px;
+}

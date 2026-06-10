@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "lastModified": "2026-06-10T15:55:23.223Z",
+  "state": {
+    "player.loop": {
+      "videoId": "test123",
+      "startSeconds": 30,
+      "muted": false
+    },
+    "player.live": {
+      "videoId": null,
+      "startSeconds": 0,
+      "muted": true
+    },
+    "player.delay": {
+      "videoId": null,
+      "startSeconds": 0,
+      "muted": true
+    },
+    "player.local": {
+      "playlist": [],
+      "currentIndex": 0,
+      "muted": true
+    },
+    "player.local.endActions": {
+      "0": "Loop Player",
+      "1": "Loop Player",
+      "2": "Loop Player",
+      "3": "Loop Player",
+      "4": "Loop Player",
+      "5": "Loop Player",
+      "6": "Loop Player"
+    },
+    "monitor.1.enabled": true,
+    "monitor.1.searchTerms": "",
+    "monitor.2.enabled": true,
+    "monitor.2.searchTerms": "",
+    "katha.refresh.enabled": false,
+    "katha.refresh.time": "06:00",
+    "katha.refresh.lastTriggered": null,
+    "katha.player.enabled": false,
+    "katha.player.time": "07:00",
+    "katha.player.lastTriggered": null,
+    "obs.activeSource": null,
+    "app.version": "1.0.0",
+    "obs.connected": false
+  }
+}

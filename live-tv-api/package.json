@@ -7,7 +7,8 @@
     "node": ">=18"
   },
   "scripts": {
-    "dev": "vercel dev"
+    "dev": "node server.js",
+    "start": "node server.js"
   },
   "devDependencies": {
     "vercel": "^37.0.0"

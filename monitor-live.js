@@ -1,640 +1,830 @@
-// monitor-live.js
-// Live Event Monitor 1, Live Event Monitor 2, Upcoming Event Monitor
-// Matches the logic extracted from live-tv-controller.exe
+// Live Event Monitor and Upcoming Event Monitor logic extracted from script.js
+// All functions and variables are globally accessible
 
-// ─── Config ───────────────────────────────────────────────────────────────────
-// Proxy selection: local dev server takes priority if reachable, else falls back.
-// For production deploy to Vercel (see live-tv-api/) and set API_BASE_URL there.
-const _LOCAL_PROXY   = "http://localhost:8765/proxy?url=";
-const _CODETABS      = "https://api.codetabs.com/v1/proxy?quest=";
-let   CORS_PROXY     = _LOCAL_PROXY; // resolved on first poll via _resolveProxy()
+// --- Live Event Monitor Variables ---
+let liveDetailsPollInterval;
+const LIVE_DETAILS_POLL_INTERVAL_MS = 30000;
+const LOCAL_API_BASE = "http://localhost:3000";
+let lastFetchedVideoId1 = null;
+let lastFetchedTitle1 = null;
+let lastFetchedVideoId2 = null;
+let lastFetchedTitle2 = null;
+let lastFetchedUpcomingVideoId = null;
+let lastFetchedUpcomingTitle = null;
+let liveMonitorEnabled1 = false;
+let liveMonitorEnabled2 = false;
+const LIVE_MONITOR_ENABLED_KEY_1 = "liveMonitorEnabled1";
+const LIVE_MONITOR_ENABLED_KEY_2 = "liveMonitorEnabled2";
+const LIVE_CHANNEL_SELECT_KEY = "liveSelectedChannelId";
 
-async function _resolveProxy() {
-  try {
-    const r = await fetch(_LOCAL_PROXY + encodeURIComponent("https://example.com"), { signal: AbortSignal.timeout(3000) });
-    if (r.ok) { CORS_PROXY = _LOCAL_PROXY; return; }
-  } catch { /* local not running */ }
-  CORS_PROXY = _CODETABS;
-  console.warn("[Monitor] Local proxy not reachable — using codetabs (may be slow or blocked)");
+const channelsConfig = {
+  "UC7HQ3mzdsyvLU0Y7a2t3N7A": { name: "Swaminarayan" },
+  "UCQXWP4gEdEwlb6vodwrU75A": { name: "Swaminarayan Bhagwan" },
+};
+
+function getSelectedChannelId() {
+  const el = document.getElementById("liveChannelSelect");
+  return el?.value || "UC7HQ3mzdsyvLU0Y7a2t3N7A";
 }
 
-const STREAMS_URL    = "https://www.youtube.com/@swaminarayan/streams";
-const POLL_MS        = 30000; // 30 seconds — matches the exe
-const ALLOWED_CH     = ["Swaminarayan Bhagwan 1", "Swaminarayan", "Swaminarayan Bhagwan"];
+function getSelectedChannelName() {
+  const id = getSelectedChannelId();
+  return channelsConfig[id]?.name || id;
+}
+const dataCache = {};
+const LOCAL_STORAGE_SEARCH_TITLES_KEY_1 = "savedSearchTitles1";
+const LOCAL_STORAGE_SEARCH_TITLES_KEY_2 = "savedSearchTitles2";
+const TARGET_CHANNEL_ID = "UC7HQ3mzdsyvLU0Y7a2t3N7A";
+const LIVE_PLAYER_PRIORITY_KEY = "livePlayerPriority";
 
-// ─── State ────────────────────────────────────────────────────────────────────
-let monitor1Active   = true;
-let monitor2Active   = true;
-let pollTimer        = null;
-let lastAutoLoadedId = null;          // prevents re-triggering same video
+function getLiveEventStartMs(event) {
+  const startValue = event.startTime || event.startedAt || event.publishedTime;
+  if (!startValue || startValue === "Unknown") return 0;
 
-// Shared: player-live.js reads these for its own auto-load
-window.detectedLiveStreams     = [];
-window.detectedUpcomingStreams = [];
-
-// ─── Parse ytInitialData from raw HTML (3 regex strategies) ──────────────────
-function parseYtInitialDataFull(html) {
-  if (!html || html.length === 0) throw new Error("HTML is empty");
-
-  const patterns = [
-    /(?:var|window\["|)ytInitialData(?:\]|) = ({.*?});/s,
-    /ytInitialData\s*=\s*({.*?});/s,
-    /(?:window\.)?ytInitialData\s*=\s*({[\s\S]*?^})/m,
-  ];
-
-  for (const pat of patterns) {
-    const m = html.match(pat);
-    if (m && m[1]) {
-      try { return JSON.parse(m[1]); }
-      catch { continue; }
-    }
-  }
-
-  // Deep fallback — extract videoRenderer blocks directly
-  const items = deepExtractVideoRenderers(html);
-  if (items.length > 0) {
-    return {
-      contents: {
-        twoColumnBrowseResultsRenderer: {
-          tabs: [{ tabRenderer: { content: { sectionListRenderer: {
-            contents: [{ itemSectionRenderer: { contents: items } }]
-          } } } }]
-        }
-      }
-    };
-  }
-
-  throw new Error("Could not find or parse ytInitialData — HTML structure may have changed");
+  const date = new Date(startValue);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
 }
 
-function deepExtractVideoRenderers(html) {
-  const results = [];
-  const re = /"videoRenderer":\{"videoId":"([^"]+)"/g;
-  let m;
-  while ((m = re.exec(html)) !== null) {
-    results.push({ videoRenderer: { videoId: m[1], title: { runs: [{ text: "Unknown" }] } } });
-  }
-  return results;
-}
+// --- DOM References for Live Event Monitor ---
+const videoThumbnailDisplay1 = document.getElementById(
+  "video-thumbnail-display-1"
+);
+const videoTitleSearchInput1 = document.getElementById(
+  "videoTitleSearchInput-1"
+);
+const videoTitleDisplay1 = document.getElementById("video-title-display-1");
+const videoIdDisplay1 = document.getElementById("video-id-display-1");
+const channelNameDisplay1 = document.getElementById("channel-name-display-1");
+const channelUrlDisplay1 = document.getElementById("channel-url-display-1");
+const copyVideoIdBtn1 = document.getElementById("copy-video-id-btn-1");
+const videoThumbnailDisplay2 = document.getElementById(
+  "video-thumbnail-display-2"
+);
+const videoTitleSearchInput2 = document.getElementById(
+  "videoTitleSearchInput-2"
+);
+const videoTitleDisplay2 = document.getElementById("video-title-display-2");
+const videoIdDisplay2 = document.getElementById("video-id-display-2");
+const channelNameDisplay2 = document.getElementById("channel-name-display-2");
+const channelUrlDisplay2 = document.getElementById("channel-url-display-2");
+const copyVideoIdBtn2 = document.getElementById("copy-video-id-btn-2");
+const upcomingVideoThumbnailDisplay = document.getElementById(
+  "upcoming-video-thumbnail-display"
+);
+const upcomingVideoTitleDisplay = document.getElementById(
+  "upcoming-video-title-display"
+);
+const upcomingVideoIdDisplay = document.getElementById(
+  "upcoming-video-id-display"
+);
+const upcomingChannelNameDisplay = document.getElementById(
+  "upcoming-channel-name-display"
+);
+const upcomingChannelUrlDisplay = document.getElementById(
+  "upcoming-channel-url-display"
+);
+const copyUpcomingVideoIdBtn = document.getElementById(
+  "copy-upcoming-video-id-btn"
+);
+const upcomingStartTimeDisplay = document.getElementById(
+  "upcoming-start-time-display"
+);
 
-// ─── Normalize lockupViewModel (new YouTube format, 2024+) ───────────────────
-function normalizeLockupViewModel(lockup) {
-  const videoId = lockup.contentId;
-  if (!videoId) return null;
-
-  const title =
-    lockup.metadata?.lockupMetadataViewModel?.title?.content ||
-    lockup.title?.content ||
-    "No Title";
-
-  // Thumbnail: YouTube 2026 uses contentImage, older used thumbnail
-  const thumbViewModel =
-    lockup.contentImage?.thumbnailViewModel ||
-    lockup.thumbnail?.thumbnailViewModel;
-  const sources = thumbViewModel?.image?.sources || [];
-  const thumbnailUrl =
-    sources[sources.length - 1]?.url ||
-    `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-
-  // Overlays: same path change as thumbnail
-  const overlays = thumbViewModel?.overlays || [];
-
-  // Helper: extract badge text from any overlay object
-  function getBadgeText(o) {
-    // New format (2026): thumbnailBottomOverlayViewModel.badges[]
-    const bottom = o.thumbnailBottomOverlayViewModel;
-    if (bottom?.badges) {
-      for (const b of bottom.badges) {
-        const t = b.thumbnailBadgeViewModel?.text;
-        const s = b.thumbnailBadgeViewModel?.badgeStyle || "";
-        if (t) return { text: t.toUpperCase(), style: s };
-      }
-    }
-    // Old format: thumbnailOverlayTimeStatusRenderer / thumbnailOverlayBadgeViewModel
-    const ts = o.thumbnailOverlayTimeStatusRenderer || o.thumbnailOverlayTimeStatusViewModel;
-    if (ts?.style) return { text: ts.style.toUpperCase(), style: ts.style };
-    const bv = o.thumbnailOverlayBadgeViewModel?.thumbnailBadges?.[0]?.thumbnailBadgeViewModel;
-    if (bv?.style) return { text: bv.style.toUpperCase(), style: bv.style };
-    return null;
-  }
-
-  let isLive     = false;
-  let isUpcoming = false;
-
-  for (const o of overlays) {
-    const badge = getBadgeText(o);
-    if (!badge) continue;
-    if (badge.text === "LIVE" || badge.style.includes("LIVE")) isLive = true;
-    if (badge.text === "UPCOMING" || badge.style.includes("UPCOMING")) isUpcoming = true;
-  }
-
-  // Scheduled start time: in metadataRows as "Scheduled for M/D/YY, H:MM AM/PM"
-  let startTime = null;
-  if (isUpcoming) {
-    const rows =
-      lockup.metadata?.lockupMetadataViewModel?.metadata
-        ?.contentMetadataViewModel?.metadataRows || [];
-    for (const row of rows) {
-      for (const part of row.metadataParts || []) {
-        const txt = part.text?.content || "";
-        if (txt.toLowerCase().startsWith("scheduled for")) {
-          try { startTime = new Date(txt.replace(/^scheduled for\s*/i, "")); } catch {}
-          break;
-        }
-      }
-      if (startTime) break;
-    }
-  }
-
-  // Duration badge: when text is not LIVE/UPCOMING it's "H:MM:SS" or "MM:SS"
-  let duration = "";
-  for (const o of overlays) {
-    const bottom = o.thumbnailBottomOverlayViewModel;
-    if (bottom?.badges) {
-      for (const b of bottom.badges) {
-        const t = b.thumbnailBadgeViewModel?.text || "";
-        const up = t.toUpperCase();
-        if (up !== "LIVE" && up !== "UPCOMING" && /^\d+:\d+/.test(t)) {
-          duration = t;
-        }
-      }
-    }
-  }
-
-  // Upload date / view count from metadataRows
-  let uploadedDate = "";
-  const metaRows =
-    lockup.metadata?.lockupMetadataViewModel?.metadata
-      ?.contentMetadataViewModel?.metadataRows || [];
-  for (const row of metaRows) {
-    for (const part of row.metadataParts || []) {
-      const txt = part.text?.content || "";
-      if (/\d+.*(ago|view|watch)/i.test(txt) && !txt.toLowerCase().startsWith("scheduled")) {
-        if (!uploadedDate) uploadedDate = txt;
-      }
-    }
-  }
-
-  return {
-    videoId,
-    title,
-    thumbnailUrl: thumbnailUrl.replace(/^\/\//, "https://"),
-    isLive,
-    isUpcoming,
-    startTime,
-    duration,
-    uploadedDate,
-    channelName: "",
-    channelUrl: "https://www.youtube.com/@swaminarayan",
-  };
-}
-
-// ─── Normalize legacy videoRenderer (old YouTube format) ─────────────────────
-function normalizeVideoRenderer(vr) {
-  const videoId = vr.videoId;
-  if (!videoId) return null;
-
-  const title = vr.title?.runs?.[0]?.text || vr.title?.simpleText || "No Title";
-
-  const thumbs = vr.thumbnail?.thumbnails || [];
-  const thumbnailUrl =
-    thumbs[thumbs.length - 1]?.url ||
-    `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-
-  const isLive =
-    vr.badges?.some((b) => b.liveTabBadgeRenderer) ||
-    vr.thumbnailOverlays?.some(
-      (b) => b.thumbnailOverlayTimeStatusRenderer?.style === "LIVE"
-    ) ||
-    false;
-
-  const isUpcoming = !!vr.upcomingEventData;
-
-  let startTime = null;
-  if (vr.upcomingEventData?.startTime) {
-    startTime = new Date(parseInt(vr.upcomingEventData.startTime, 10) * 1000);
-  }
-
-  const channelName =
-    vr.ownerText?.runs?.[0]?.text ||
-    vr.longBylineText?.runs?.[0]?.text ||
-    "";
-
-  const channelUrlPath =
-    vr.ownerText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.canonicalBaseUrl ||
-    vr.longBylineText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.canonicalBaseUrl ||
-    "";
-
-  return {
-    videoId,
-    title,
-    thumbnailUrl: thumbnailUrl.replace(/^\/\//, "https://"),
-    isLive,
-    isUpcoming,
-    startTime,
-    channelName,
-    channelUrl: channelUrlPath
-      ? `https://www.youtube.com${channelUrlPath}`
-      : "https://www.youtube.com/@swaminarayan",
-  };
-}
-
-// ─── Extract all video items from parsed ytInitialData ────────────────────────
-function extractVideoItems(ytData) {
-  const tabs =
-    ytData?.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
-
-  // Find the streams tab (param starts with EgdzdHJlYW1z = base64 "streams")
-  const streamsTab =
-    tabs.find((t) => {
-      const params = t.tabRenderer?.endpoint?.browseEndpoint?.params || "";
-      return params === "EgdzdHJlYW1z" || params.startsWith("EgdzdHJlYW1z");
-    }) || tabs.find((t) => t.tabRenderer?.selected) || tabs[0];
-
-  const results = [];
-
-  // ── New format: richGridRenderer → richItemRenderer → lockupViewModel ───
-  const richContents =
-    streamsTab?.tabRenderer?.content?.richGridRenderer?.contents || [];
-
-  if (richContents.length > 0) {
-    for (const item of richContents) {
-      const lockup = item?.richItemRenderer?.content?.lockupViewModel;
-      if (lockup) {
-        const v = normalizeLockupViewModel(lockup);
-        if (v) results.push(v);
-      }
-    }
-    if (results.length > 0) {
-      console.log("[Monitor] Using new lockupViewModel format, count:", results.length);
-      return results;
-    }
-  }
-
-  // ── Old format: sectionListRenderer → itemSectionRenderer → videoRenderer ─
-  const sections =
-    streamsTab?.tabRenderer?.content?.sectionListRenderer?.contents || [];
-
-  for (const section of sections) {
-    const items =
-      section?.itemSectionRenderer?.contents ||
-      section?.shelfRenderer?.content?.horizontalListRenderer?.items ||
-      [];
-    for (const item of items) {
-      if (item?.videoRenderer) {
-        const v = normalizeVideoRenderer(item.videoRenderer);
-        if (v) results.push(v);
-      }
-    }
-  }
-
-  if (results.length > 0) {
-    console.log("[Monitor] Using legacy videoRenderer format, count:", results.length);
-    return results;
-  }
-
-  // ── Deep search as last resort ────────────────────────────────────────────
-  const deepSearch = (obj) => {
-    let found = [];
-    if (typeof obj !== "object" || obj === null) return found;
-    if (obj.videoRenderer) {
-      const v = normalizeVideoRenderer(obj.videoRenderer);
-      if (v) found.push(v);
-    }
-    if (obj.lockupViewModel?.contentId) {
-      const v = normalizeLockupViewModel(obj.lockupViewModel);
-      if (v) found.push(v);
-    }
-    for (const key of Object.keys(obj)) {
-      found = found.concat(deepSearch(obj[key]));
-    }
-    return found;
-  };
-
-  const deep = deepSearch(ytData);
-  console.log("[Monitor] Used deep search, count:", deep.length);
-  return deep;
-}
-
-// ─── Verify video channel via oEmbed (same as allowedChannels in core-utils) ─
-async function verifyChannel(video) {
-  try {
-    const url = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${video.videoId}&format=json`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!ALLOWED_CH.includes(data.author_name)) return null;
-    // Use oEmbed channel name (most accurate)
-    return { ...video, channelName: data.author_name, channelUrl: data.author_url || video.channelUrl };
-  } catch {
-    return null;
-  }
-}
-
-// ─── Fetch channel HTML via CORS proxy ────────────────────────────────────────
-async function fetchChannelHTML(url) {
-  const proxied = CORS_PROXY + encodeURIComponent(url);
-  const res = await fetch(proxied, { signal: AbortSignal.timeout(15000) });
-  if (!res.ok) throw new Error(`Proxy HTTP ${res.status}`);
-  return res.text();
-}
-
-// ─── Filter by comma-separated search terms (matches exe's z0 function) ──────
-function filterBySearchTerms(terms, videos) {
-  if (!terms || terms.trim() === "") return null;
-  const keywords = terms.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean);
-  if (keywords.length === 0) return null;
-  for (const video of videos) {
-    const t = (video.title || "").toLowerCase();
-    if (keywords.some((k) => t.includes(k))) return video.videoId;
-  }
-  return null;
-}
-
-// ─── Render a monitor card (1 or 2) ──────────────────────────────────────────
-function renderMonitorCard(num, video) {
-  const thumb   = document.getElementById(`video-thumbnail-display-${num}`);
-  const titleEl = document.getElementById(`video-title-display-${num}`);
-  const idEl    = document.getElementById(`video-id-display-${num}`);
-  const chName  = document.getElementById(`channel-name-display-${num}`);
-  const chUrl   = document.getElementById(`channel-url-display-${num}`);
-
-  if (!video) {
-    if (thumb)  thumb.src = "https://placehold.co/280x157.5/1a1a2e/888?text=No+Live+Stream";
-    if (titleEl) titleEl.textContent = "No live stream found";
-    if (idEl)    idEl.textContent    = "";
-    if (chName)  chName.textContent  = "";
-    if (chUrl)   chUrl.innerHTML     = "—";
+// --- Live Event Monitor Functions ---
+async function fetchLiveVideoDetails() {
+  if (!liveMonitorEnabled1 && !liveMonitorEnabled2) {
+    // console.log("Both Live Event Monitors are disabled. Skipping fetch.");
+    clearMonitorDisplay(
+      videoThumbnailDisplay1,
+      videoTitleDisplay1,
+      videoIdDisplay1,
+      channelNameDisplay1,
+      channelUrlDisplay1,
+      "Live Event Monitor 1 is Off"
+    );
+    clearMonitorDisplay(
+      videoThumbnailDisplay2,
+      videoTitleDisplay2,
+      videoIdDisplay2,
+      channelNameDisplay2,
+      channelUrlDisplay2,
+      "Live Event Monitor 2 is Off"
+    );
+    clearMonitorDisplay(
+      upcomingVideoThumbnailDisplay,
+      upcomingVideoTitleDisplay,
+      upcomingVideoIdDisplay,
+      upcomingChannelNameDisplay,
+      upcomingChannelUrlDisplay,
+      "Upcoming Event Monitor is Off",
+      upcomingStartTimeDisplay
+    );
     return;
   }
 
-  if (thumb) {
-    thumb.src = video.thumbnailUrl;
-    thumb.onerror = () => {
-      thumb.src = `https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg`;
-    };
-  }
-  if (titleEl) titleEl.textContent = video.title;
-  if (idEl)    idEl.textContent    = video.videoId;
-  if (chName)  chName.textContent  = video.channelName || "Swaminarayan Bhagwan";
-  if (chUrl) {
-    const link = video.channelUrl || "https://www.youtube.com/@swaminarayan";
-    chUrl.innerHTML = `<a href="${link}" target="_blank" style="color:#22d3ee;word-break:break-all;">${link}</a>`;
-  }
-}
+  [
+    videoTitleDisplay1,
+    videoIdDisplay1,
+    channelNameDisplay1,
+    channelUrlDisplay1,
+    videoTitleDisplay2,
+    videoIdDisplay2,
+    channelNameDisplay2,
+    channelUrlDisplay2,
+    upcomingVideoTitleDisplay,
+    upcomingVideoIdDisplay,
+    upcomingChannelNameDisplay,
+    upcomingChannelUrlDisplay,
+    upcomingStartTimeDisplay,
+  ].forEach((el) => el.classList.remove("error-message"));
 
-// ─── Render Upcoming Event Monitor ───────────────────────────────────────────
-function renderUpcomingMonitor(video) {
-  const thumb   = document.getElementById("upcoming-video-thumbnail-display");
-  const titleEl = document.getElementById("upcoming-video-title-display");
-  const idEl    = document.getElementById("upcoming-video-id-display");
-  const chName  = document.getElementById("upcoming-channel-name-display");
-  const chUrl   = document.getElementById("upcoming-channel-url-display");
-  const startEl = document.getElementById("upcoming-start-time-display");
-
-  if (!video) {
-    if (thumb)  thumb.src = "https://placehold.co/280x157.5/1a1a2e/888?text=No+Upcoming+Event";
-    if (titleEl) titleEl.textContent = "No upcoming events found";
-    if (idEl)    idEl.textContent    = "";
-    if (chName)  chName.textContent  = "";
-    if (chUrl)   chUrl.innerHTML     = "—";
-    if (startEl) startEl.textContent = "";
-    return;
-  }
-
-  if (thumb) {
-    thumb.src = video.thumbnailUrl;
-    thumb.onerror = () => {
-      thumb.src = `https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg`;
-    };
-  }
-  if (titleEl) titleEl.textContent = video.title;
-  if (idEl)    idEl.textContent    = video.videoId;
-  if (chName)  chName.textContent  = video.channelName || "Swaminarayan Bhagwan";
-  if (chUrl) {
-    const link = video.channelUrl || "https://www.youtube.com/@swaminarayan";
-    chUrl.innerHTML = `<a href="${link}" target="_blank" style="color:#22d3ee;word-break:break-all;">${link}</a>`;
-  }
-  if (startEl) {
-    startEl.textContent = video.startTime
-      ? video.startTime.toLocaleString()
-      : "Time not specified";
-  }
-}
-
-// ─── Auto-load logic — mirrors exe exactly ────────────────────────────────────
-function runAutoLoad(liveStreams) {
-  if (liveStreams.length === 0) return;
-
-  // Read live player priority setting
-  let priority = "matchSearchTerms";
-  let currentVideoId = null;
   try {
-    const saved = localStorage.getItem("livePlayerState");
-    if (saved) {
-      const s = JSON.parse(saved);
-      priority = s.priority || "matchSearchTerms";
-      currentVideoId = s.videoId || null;
+    // Define the channels you want to see content from
+    const allChannelEvents = await getChannelContent("swaminarayan", "streams");
+    // 2. Create initial lists of live and upcoming events
+    let liveEvents = allChannelEvents
+      .filter((event) => event.isLive)
+      .sort((a, b) => getLiveEventStartMs(b) - getLiveEventStartMs(a));
+    let upcomingEvents = allChannelEvents.filter((event) => event.isUpcoming);
+
+    // 3. Sort the upcoming list from the local API
+    upcomingEvents.sort((a, b) => a.startTime - b.startTime);
+
+    const nextUpcomingEvent =
+      upcomingEvents.length > 0 ? upcomingEvents[0] : null;
+    updateUpcomingMonitorDisplay(nextUpcomingEvent);
+
+    const liveEvent1 = liveEvents.length > 0 ? liveEvents[0] : null;
+    updateLiveMonitorDisplay(
+      1,
+      liveEvent1,
+      videoThumbnailDisplay1,
+      videoTitleDisplay1,
+      videoIdDisplay1,
+      channelNameDisplay1,
+      channelUrlDisplay1
+    );
+
+    const liveEvent2 = liveEvents.length > 1 ? liveEvents[1] : null;
+    updateLiveMonitorDisplay(
+      2,
+      liveEvent2,
+      videoThumbnailDisplay2,
+      videoTitleDisplay2,
+      videoIdDisplay2,
+      channelNameDisplay2,
+      channelUrlDisplay2
+    );
+
+    let videoIdToAutoLoad = null;
+    const currentPriority = livePlayerPrioritySelect.value;
+
+    if (currentPriority === "firstLive" && liveEvent1) {
+      videoIdToAutoLoad = liveEvent1.videoId;
+    } else if (currentPriority === "secondLive" && liveEvent2) {
+      videoIdToAutoLoad = liveEvent2.videoId;
+    } else if (currentPriority === "matchSearchTerms") {
+      videoIdToAutoLoad = findMatchingVideoId(
+        videoTitleSearchInput1.value,
+        liveEvents
+      );
     }
-  } catch {}
 
-  let targetId = null;
+    if (
+      videoIdToAutoLoad &&
+      liveVideoIdInput.value.trim() !== videoIdToAutoLoad
+    ) {
+      console.log(
+        `Live Event Monitor: Auto-loading fetched live video ID "${videoIdToAutoLoad}" to Live Player based on priority "${currentPriority}".`
+      );
+      liveVideoIdInput.value = videoIdToAutoLoad;
+      await loadLiveVideoAndPlay(videoIdToAutoLoad);
 
-  if (priority === "firstLive") {
-    targetId = liveStreams[0]?.videoId || null;
-  } else if (priority === "secondLive") {
-    targetId = liveStreams[1]?.videoId || null;
-  } else {
-    // matchSearchTerms — use savedSearchTitles1 from localStorage
-    const terms = localStorage.getItem("savedSearchTitles1") || "";
-    targetId = filterBySearchTerms(terms, liveStreams);
-    // Fallback to first live if no match
-    if (!targetId) targetId = liveStreams[0]?.videoId || null;
-  }
-
-  // Only dispatch if it's a new video we haven't loaded yet
-  if (targetId && targetId !== lastAutoLoadedId && targetId !== currentVideoId) {
-    console.log(`[Monitor] Auto-loading "${targetId}" (priority: ${priority})`);
-    lastAutoLoadedId = targetId;
-    window.dispatchEvent(
-      new CustomEvent("livePlayerAutoLoad", { detail: { videoId: targetId } })
+      setSourceVisibility("Live Player", true);
+      setSourceVisibility("Loop Player", false);
+      setSourceVisibility("Delay Live", false);
+      setSourceVisibility("OrdaChesta", false);
+      setSourceVisibility("Local Player", false);
+    }
+    // else if (!videoIdToAutoLoad && sourceState["Live Player"]) {
+    //   console.warn(
+    //     "No live video found matching priority. Live Player is active. Switching to Loop Player."
+    //   );
+    //   setSourceVisibility("Live Player", false);
+    //   setSourceVisibility("Loop Player", true);
+    // } 
+    else if (
+      videoIdToAutoLoad &&
+      liveVideoIdInput.value.trim() === videoIdToAutoLoad
+    ) {
+      // console.log(
+      //   `Live Event Monitor: Video ID "${videoIdToAutoLoad}" is already loaded in Live Player. Skipping reload.`
+      // );
+    }
+  } catch (error) {
+    console.error(
+      "Error fetching live video details for Live Event Monitor:",
+      error
+    );
+    const errorMessage = `Error: ${error.message}. Please check console for details.`;
+    applyErrorToMonitorDisplay(
+      videoTitleDisplay1,
+      videoIdDisplay1,
+      channelNameDisplay1,
+      channelUrlDisplay1,
+      videoThumbnailDisplay1,
+      errorMessage
+    );
+    applyErrorToMonitorDisplay(
+      videoTitleDisplay2,
+      videoIdDisplay2,
+      channelNameDisplay2,
+      channelUrlDisplay2,
+      videoThumbnailDisplay2,
+      errorMessage
+    );
+    applyErrorToMonitorDisplay(
+      upcomingVideoTitleDisplay,
+      upcomingVideoIdDisplay,
+      upcomingChannelNameDisplay,
+      upcomingChannelUrlDisplay,
+      upcomingVideoThumbnailDisplay,
+      errorMessage,
+      upcomingStartTimeDisplay
     );
   }
 }
 
-// ─── Main poll function ───────────────────────────────────────────────────────
-let _proxyResolved = false;
-async function pollMonitors() {
-  if (!monitor1Active && !monitor2Active) return;
+function updateLiveMonitorDisplay(
+  monitorNumber,
+  event,
+  thumbnailEl,
+  titleEl,
+  idEl,
+  channelNameEl,
+  channelUrlEl
+) {
+  let currentLastFetchedVideoId =
+    monitorNumber === 1 ? lastFetchedVideoId1 : lastFetchedVideoId2;
+  let currentLastFetchedTitle =
+    monitorNumber === 1 ? lastFetchedTitle1 : lastFetchedTitle2;
 
-  if (!_proxyResolved) {
-    await _resolveProxy();
-    _proxyResolved = true;
-  }
+  if (event) {
+    const videoId = event.videoId;
+    const title = event.title;
+    const thumbnailUrl = event.thumbnailUrl;
+    const channelId = getSelectedChannelId();
+    const channelName = getSelectedChannelName();
+    let channelUrl = `https://www.youtube.com/channel/${channelId}`;
 
-  console.log("[Monitor] Fetching streams at", new Date().toLocaleTimeString(), "via", CORS_PROXY.split("?")[0]);
+    if (
+      videoId !== currentLastFetchedVideoId ||
+      title !== currentLastFetchedTitle
+    ) {
+      titleEl.textContent = title;
+      idEl.textContent = videoId;
+      channelNameEl.textContent = channelName;
+      thumbnailEl.src = thumbnailUrl;
 
-  let html;
-  try {
-    html = await fetchChannelHTML(STREAMS_URL);
-  } catch (e) {
-    console.error("[Monitor] Fetch failed:", e.message);
-    return;
-  }
+      const channelLink = document.createElement("a");
+      channelLink.href = channelUrl;
+      channelLink.textContent = channelUrl;
+      channelLink.target = "_blank";
+      channelUrlEl.innerHTML = "";
+      channelUrlEl.appendChild(channelLink);
 
-  if (!html.includes("ytInitialData")) {
-    console.warn("[Monitor] Response does not contain ytInitialData");
-    return;
-  }
-
-  let ytData;
-  try {
-    ytData = parseYtInitialDataFull(html);
-  } catch (e) {
-    console.error("[Monitor] Parse error:", e.message);
-    return;
-  }
-
-  // Extract all video items from the streams tab
-  const allItems = extractVideoItems(ytData);
-  console.log("[Monitor] Total items extracted:", allItems.length);
-
-  // Separate live and upcoming
-  const liveRaw     = allItems.filter((v) => v.isLive);
-  const upcomingRaw = allItems.filter((v) => v.isUpcoming && !v.isLive);
-  console.log(`[Monitor] Live: ${liveRaw.length}, Upcoming: ${upcomingRaw.length}`);
-
-  // Verify channels in parallel (oEmbed check against ALLOWED_CH)
-  const [verifiedLive, verifiedUpcoming] = await Promise.all([
-    Promise.all(liveRaw.map(verifyChannel)).then((r) => r.filter(Boolean)),
-    Promise.all(upcomingRaw.map(verifyChannel)).then((r) => r.filter(Boolean)),
-  ]);
-
-  // Sort upcoming by start time
-  verifiedUpcoming.sort((a, b) => (a.startTime || 0) - (b.startTime || 0));
-
-  // Store globally
-  window.detectedLiveStreams     = verifiedLive;
-  window.detectedUpcomingStreams = verifiedUpcoming;
-
-  console.log(`[Monitor] Verified live: ${verifiedLive.length}, upcoming: ${verifiedUpcoming.length}`);
-
-  // Apply search-term filters for which live stream each monitor shows
-  const search1  = localStorage.getItem("savedSearchTitles1") || document.getElementById("videoTitleSearchInput-1")?.value || "";
-  const search2  = localStorage.getItem("savedSearchTitles2") || document.getElementById("videoTitleSearchInput-2")?.value || "";
-
-  const match1Id = filterBySearchTerms(search1, verifiedLive);
-  const match2Id = filterBySearchTerms(search2, verifiedLive);
-
-  const video1   = verifiedLive.find((v) => v.videoId === match1Id) || verifiedLive[0] || null;
-  const video2   = verifiedLive.find((v) => v.videoId === match2Id) ||
-                   verifiedLive.find((v) => v.videoId !== video1?.videoId) ||
-                   verifiedLive[1] || video1 || null;
-
-  if (monitor1Active) renderMonitorCard(1, video1);
-  if (monitor2Active) renderMonitorCard(2, video2);
-  renderUpcomingMonitor(verifiedUpcoming[0] || null);
-
-  // Auto-load to live player
-  runAutoLoad(verifiedLive);
-}
-
-// ─── Save search terms to localStorage on every keystroke ────────────────────
-function initSearchInputs() {
-  const input1 = document.getElementById("videoTitleSearchInput-1");
-  const input2 = document.getElementById("videoTitleSearchInput-2");
-
-  // Restore saved search terms on load
-  if (input1) {
-    const saved = localStorage.getItem("savedSearchTitles1");
-    if (saved) input1.value = saved;
-    input1.addEventListener("input", () => {
-      localStorage.setItem("savedSearchTitles1", input1.value);
-      // Re-apply filter immediately against cached data (no extra fetch)
-      const live = window.detectedLiveStreams || [];
-      if (live.length > 0) {
-        const id = filterBySearchTerms(input1.value, live);
-        const v  = live.find((x) => x.videoId === id) || live[0] || null;
-        if (monitor1Active) renderMonitorCard(1, v);
-      }
-    });
-  }
-
-  if (input2) {
-    const saved = localStorage.getItem("savedSearchTitles2");
-    if (saved) input2.value = saved;
-    input2.addEventListener("input", () => {
-      localStorage.setItem("savedSearchTitles2", input2.value);
-      const live = window.detectedLiveStreams || [];
-      if (live.length > 0) {
-        const id = filterBySearchTerms(input2.value, live);
-        const v  = live.find((x) => x.videoId === id) ||
-                   live.find((x) => x.videoId !== (window.detectedLiveStreams[0]?.videoId)) ||
-                   live[1] || live[0] || null;
-        if (monitor2Active) renderMonitorCard(2, v);
-      }
-    });
-  }
-}
-
-// ─── Copy buttons ─────────────────────────────────────────────────────────────
-document.getElementById("copy-video-id-btn-1")?.addEventListener("click", () => {
-  const id = document.getElementById("video-id-display-1")?.textContent?.trim();
-  if (id) copyToClipboard(id);
-});
-document.getElementById("copy-video-id-btn-2")?.addEventListener("click", () => {
-  const id = document.getElementById("video-id-display-2")?.textContent?.trim();
-  if (id) copyToClipboard(id);
-});
-document.getElementById("copy-upcoming-video-id-btn")?.addEventListener("click", () => {
-  const id = document.getElementById("upcoming-video-id-display")?.textContent?.trim();
-  if (id) copyToClipboard(id);
-});
-
-// ─── Monitor toggle buttons ───────────────────────────────────────────────────
-document.getElementById("btnToggleLiveMonitor1")?.addEventListener("click", function () {
-  monitor1Active = !monitor1Active;
-  localStorage.setItem("liveMonitorEnabled1", String(monitor1Active));
-  this.textContent = monitor1Active ? "Monitor 1: On" : "Monitor 1: Off";
-  this.className   = monitor1Active ? "toggle-btn on-monitor" : "toggle-btn off";
-  if (!monitor1Active) renderMonitorCard(1, null);
-  else pollMonitors();
-});
-document.getElementById("btnToggleLiveMonitor2")?.addEventListener("click", function () {
-  monitor2Active = !monitor2Active;
-  localStorage.setItem("liveMonitorEnabled2", String(monitor2Active));
-  this.textContent = monitor2Active ? "Monitor 2: On" : "Monitor 2: Off";
-  this.className   = monitor2Active ? "toggle-btn on-monitor" : "toggle-btn off";
-  if (!monitor2Active) renderMonitorCard(2, null);
-  else pollMonitors();
-});
-
-// ─── Restore toggle state from localStorage ───────────────────────────────────
-function restoreToggleState() {
-  const s1 = localStorage.getItem("liveMonitorEnabled1");
-  const s2 = localStorage.getItem("liveMonitorEnabled2");
-  const btn1 = document.getElementById("btnToggleLiveMonitor1");
-  const btn2 = document.getElementById("btnToggleLiveMonitor2");
-
-  if (s1 !== null) {
-    monitor1Active = s1 === "true";
-    if (btn1) {
-      btn1.textContent = monitor1Active ? "Monitor 1: On" : "Monitor 1: Off";
-      btn1.className   = monitor1Active ? "toggle-btn on-monitor" : "toggle-btn off";
+      titleEl.classList.remove("error-message");
+      idEl.classList.remove("error-message");
+      channelNameEl.classList.remove("error-message");
+      channelUrlEl.classList.remove("error-message");
     }
-  }
-  if (s2 !== null) {
-    monitor2Active = s2 === "true";
-    if (btn2) {
-      btn2.textContent = monitor2Active ? "Monitor 2: On" : "Monitor 2: Off";
-      btn2.className   = monitor2Active ? "toggle-btn on-monitor" : "toggle-btn off";
+    if (monitorNumber === 1) {
+      lastFetchedVideoId1 = videoId;
+      lastFetchedTitle1 = title;
+    } else {
+      lastFetchedVideoId2 = videoId;
+      lastFetchedTitle2 = title;
+    }
+  } else {
+    clearMonitorDisplay(
+      thumbnailEl,
+      titleEl,
+      idEl,
+      channelNameEl,
+      channelUrlEl,
+      `Live Event Monitor ${monitorNumber} is Off`,
+      null,
+      true
+    );
+    if (monitorNumber === 1) {
+      lastFetchedVideoId1 = null;
+      lastFetchedTitle1 = null;
+    } else {
+      lastFetchedVideoId2 = null;
+      lastFetchedTitle2 = null;
     }
   }
 }
 
-// ─── Start ────────────────────────────────────────────────────────────────────
-restoreToggleState();
-initSearchInputs();
-pollMonitors();                                   // immediate first fetch
-pollTimer = setInterval(pollMonitors, POLL_MS);   // then every 30 seconds
-console.log("[Monitor] Started — polling every", POLL_MS / 1000, "sec");
+function updateUpcomingMonitorDisplay(event) {
+  if (event) {
+    const videoId = event.videoId;
+    const title = event.title;
+    const thumbnailUrl = event.thumbnailUrl;
+    const channelId = getSelectedChannelId();
+    const channelName = getSelectedChannelName();
+    let channelUrl = `https://www.youtube.com/channel/${channelId}`;
+    const startTime = event.startTime
+      ? event.startTime.toLocaleString()
+      : "N/A";
+
+    if (
+      videoId !== lastFetchedUpcomingVideoId ||
+      title !== lastFetchedUpcomingTitle
+    ) {
+      upcomingVideoTitleDisplay.textContent = title;
+      upcomingVideoIdDisplay.textContent = videoId;
+      upcomingChannelNameDisplay.textContent = channelName;
+      upcomingVideoThumbnailDisplay.src = thumbnailUrl;
+      upcomingStartTimeDisplay.textContent = `Starts: ${startTime}`;
+
+      const channelLink = document.createElement("a");
+      channelLink.href = channelUrl;
+      channelLink.textContent = channelUrl;
+      channelLink.target = "_blank";
+      upcomingChannelUrlDisplay.innerHTML = "";
+      upcomingChannelUrlDisplay.appendChild(channelLink);
+
+      upcomingVideoTitleDisplay.classList.remove("error-message");
+      upcomingVideoIdDisplay.classList.remove("error-message");
+      upcomingChannelNameDisplay.classList.remove("error-message");
+      upcomingChannelUrlDisplay.classList.remove("error-message");
+      upcomingStartTimeDisplay.classList.remove("error-message");
+    }
+    lastFetchedUpcomingVideoId = videoId;
+    lastFetchedUpcomingTitle = title;
+  } else {
+    clearMonitorDisplay(
+      upcomingVideoThumbnailDisplay,
+      upcomingVideoTitleDisplay,
+      upcomingVideoIdDisplay,
+      upcomingChannelNameDisplay,
+      upcomingChannelUrlDisplay,
+      "No Upcoming Event Found",
+      upcomingStartTimeDisplay,
+      true
+    );
+    lastFetchedUpcomingVideoId = null;
+    lastFetchedUpcomingTitle = null;
+  }
+}
+
+function clearMonitorDisplay(
+  thumbnailEl,
+  titleEl,
+  idEl,
+  channelNameEl,
+  channelUrlEl,
+  message,
+  startTimeEl = null,
+  isError = false
+) {
+  thumbnailEl.src = isError
+    ? "https://placehold.co/280x157.5/FF0000/FFFFFF?text=Error"
+    : "https://placehold.co/280x157.5/333333/FFFFFF?text=Monitor+Off";
+  titleEl.textContent = message;
+  idEl.textContent = "N/A";
+  channelNameEl.textContent = "N/A";
+  channelUrlEl.innerHTML = "N/A";
+  if (startTimeEl) startTimeEl.textContent = "N/A";
+
+  const elements = [titleEl, idEl, channelNameEl, channelUrlEl];
+  if (startTimeEl) elements.push(startTimeEl);
+  elements.forEach((el) => {
+    if (isError) {
+      el.classList.add("error-message");
+    } else {
+      el.classList.remove("error-message");
+    }
+  });
+}
+
+function applyErrorToMonitorDisplay(
+  titleEl,
+  idEl,
+  channelNameEl,
+  channelUrlEl,
+  thumbnailEl,
+  errorMessage,
+  startTimeEl = null
+) {
+  titleEl.textContent = errorMessage;
+  idEl.textContent = errorMessage;
+  channelNameEl.textContent = errorMessage;
+  channelUrlEl.textContent = errorMessage;
+  thumbnailEl.src = "https://placehold.co/280x157.5/FF0000/FFFFFF?text=Error";
+
+  const elements = [titleEl, idEl, channelNameEl, channelUrlEl];
+  if (startTimeEl) elements.push(startTimeEl);
+  elements.forEach((el) => el.classList.add("error-message"));
+}
+
+function toggleLiveMonitor(monitorNumber) {
+  if (monitorNumber === 1) {
+    liveMonitorEnabled1 = !liveMonitorEnabled1;
+    localStorage.setItem(LIVE_MONITOR_ENABLED_KEY_1, liveMonitorEnabled1);
+    updateLiveMonitorToggleButton(1);
+  } else if (monitorNumber === 2) {
+    liveMonitorEnabled2 = !liveMonitorEnabled2;
+    localStorage.setItem(LIVE_MONITOR_ENABLED_KEY_2, liveMonitorEnabled2);
+    updateLiveMonitorToggleButton(2);
+  }
+
+  if (liveMonitorEnabled1 || liveMonitorEnabled2) {
+    if (!liveDetailsPollInterval) {
+      liveDetailsPollInterval = setInterval(
+        fetchLiveVideoDetails,
+        LIVE_DETAILS_POLL_INTERVAL_MS
+      );
+      fetchLiveVideoDetails();
+    }
+  } else {
+    if (liveDetailsPollInterval) {
+      clearInterval(liveDetailsPollInterval);
+      liveDetailsPollInterval = null;
+    }
+    clearMonitorDisplay(
+      videoThumbnailDisplay1,
+      videoTitleDisplay1,
+      videoIdDisplay1,
+      channelNameDisplay1,
+      channelUrlDisplay1,
+      "Live Event Monitor 1 is Off"
+    );
+    clearMonitorDisplay(
+      videoThumbnailDisplay2,
+      videoTitleDisplay2,
+      videoIdDisplay2,
+      channelNameDisplay2,
+      channelUrlDisplay2,
+      "Live Event Monitor 2 is Off"
+    );
+    clearMonitorDisplay(
+      upcomingVideoThumbnailDisplay,
+      upcomingVideoTitleDisplay,
+      upcomingVideoIdDisplay,
+      upcomingChannelNameDisplay,
+      upcomingChannelUrlDisplay,
+      "Upcoming Event Monitor is Off",
+      upcomingStartTimeDisplay
+    );
+  }
+}
+
+function updateLiveMonitorToggleButton(monitorNumber) {
+  const btn = document.getElementById(`btnToggleLiveMonitor${monitorNumber}`);
+  const isEnabled =
+    monitorNumber === 1 ? liveMonitorEnabled1 : liveMonitorEnabled2;
+  btn.className = "toggle-btn " + (isEnabled ? "on-monitor" : "off");
+  btn.textContent = `Monitor ${monitorNumber}: ` + (isEnabled ? "On" : "Off");
+}
+
+function loadLiveMonitorStates() {
+  const storedState1 = localStorage.getItem(LIVE_MONITOR_ENABLED_KEY_1);
+  if (storedState1 !== null) {
+    liveMonitorEnabled1 = storedState1 === "true";
+  } else {
+    liveMonitorEnabled1 = true;
+  }
+  updateLiveMonitorToggleButton(1);
+
+  const storedState2 = localStorage.getItem(LIVE_MONITOR_ENABLED_KEY_2);
+  if (storedState2 !== null) {
+    liveMonitorEnabled2 = storedState2 === "true";
+  } else {
+    liveMonitorEnabled2 = true;
+  }
+  updateLiveMonitorToggleButton(2);
+
+  // Restore saved channel selection
+  const savedChannelId = localStorage.getItem(LIVE_CHANNEL_SELECT_KEY);
+  const select = document.getElementById("liveChannelSelect");
+  if (select && savedChannelId) {
+    select.value = savedChannelId;
+  }
+}
+
+function loadLivePlayerPriority() {
+  const savedPriority = localStorage.getItem(LIVE_PLAYER_PRIORITY_KEY);
+  if (savedPriority) {
+    livePlayerPrioritySelect.value = savedPriority;
+  } else {
+    livePlayerPrioritySelect.value = "matchSearchTerms";
+  }
+}
+
+function loadSavedSearchTitles(monitorNumber) {
+  const key =
+    monitorNumber === 1
+      ? LOCAL_STORAGE_SEARCH_TITLES_KEY_1
+      : LOCAL_STORAGE_SEARCH_TITLES_KEY_2;
+  const savedTitles = localStorage.getItem(key);
+  if (savedTitles) {
+    const inputElement =
+      monitorNumber === 1 ? videoTitleSearchInput1 : videoTitleSearchInput2;
+    inputElement.value = savedTitles;
+  }
+}
+
+function saveSearchTitles(monitorNumber, titles) {
+  const key =
+    monitorNumber === 1
+      ? LOCAL_STORAGE_SEARCH_TITLES_KEY_1
+      : LOCAL_STORAGE_SEARCH_TITLES_KEY_2;
+  localStorage.setItem(key, titles);
+}
+
+function findMatchingVideoId(searchTitlesInputText, liveEvents) {
+  if (!searchTitlesInputText.trim() || liveEvents.length === 0) {
+    return null;
+  }
+
+  const searchTerms = searchTitlesInputText
+    .toLowerCase()
+    .split(",")
+    .map((term) => term.trim())
+    .filter((term) => term);
+  if (searchTerms.length === 0) {
+    return null;
+  }
+
+  for (const event of liveEvents) {
+    const title = event.title.toLowerCase();
+    const matchesAllTerms = searchTerms.some((term) => title.includes(term));
+    matchesAllTerms
+    if (matchesAllTerms) {
+      return event.videoId;
+    }
+  }
+
+  return null;
+}
+
+// --- Event Listeners for Live Event Monitor ---
+if (copyVideoIdBtn1)
+  copyVideoIdBtn1.addEventListener("click", () => {
+    const videoId = videoIdDisplay1.textContent;
+    if (videoId && videoId !== "N/A") {
+      copyToClipboard(videoId);
+    }
+  });
+if (copyVideoIdBtn2)
+  copyVideoIdBtn2.addEventListener("click", () => {
+    const videoId = videoIdDisplay2.textContent;
+    if (videoId && videoId !== "N/A") {
+      copyToClipboard(videoId);
+    }
+  });
+if (copyUpcomingVideoIdBtn)
+  copyUpcomingVideoIdBtn.addEventListener("click", () => {
+    const videoId = upcomingVideoIdDisplay.textContent;
+    if (videoId && videoId !== "N/A") {
+      copyToClipboard(videoId);
+    }
+  });
+if (videoTitleSearchInput1)
+  videoTitleSearchInput1.addEventListener("input", (e) => {
+    saveSearchTitles(1, e.target.value);
+  });
+if (videoTitleSearchInput2)
+  videoTitleSearchInput2.addEventListener("input", (e) => {
+    saveSearchTitles(2, e.target.value);
+  });
+
+const liveChannelSelectEl = document.getElementById("liveChannelSelect");
+const liveChannelSelectStatus = document.getElementById("liveChannelSelectStatus");
+if (liveChannelSelectEl) {
+  liveChannelSelectEl.addEventListener("change", (e) => {
+    const newId = e.target.value;
+    localStorage.setItem(LIVE_CHANNEL_SELECT_KEY, newId);
+    if (liveChannelSelectStatus) liveChannelSelectStatus.textContent = "Fetching...";
+    // Reset last-fetched cache so display refreshes immediately
+    lastFetchedVideoId1 = null;
+    lastFetchedTitle1 = null;
+    lastFetchedVideoId2 = null;
+    lastFetchedTitle2 = null;
+    lastFetchedUpcomingVideoId = null;
+    lastFetchedUpcomingTitle = null;
+    fetchLiveVideoDetails().then(() => {
+      if (liveChannelSelectStatus) liveChannelSelectStatus.textContent = "";
+    });
+  });
+}
+
+/**
+ * Fetches and processes data for a given channel and tab type.
+ * Caches the result to prevent redundant API calls.
+ * @param {string} channelId - The ID of the channel (e.g., 'swaminarayan').
+ * @param {string} tabType - The type of content ('videos' or 'streams').
+ * @returns {Promise<Array>} - A promise that resolves to an array of processed video/stream data.
+ */
+async function getChannelContent(channelId, tabType) {
+  try {
+    const selectedId = getSelectedChannelId();
+    const response = await fetch(`${LOCAL_API_BASE}/api/live?channelId=${encodeURIComponent(selectedId)}`, {
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const payload = await response.json();
+    const live = (payload.live || []).map((video) => ({
+      title: video.title || "No Title",
+      descriptionSnippet: "",
+      publishedTime: video.publishedAt || "Unknown",
+      length: video.duration === -1 ? "LIVE" : secondsToHMS(video.duration),
+      viewCount: "0 views",
+      thumbnailUrl:
+        video.thumbnail ||
+        `https://placehold.co/320x180/cccccc/333333?text=No+Image`,
+      videoUrl: `https://www.youtube.com/watch?v=${video.videoId}`,
+      videoId: video.videoId,
+      isLive: true,
+      isUpcoming: false,
+      startedAt: video.startedAt || null,
+      startTime: video.startedAt ? new Date(video.startedAt) : null,
+      isPast: false,
+    }));
+
+    const upcoming = (payload.upcoming || []).map((video) => ({
+      title: video.title || "No Title",
+      descriptionSnippet: "",
+      publishedTime: video.publishedAt || "Unknown",
+      length: secondsToHMS(video.duration),
+      viewCount: "0 views",
+      thumbnailUrl:
+        video.thumbnail ||
+        `https://placehold.co/320x180/cccccc/333333?text=No+Image`,
+      videoUrl: `https://www.youtube.com/watch?v=${video.videoId}`,
+      videoId: video.videoId,
+      isLive: false,
+      isUpcoming: true,
+      startTime: video.scheduledStart ? new Date(video.scheduledStart) : null,
+      isPast: false,
+    }));
+
+    return [...live, ...upcoming];
+  } catch (error) {
+    console.error(`Error loading streams for ${channelId}:`, error);
+    throw error; // Re-throw to be caught by the calling function
+  }
+}
+
+/**
+ * Normalize a lockupViewModel item (new YouTube format, 2025+) into the
+ * legacy videoRenderer shape so the rest of the code keeps working unchanged.
+ */
+function normalizeLockupViewModelItem(lvm) {
+  const videoId = lvm.contentId;
+  const title = lvm.metadata?.lockupMetadataViewModel?.title?.content || 'No Title';
+  const thumbnailSources = lvm.contentImage?.thumbnailViewModel?.image?.sources || [];
+  const thumbnailUrl =
+    thumbnailSources[thumbnailSources.length - 1]?.url ||
+    thumbnailSources[0]?.url ||
+    'https://placehold.co/320x180/cccccc/333333?text=No+Image';
+
+  // Detect live / upcoming from overlay badges
+  const overlays = lvm.contentImage?.thumbnailViewModel?.overlays || [];
+  let isLive = false;
+  let isUpcoming = false;
+  let startTime = null;
+
+  for (const overlay of overlays) {
+    const badges = overlay?.thumbnailBottomOverlayViewModel?.badges || [];
+    for (const badge of badges) {
+      const bvm = badge?.thumbnailBadgeViewModel;
+      if (!bvm) continue;
+      const style = bvm.badgeStyle || '';
+      const text = (bvm.text || '').toLowerCase();
+      const iconName = bvm.icon?.sources?.[0]?.clientResource?.imageName || '';
+
+      if (style === 'THUMBNAIL_OVERLAY_BADGE_STYLE_LIVE' || iconName === 'LIVE') {
+        isLive = true;
+      } else if (
+        text === 'à venir' ||
+        text === 'upcoming' ||
+        text === 'scheduled' ||
+        text === 'a venir'
+      ) {
+        isUpcoming = true;
+      }
+    }
+  }
+
+  // Try to parse scheduled start time from localized metadata text
+  // e.g. "Planifié pour le 13/05/2026 17:15" (French)
+  if (isUpcoming) {
+    const rows = lvm.metadata?.lockupMetadataViewModel?.metadata
+      ?.contentMetadataViewModel?.metadataRows || [];
+    for (const row of rows) {
+      for (const part of (row.metadataParts || [])) {
+        const content = part?.text?.content || '';
+        const dateMatch = content.match(
+          /(\d{1,2})[./](\d{1,2})[./](\d{4})(?:[\s,]+|T)(\d{1,2}):(\d{2})/
+        );
+        if (dateMatch) {
+          const [, dayOrMonth, monthOrDay, year, hour, minute] = dateMatch;
+          // European format: DD/MM/YYYY
+          const parsed = new Date(
+            `${year}-${monthOrDay.padStart(2, '0')}-${dayOrMonth.padStart(2, '0')}T${hour.padStart(2, '0')}:${minute}:00`
+          );
+          if (!isNaN(parsed.getTime())) startTime = parsed;
+        }
+      }
+    }
+  }
+
+  // Return in legacy videoRenderer wrapper shape
+  return {
+    videoRenderer: {
+      videoId,
+      title: { runs: [{ text: title }] },
+      thumbnail: { thumbnails: [{ url: thumbnailUrl }] },
+      badges: isLive ? [{ liveTabBadgeRenderer: {} }] : undefined,
+      thumbnailOverlays: isLive
+        ? [{ thumbnailOverlayTimeStatusRenderer: { style: 'LIVE' } }]
+        : undefined,
+      upcomingEventData: isUpcoming && startTime
+        ? { startTime: String(Math.floor(startTime.getTime() / 1000)) }
+        : (isUpcoming ? { startTime: undefined } : undefined),
+    }
+  };
+}
+
+/**
+ * Extracts video/stream items from the parsed ytInitialData.
+ * Supports both the legacy videoRenderer format and the new (2025+) lockupViewModel format.
+ * @param {object} ytInitialData - The parsed ytInitialData object.
+ * @param {string} tabType - 'videos' or 'streams'.
+ * @returns {Array} - An array of video/stream items (all normalized to videoRenderer shape).
+ */
+function extractVideoItems(ytInitialData, tabType) {
+  const contents =
+    ytInitialData?.contents?.twoColumnBrowseResultsRenderer?.tabs;
+  let videoItems = [];
+
+  if (contents) {
+    // Support multiple locale variants of the Live tab title and both old/new browseEndpoint params
+    const LIVE_TAB_TITLES = new Set(['live', 'en direct', 'en vivo', 'ao vivo', 'canlı']);
+    const targetTab = contents.find((tab) => {
+      const title = (tab.tabRenderer?.title || '').toLowerCase();
+      const params = tab.tabRenderer?.endpoint?.browseEndpoint?.params || '';
+      return LIVE_TAB_TITLES.has(title) ||
+        params === 'EgZsaXZlcw%3D%3D' ||   // old param
+        params.startsWith('EgdzdHJlYW1z'); // new param ("streams")
+    });
+
+    if (targetTab) {
+      // --- New YouTube format (2025+): richGridRenderer → richItemRenderer → lockupViewModel ---
+      const richGridItems =
+        targetTab.tabRenderer?.content?.richGridRenderer?.contents || [];
+      if (richGridItems.length > 0) {
+        videoItems = richGridItems
+          .filter(item => item?.richItemRenderer?.content?.lockupViewModel)
+          .map(item => normalizeLockupViewModelItem(item.richItemRenderer.content.lockupViewModel));
+        console.log('[extractVideoItems] New lockupViewModel format, count:', videoItems.length);
+        return videoItems;
+      }
+
+      // --- Legacy YouTube format: sectionListRenderer → itemSectionRenderer → videoRenderer ---
+      const legacyItems =
+        targetTab.tabRenderer?.content?.sectionListRenderer?.contents[0]
+          ?.itemSectionRenderer?.contents || [];
+      if (legacyItems.length > 0) {
+        console.log('[extractVideoItems] Legacy videoRenderer format, count:', legacyItems.length);
+        return legacyItems;
+      }
+    }
+
+    // Deep-search fallback: handle both renderers anywhere in the tree
+    console.warn('[extractVideoItems] No target tab found, doing deep search...');
+    const findDeep = (obj) => {
+      let found = [];
+      if (typeof obj !== 'object' || obj === null) return found;
+      if (obj.videoRenderer) found.push(obj);
+      if (obj.lockupViewModel && obj.lockupViewModel.contentId) {
+        found.push(normalizeLockupViewModelItem(obj.lockupViewModel));
+      }
+      for (const key in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, key) &&
+          typeof obj[key] === 'object' && obj[key] !== null) {
+          found = found.concat(findDeep(obj[key]));
+        }
+      }
+      return found;
+    };
+    videoItems = findDeep(ytInitialData);
+  }
+  return videoItems;
+}
