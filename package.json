@@ -2,9 +2,10 @@
   "name": "live-tv",
   "version": "1.0.0",
   "description": "Live TV Controller",
+  "type": "module",
   "scripts": {
     "install:all": "npm install --prefix live-tv-api && npm install --prefix live-tv-controller-react",
     "build": "npm run build --prefix live-tv-controller-react",
-    "start": "node live-tv-api/server.js & node live-tv-controller-react/server.cjs"
+    "start": "node start.js"
   }
 }
