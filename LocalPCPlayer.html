@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Local PC Player</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background-color: black;
+      }
+      #localVideoPlayer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+    </style>
+  </head>
+  <body>
+    <video id="localVideoPlayer" autoplay playsinline></video>
+
+    <script>
+      const videoPlayer = document.getElementById("localVideoPlayer");
+      const PLAYER_KEY_LOCAL = "localPCPlayerCommand";
+      const EVENT_REPORT_KEY_LOCAL = "localPCPlayerEvent";
+
+      // Time tracking variables
+      let startTime = 0;
+      let endTime = null;
+      let timeCheckInterval = null;
+
+      function reportEvent(eventName, data = {}) {
+        const eventData = {
+          playerType: "local",
+          event: eventName,
+          timestamp: Date.now(),
+          ...data,
+        };
+        localStorage.setItem(EVENT_REPORT_KEY_LOCAL, JSON.stringify(eventData));
+        setTimeout(() => {
+          localStorage.removeItem(EVENT_REPORT_KEY_LOCAL);
+        }, 100);
+      }
+
+      function checkAndHandleEndTime() {
+        if (endTime !== null && videoPlayer.currentTime >= endTime) {
+          videoPlayer.pause();
+          clearInterval(timeCheckInterval);
+          reportEvent("videoEnded");
+        }
+      }
+
+      function startTimeChecking() {
+        clearInterval(timeCheckInterval);
+        if (endTime !== null) {
+          timeCheckInterval = setInterval(checkAndHandleEndTime, 250); // Check 4 times per second
+        }
+      }
+
+      function stopTimeChecking() {
+        clearInterval(timeCheckInterval);
+      }
+
+      videoPlayer.addEventListener("loadedmetadata", () => {
+        console.log("Video metadata loaded:", {
+          duration: videoPlayer.duration,
+          startTime: startTime,
+          endTime: endTime,
+        });
+
+        // Set initial position
+        if (startTime > 0) {
+          videoPlayer.currentTime = startTime;
+        }
+
+        reportEvent("videoLoaded", {
+          duration: videoPlayer.duration,
+          startTime: startTime,
+          endTime: endTime,
+        });
+      });
+
+      videoPlayer.addEventListener("play", () => {
+        console.log("Video playing, starting time checks");
+        startTimeChecking();
+      });
+
+      videoPlayer.addEventListener("pause", () => {
+        console.log("Video paused, stopping time checks");
+        stopTimeChecking();
+        reportEvent("videoEnded");
+      });
+
+      videoPlayer.addEventListener("seeked", () => {
+        console.log("Video seeked to:", videoPlayer.currentTime);
+        checkAndHandleEndTime();
+      });
+
+      videoPlayer.addEventListener("ended", () => {
+        console.log("Video ended naturally");
+        stopTimeChecking();
+        reportEvent("videoEnded");
+      });
+
+      videoPlayer.addEventListener("error", (e) => {
+        let errorMessage = "Unknown video error.";
+        if (videoPlayer.error) {
+          switch (videoPlayer.error.code) {
+            case MediaError.MEDIA_ERR_ABORTED:
+              errorMessage = "Video fetch aborted.";
+              break;
+            case MediaError.MEDIA_ERR_NETWORK:
+              errorMessage = "Network error during video download.";
+              break;
+            case MediaError.MEDIA_ERR_DECODE:
+              errorMessage = "Video decoding error.";
+              break;
+            case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+              errorMessage = "Video source not supported.";
+              break;
+          }
+        }
+        stopTimeChecking();
+        reportEvent("videoError", { message: errorMessage });
+      });
+
+      window.addEventListener("storage", (event) => {
+        if (event.key === PLAYER_KEY_LOCAL && event.newValue) {
+          try {
+            const data = JSON.parse(event.newValue);
+            console.log("Received command:", data);
+
+            switch (data.command) {
+              case "loadVideo":
+                if (data.videoPath) {
+                  // Stop any existing time checking
+                  stopTimeChecking();
+
+                  // Update time constraints
+                  startTime = data?.startSeconds || 0;
+                  endTime = data?.endSeconds || null;
+
+                  console.log("Loading video with config:", {
+                    path: data.videoPath,
+                    startTime: startTime,
+                    endTime: endTime,
+                  });
+
+                  videoPlayer.src = data.videoPath;
+                  videoPlayer.load();
+                  videoPlayer
+                    .play()
+                    .catch((e) => console.error("Play failed:", e));
+                }
+                break;
+
+              case "play":
+                videoPlayer.play();
+                break;
+
+              case "pause":
+                videoPlayer.pause();
+                break;
+
+              case "stop":
+                stopTimeChecking();
+                videoPlayer.pause();
+                videoPlayer.currentTime = 0;
+                videoPlayer.src = "";
+                startTime = 0;
+                endTime = null;
+                videoPlayer.load();
+                break;
+
+              case "mute":
+                videoPlayer.muted = true;
+                break;
+
+              case "unmute":
+                videoPlayer.muted = false;
+                break;
+
+              case "setVolume":
+                if (typeof data.volume === "number") {
+                  videoPlayer.volume = Math.max(
+                    0,
+                    Math.min(data.volume / 100, 1)
+                  );
+                }
+                break;
+
+              case "seekTo":
+                if (typeof data.seconds === "number") {
+                  const targetTime = Math.max(
+                    startTime,
+                    Math.min(data.seconds, endTime || videoPlayer.duration)
+                  );
+                  videoPlayer.currentTime = targetTime;
+                }
+                break;
+
+              case "getCurrentTime":
+                reportEvent("timeUpdate", {
+                  currentTime: videoPlayer.currentTime,
+                  startTime: startTime,
+                  endTime: endTime,
+                });
+                break;
+            }
+          } catch (e) {
+            console.error("Command parsing error:", e);
+          }
+        }
+      });
+
+      // Regular time updates
+      setInterval(() => {
+        if (!videoPlayer.paused) {
+          const remainingTime = (endTime ?? videoPlayer.duration) - videoPlayer.currentTime;
+          reportEvent("timeUpdate", {
+            currentTime: videoPlayer.currentTime,
+            remainingTime,
+            startTime,
+            endTime,
+          });
+        }
+      }, 1000);
+
+      // Initial setup
+      videoPlayer.muted = false;
+    </script>
+  </body>
+</html>

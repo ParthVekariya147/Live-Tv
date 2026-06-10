@@ -1,0 +1,493 @@
+[2026-06-10T07:57:13.784Z] [warning] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation
+[2026-06-10T07:57:13.888Z] [error] Failed to load resource: the server responded with a status of 404 (File not found)
+[2026-06-10T07:57:13.889Z] [error] Failed to load resource: the server responded with a status of 404 (File not found)
+[2026-06-10T07:57:13.889Z] [error] Failed to load resource: the server responded with a status of 404 (File not found)
+[2026-06-10T07:57:13.890Z] [error] Failed to load resource: the server responded with a status of 404 (File not found)
+[2026-06-10T07:57:13.891Z] [error] Failed to load resource: the server responded with a status of 404 (File not found)
+[2026-06-10T07:57:13.891Z] [error] Failed to load resource: the server responded with a status of 404 (File not found)
+[2026-06-10T07:57:13.892Z] [error] Failed to load resource: the server responded with a status of 404 (File not found)
+[2026-06-10T07:57:13.911Z] [log] [Monitor] Fetching streams at 1:27:13 PM
+[2026-06-10T07:57:13.913Z] [log] [Monitor] Started — polling every 30 sec
+[2026-06-10T07:57:17.766Z] [error] Failed to load resource: the server responded with a status of 400 ()
+[2026-06-10T07:57:17.768Z] [warning] [KathaMonitor] Playlist scrape failed: HTTP 400
+[2026-06-10T07:57:17.768Z] [warning] [KathaMonitor] Trying RSS fallback...
+[2026-06-10T07:57:18.115Z] [error] Failed to load resource: the server responded with a status of 400 ()
+[2026-06-10T07:57:18.116Z] [error] [Monitor] Fetch failed: Proxy HTTP 400
+[2026-06-10T07:57:23.312Z] [error] Failed to load resource: the server responded with a status of 400 ()
+[2026-06-10T07:57:23.312Z] [error] [KathaMonitor] RSS also failed: HTTP 400
+[2026-06-10T07:57:43.920Z] [log] [Monitor] Fetching streams at 1:27:43 PM
+[2026-06-10T07:57:48.264Z] [error] Failed to load resource: the server responded with a status of 400 ()
+[2026-06-10T07:57:48.264Z] [error] [Monitor] Fetch failed: Proxy HTTP 400
+[2026-06-10T07:58:13.920Z] [log] [Monitor] Fetching streams at 1:28:13 PM
+[2026-06-10T07:58:18.217Z] [error] Failed to load resource: the server responded with a status of 400 ()
+[2026-06-10T07:58:18.217Z] [error] [Monitor] Fetch failed: Proxy HTTP 400
+[2026-06-10T07:58:43.917Z] [log] [Monitor] Fetching streams at 1:28:43 PM
+[2026-06-10T07:58:48.736Z] [error] Failed to load resource: the server responded with a status of 400 ()
+[2026-06-10T07:58:48.736Z] [error] [Monitor] Fetch failed: Proxy HTTP 400
+[2026-06-10T07:59:13.915Z] [log] [Monitor] Fetching streams at 1:29:13 PM
+[2026-06-10T07:59:18.370Z] [error] Failed to load resource: the server responded with a status of 400 ()
+[2026-06-10T07:59:18.370Z] [error] [Monitor] Fetch failed: Proxy HTTP 400
+[2026-06-10T07:59:43.919Z] [log] [Monitor] Fetching streams at 1:29:43 PM
+[2026-06-10T07:59:48.470Z] [error] Failed to load resource: the server responded with a status of 400 ()
+[2026-06-10T07:59:48.471Z] [error] [Monitor] Fetch failed: Proxy HTTP 400
+[2026-06-10T08:00:13.915Z] [log] [Monitor] Fetching streams at 1:30:13 PM
+[2026-06-10T08:00:14.152Z] [error] Failed to load resource: the server responded with a status of 400 ()
+[2026-06-10T08:00:14.153Z] [error] [Monitor] Fetch failed: Proxy HTTP 400
+[2026-06-10T08:00:43.915Z] [log] [Monitor] Fetching streams at 1:30:43 PM
+[2026-06-10T08:00:51.741Z] [error] Failed to load resource: the server responded with a status of 400 ()
+[2026-06-10T08:00:51.742Z] [error] [Monitor] Fetch failed: Proxy HTTP 400
+[2026-06-10T08:01:13.907Z] [log] [Monitor] Fetching streams at 1:31:13 PM
+[2026-06-10T08:01:14.147Z] [error] Failed to load resource: the server responded with a status of 400 ()
+[2026-06-10T08:01:14.150Z] [error] [Monitor] Fetch failed: Proxy HTTP 400
+[2026-06-10T08:01:43.916Z] [log] [Monitor] Fetching streams at 1:31:43 PM
+[2026-06-10T08:01:44.151Z] [error] Failed to load resource: the server responded with a status of 400 ()
+[2026-06-10T08:01:44.151Z] [error] [Monitor] Fetch failed: Proxy HTTP 400
+[2026-06-10T08:02:01.069Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:02:01.086Z] [warning] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation
+[2026-06-10T08:02:01.156Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:02:01.179Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:02:01.179Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:02:01.179Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:02:01.179Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:02:01.179Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:02:01.212Z] [log] [Monitor] Started — polling every 30 sec
+[2026-06-10T08:02:01.287Z] [log] [Monitor] Fetching streams at 1:32:01 PM via http://localhost:8765/proxy
+[2026-06-10T08:02:02.053Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:02:02.053Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:02:02.053Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:02:02.054Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:02:03.160Z] [log] [KathaMonitor] Playlist scraped — 0 videos
+[2026-06-10T08:02:03.160Z] [warning] [KathaMonitor] Trying RSS fallback...
+[2026-06-10T08:02:03.209Z] [log] [KathaMonitor] RSS fallback — 15 videos
+[2026-06-10T08:02:31.216Z] [log] [Monitor] Fetching streams at 1:32:31 PM via http://localhost:8765/proxy
+[2026-06-10T08:02:32.015Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:02:32.015Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:02:32.016Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:02:32.016Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:03:01.218Z] [log] [Monitor] Fetching streams at 1:33:01 PM via http://localhost:8765/proxy
+[2026-06-10T08:03:01.982Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:03:01.982Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:03:01.982Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:03:01.982Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:03:31.217Z] [log] [Monitor] Fetching streams at 1:33:31 PM via http://localhost:8765/proxy
+[2026-06-10T08:03:32.055Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:03:32.055Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:03:32.055Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:03:32.055Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:04:01.216Z] [log] [Monitor] Fetching streams at 1:34:01 PM via http://localhost:8765/proxy
+[2026-06-10T08:04:01.964Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:04:01.964Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:04:01.964Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:04:01.964Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:04:31.217Z] [log] [Monitor] Fetching streams at 1:34:31 PM via http://localhost:8765/proxy
+[2026-06-10T08:04:31.984Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:04:31.984Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:04:31.984Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:04:31.984Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:05:01.215Z] [log] [Monitor] Fetching streams at 1:35:01 PM via http://localhost:8765/proxy
+[2026-06-10T08:05:01.981Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:05:01.981Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:05:01.981Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:05:01.981Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:05:31.217Z] [log] [Monitor] Fetching streams at 1:35:31 PM via http://localhost:8765/proxy
+[2026-06-10T08:05:32.003Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:05:32.003Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:05:32.003Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:05:32.003Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:06:01.214Z] [log] [Monitor] Fetching streams at 1:36:01 PM via http://localhost:8765/proxy
+[2026-06-10T08:06:02.010Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:06:02.010Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:06:02.011Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:06:02.011Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:06:31.211Z] [log] [Monitor] Fetching streams at 1:36:31 PM via http://localhost:8765/proxy
+[2026-06-10T08:06:31.975Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:06:31.975Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:06:31.975Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:06:31.975Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:07:01.211Z] [log] [Monitor] Fetching streams at 1:37:01 PM via http://localhost:8765/proxy
+[2026-06-10T08:07:02.005Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:07:02.006Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:07:02.006Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:07:02.006Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:07:31.210Z] [log] [Monitor] Fetching streams at 1:37:31 PM via http://localhost:8765/proxy
+[2026-06-10T08:07:32.124Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:07:32.124Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:07:32.124Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:07:32.124Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:08:01.211Z] [log] [Monitor] Fetching streams at 1:38:01 PM via http://localhost:8765/proxy
+[2026-06-10T08:08:02.162Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:08:02.162Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:08:02.162Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:08:02.162Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:08:31.218Z] [log] [Monitor] Fetching streams at 1:38:31 PM via http://localhost:8765/proxy
+[2026-06-10T08:08:32.014Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:08:32.014Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:08:32.014Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:08:32.014Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:09:01.217Z] [log] [Monitor] Fetching streams at 1:39:01 PM via http://localhost:8765/proxy
+[2026-06-10T08:09:02.001Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:09:02.001Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:09:02.001Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:09:02.001Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:09:31.205Z] [log] [Monitor] Fetching streams at 1:39:31 PM via http://localhost:8765/proxy
+[2026-06-10T08:09:32.002Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:09:32.002Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:09:32.002Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:09:32.002Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:10:01.211Z] [log] [Monitor] Fetching streams at 1:40:01 PM via http://localhost:8765/proxy
+[2026-06-10T08:10:02.061Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:10:02.061Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:10:02.061Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:10:02.061Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:10:31.204Z] [log] [Monitor] Fetching streams at 1:40:31 PM via http://localhost:8765/proxy
+[2026-06-10T08:10:32.167Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:10:32.167Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:10:32.167Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:10:32.167Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:11:01.209Z] [log] [Monitor] Fetching streams at 1:41:01 PM via http://localhost:8765/proxy
+[2026-06-10T08:11:02.002Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:11:02.002Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:11:02.002Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:11:02.002Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:11:31.233Z] [log] [Monitor] Fetching streams at 1:41:31 PM via http://localhost:8765/proxy
+[2026-06-10T08:11:32.080Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:11:32.080Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:11:32.080Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:11:32.081Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:12:01.220Z] [log] [Monitor] Fetching streams at 1:42:01 PM via http://localhost:8765/proxy
+[2026-06-10T08:12:02.146Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:12:02.147Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:12:02.147Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:12:02.147Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:12:31.208Z] [log] [Monitor] Fetching streams at 1:42:31 PM via http://localhost:8765/proxy
+[2026-06-10T08:12:32.095Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:12:32.095Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:12:32.095Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:12:32.095Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:13:01.205Z] [log] [Monitor] Fetching streams at 1:43:01 PM via http://localhost:8765/proxy
+[2026-06-10T08:13:01.995Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:13:01.995Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:13:01.995Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:13:01.995Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:13:31.196Z] [log] [Monitor] Fetching streams at 1:43:31 PM via http://localhost:8765/proxy
+[2026-06-10T08:13:31.961Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:13:31.961Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:13:31.961Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:13:31.961Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:14:01.196Z] [log] [Monitor] Fetching streams at 1:44:01 PM via http://localhost:8765/proxy
+[2026-06-10T08:14:02.040Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:14:02.040Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:14:02.040Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:14:02.040Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:14:31.195Z] [log] [Monitor] Fetching streams at 1:44:31 PM via http://localhost:8765/proxy
+[2026-06-10T08:14:31.996Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:14:31.996Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:14:31.996Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:14:31.996Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:15:01.196Z] [log] [Monitor] Fetching streams at 1:45:01 PM via http://localhost:8765/proxy
+[2026-06-10T08:15:02.021Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:15:02.021Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:15:02.021Z] [log] [Monitor] Live: 0, Upcoming: 0
+[2026-06-10T08:15:02.021Z] [log] [Monitor] Verified live: 0, upcoming: 0
+[2026-06-10T08:15:13.978Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:13.994Z] [warning] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation
+[2026-06-10T08:15:14.045Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:14.066Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:14.066Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:14.066Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:14.066Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:14.067Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:14.097Z] [log] [Monitor] Started — polling every 30 sec
+[2026-06-10T08:15:14.156Z] [log] [Monitor] Fetching streams at 1:45:14 PM via http://localhost:8765/proxy
+[2026-06-10T08:15:14.584Z] [log] [KathaMonitor] Videos tab scraped — 30 videos
+[2026-06-10T08:15:14.587Z] [error] [KathaMonitor] Error: ReferenceError: formatDuration is not defined
+    at http://localhost:8765/monitor-katha.js:171:38
+    at Array.map (<anonymous>)
+    at renderKathaVideoList (http://localhost:8765/monitor-katha.js:143:6)
+    at fetchKathaVideos (http://localhost:8765/monitor-katha.js:115:5)
+[2026-06-10T08:15:14.867Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:15:14.867Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:15:14.867Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:15:15.087Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:15:15.093Z] [log] [Monitor] Auto-loading "u9SEkGgmEbo" (priority: matchSearchTerms)
+[2026-06-10T08:15:40.228Z] [warning] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation
+[2026-06-10T08:15:40.276Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:40.276Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:40.276Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:40.276Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:40.276Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:40.276Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:40.276Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:40.277Z] [log] [Monitor] Started — polling every 30 sec
+[2026-06-10T08:15:40.350Z] [log] [Monitor] Fetching streams at 1:45:40 PM via http://localhost:8765/proxy
+[2026-06-10T08:15:40.626Z] [log] [KathaMonitor] Videos tab scraped — 30 videos
+[2026-06-10T08:15:41.064Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:15:41.064Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:15:41.064Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:15:41.174Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:15:41.176Z] [log] [Monitor] Auto-loading "u9SEkGgmEbo" (priority: matchSearchTerms)
+[2026-06-10T08:15:58.033Z] [warning] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation
+[2026-06-10T08:15:58.069Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:58.069Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:58.069Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:58.069Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:58.069Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:58.069Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:58.069Z] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[2026-06-10T08:15:58.070Z] [log] [Monitor] Started — polling every 30 sec
+[2026-06-10T08:15:58.127Z] [log] [Monitor] Fetching streams at 1:45:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:15:58.590Z] [log] [KathaMonitor] Videos tab scraped — 30 videos
+[2026-06-10T08:15:59.059Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:15:59.060Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:15:59.060Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:15:59.194Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:15:59.195Z] [log] [Monitor] Auto-loading "u9SEkGgmEbo" (priority: matchSearchTerms)
+[2026-06-10T08:16:28.073Z] [log] [Monitor] Fetching streams at 1:46:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:16:28.856Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:16:28.856Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:16:28.856Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:16:28.987Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:16:55.713Z] [log] video-thumbnail-display-1 {"x":33,"y":131.5,"width":266,"height":149.703125,"top":131.5,"right":299,"bottom":281.203125,"left":33}
+[2026-06-10T08:16:55.713Z] [log] video-thumbnail-display-2 {"x":349,"y":131.5,"width":266,"height":149.703125,"top":131.5,"right":615,"bottom":281.203125,"left":349}
+[2026-06-10T08:16:55.713Z] [log] upcoming-video-thumbnail-display {"x":665,"y":131.5,"width":266,"height":149.703125,"top":131.5,"right":931,"bottom":281.203125,"left":665}
+[2026-06-10T08:16:55.714Z] [log] section: {"x":16,"y":-623,"width":1248,"height":5320.734375,"top":-623,"right":1264,"bottom":4697.734375,"left":16}
+[2026-06-10T08:16:58.066Z] [log] [Monitor] Fetching streams at 1:46:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:16:58.841Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:16:58.841Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:16:58.841Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:16:58.959Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:17:28.065Z] [log] [Monitor] Fetching streams at 1:47:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:17:28.842Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:17:28.842Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:17:28.842Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:17:28.971Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:17:58.074Z] [log] [Monitor] Fetching streams at 1:47:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:17:58.928Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:17:58.928Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:17:58.928Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:17:59.048Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:18:28.077Z] [log] [Monitor] Fetching streams at 1:48:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:18:28.858Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:18:28.858Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:18:28.858Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:18:28.978Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:18:58.069Z] [log] [Monitor] Fetching streams at 1:48:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:18:59.212Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:18:59.212Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:18:59.212Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:18:59.327Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:19:28.072Z] [log] [Monitor] Fetching streams at 1:49:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:19:28.902Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:19:28.902Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:19:28.902Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:19:29.029Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:19:58.070Z] [log] [Monitor] Fetching streams at 1:49:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:19:58.979Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:19:58.979Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:19:58.979Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:19:59.097Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:20:28.071Z] [log] [Monitor] Fetching streams at 1:50:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:20:28.868Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:20:28.868Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:20:28.868Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:20:28.991Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:20:58.068Z] [log] [Monitor] Fetching streams at 1:50:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:20:58.854Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:20:58.854Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:20:58.854Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:20:58.968Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:21:28.062Z] [log] [Monitor] Fetching streams at 1:51:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:21:28.845Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:21:28.845Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:21:28.845Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:21:28.969Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:21:58.061Z] [log] [Monitor] Fetching streams at 1:51:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:21:58.877Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:21:58.877Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:21:58.877Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:21:58.995Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:22:28.067Z] [log] [Monitor] Fetching streams at 1:52:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:22:28.879Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:22:28.879Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:22:28.879Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:22:29.002Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:22:58.060Z] [log] [Monitor] Fetching streams at 1:52:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:22:58.904Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:22:58.904Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:22:58.904Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:22:59.058Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:23:28.059Z] [log] [Monitor] Fetching streams at 1:53:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:23:28.826Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:23:28.826Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:23:28.826Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:23:28.942Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:23:58.058Z] [log] [Monitor] Fetching streams at 1:53:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:23:58.894Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:23:58.894Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:23:58.897Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:23:59.010Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:24:28.059Z] [log] [Monitor] Fetching streams at 1:54:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:24:28.922Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:24:28.922Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:24:28.922Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:24:29.036Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:24:58.054Z] [log] [Monitor] Fetching streams at 1:54:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:24:58.812Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:24:58.813Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:24:58.813Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:24:58.939Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:25:28.056Z] [log] [Monitor] Fetching streams at 1:55:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:25:29.219Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:25:29.219Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:25:29.219Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:25:29.344Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:25:58.056Z] [log] [Monitor] Fetching streams at 1:55:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:25:58.817Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:25:58.817Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:25:58.817Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:25:58.932Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:26:28.056Z] [log] [Monitor] Fetching streams at 1:56:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:26:28.918Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:26:28.919Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:26:28.919Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:26:29.036Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:26:58.053Z] [log] [Monitor] Fetching streams at 1:56:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:26:58.830Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:26:58.830Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:26:58.830Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:26:58.950Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:27:28.051Z] [log] [Monitor] Fetching streams at 1:57:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:27:28.861Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:27:28.861Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:27:28.861Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:27:28.991Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:27:58.051Z] [log] [Monitor] Fetching streams at 1:57:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:28:00.065Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:28:00.065Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:28:00.065Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:28:00.194Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:28:28.047Z] [log] [Monitor] Fetching streams at 1:58:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:28:28.776Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:28:28.776Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:28:28.776Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:28:28.918Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:28:58.048Z] [log] [Monitor] Fetching streams at 1:58:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:28:58.717Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:28:58.717Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:28:58.717Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:28:58.820Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:29:28.047Z] [log] [Monitor] Fetching streams at 1:59:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:29:28.833Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:29:28.834Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:29:28.834Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:29:28.940Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:29:58.046Z] [log] [Monitor] Fetching streams at 1:59:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:29:58.884Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:29:58.884Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:29:58.884Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:29:59.020Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:30:28.048Z] [log] [Monitor] Fetching streams at 2:00:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:30:28.937Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:30:28.937Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:30:28.937Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:30:29.109Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:30:58.044Z] [log] [Monitor] Fetching streams at 2:00:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:30:58.882Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:30:58.883Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:30:58.883Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:30:59.094Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:31:28.043Z] [log] [Monitor] Fetching streams at 2:01:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:31:28.904Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:31:28.905Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:31:28.905Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:31:29.041Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:31:58.043Z] [log] [Monitor] Fetching streams at 2:01:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:31:58.899Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:31:58.899Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:31:58.899Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:31:59.038Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:32:28.041Z] [log] [Monitor] Fetching streams at 2:02:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:32:28.872Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:32:28.872Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:32:28.872Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:32:29.017Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:32:58.040Z] [log] [Monitor] Fetching streams at 2:02:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:32:58.820Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:32:58.820Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:32:58.820Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:32:58.944Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:33:28.039Z] [log] [Monitor] Fetching streams at 2:03:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:33:28.916Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:33:28.916Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:33:28.916Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:33:29.039Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:33:58.083Z] [log] [Monitor] Fetching streams at 2:03:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:33:58.884Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:33:58.884Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:33:58.884Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:33:59.000Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:34:28.040Z] [log] [Monitor] Fetching streams at 2:04:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:34:28.808Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:34:28.808Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:34:28.808Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:34:28.920Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:34:58.041Z] [log] [Monitor] Fetching streams at 2:04:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:34:58.899Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:34:58.899Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:34:58.899Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:34:59.037Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:35:28.040Z] [log] [Monitor] Fetching streams at 2:05:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:35:28.963Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:35:28.963Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:35:28.963Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:35:29.129Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:35:58.042Z] [log] [Monitor] Fetching streams at 2:05:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:35:58.830Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:35:58.830Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:35:58.830Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:35:58.945Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:36:28.038Z] [log] [Monitor] Fetching streams at 2:06:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:36:28.865Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:36:28.865Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:36:28.865Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:36:29.004Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:36:58.039Z] [log] [Monitor] Fetching streams at 2:06:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:36:58.934Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:36:58.934Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:36:58.934Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:36:59.063Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:37:28.036Z] [log] [Monitor] Fetching streams at 2:07:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:37:28.849Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:37:28.849Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:37:28.849Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:37:28.968Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:37:58.035Z] [log] [Monitor] Fetching streams at 2:07:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:37:58.886Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:37:58.886Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:37:58.886Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:37:59.015Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:38:28.034Z] [log] [Monitor] Fetching streams at 2:08:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:38:28.821Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:38:28.821Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:38:28.821Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:38:28.941Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:38:58.032Z] [log] [Monitor] Fetching streams at 2:08:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:38:58.948Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:38:58.949Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:38:58.949Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:38:59.076Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:39:28.033Z] [log] [Monitor] Fetching streams at 2:09:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:39:28.887Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:39:28.887Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:39:28.887Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:39:29.006Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:39:58.031Z] [log] [Monitor] Fetching streams at 2:09:58 PM via http://localhost:8765/proxy
+[2026-06-10T08:39:58.902Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:39:58.902Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:39:58.902Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:39:59.029Z] [log] [Monitor] Verified live: 1, upcoming: 1
+[2026-06-10T08:40:28.029Z] [log] [Monitor] Fetching streams at 2:10:28 PM via http://localhost:8765/proxy
+[2026-06-10T08:40:28.855Z] [log] [Monitor] Using new lockupViewModel format, count: 30
+[2026-06-10T08:40:28.856Z] [log] [Monitor] Total items extracted: 30
+[2026-06-10T08:40:28.856Z] [log] [Monitor] Live: 1, Upcoming: 1
+[2026-06-10T08:40:28.981Z] [log] [Monitor] Verified live: 1, upcoming: 1

@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Loop Player</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden; /* Hide scrollbars */
+        background-color: black; /* Ensure black background for full screen */
+      }
+      #player {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="player"></div>
+
+    <script>
+      let player; // Declare player globally
+      const PLAYER_KEY = "loopPlayerCommand"; // Unique key for this player in localStorage (for incoming commands from Controller.html)
+      const PLAYER_EVENT_KEY = "loopPlayerEvent"; // Unique key for sending events to Controller.html
+      let videoDuration;
+      
+      // Function to load the YouTube IFrame API asynchronously
+      function loadYouTubeAPI() {
+        const tag = document.createElement("script");
+        // Corrected YouTube API URL to ensure the player loads correctly
+        tag.src = "https://www.youtube.com/iframe_api"; // Corrected URL
+        const firstScriptTag = document.getElementsByTagName("script")[0];
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+      }
+
+      // This function is called by the YouTube API when it's ready
+      function onYouTubeIframeAPIReady() {
+        console.log("YouTube IFrame API is ready for LoopPlayer.");
+        // This function is required by the YouTube API.
+        // Player creation will happen when a command is received via localStorage.
+      }
+
+      // Event listener for changes in localStorage
+      window.addEventListener("storage", (event) => {
+        if (event.key === PLAYER_KEY && event.newValue) {
+          try {
+            const data = JSON.parse(event.newValue);
+            console.log("LoopPlayer: Command received via localStorage:", data);
+
+            if (data.command === "loadVideo" && data.videoId) {
+              if (player) {
+                // If player already exists, load new video
+                console.log(
+                  `LoopPlayer: Loading new video ID: ${data.videoId}`
+                );
+                player.loadVideoById({
+                  videoId: data.videoId,
+                  playerVars: {
+                    autoplay: 1,
+                    controls: 0,
+                    modestbranding: 1, // Hide YouTube logo
+                    showinfo: 0, // Hide video title and uploader info
+                    rel: 0, // Do not show related videos
+                    fs: 1, // Enable fullscreen button (though we control it)
+                    iv_load_policy: 3, // Do not show video annotations
+                  },
+                });
+              } else {
+                // Create new player if it doesn't exist
+                // Ensure YT.Player is available before trying to create
+                if (
+                  typeof YT !== "undefined" &&
+                  typeof YT.Player !== "undefined"
+                ) {
+                  console.log(
+                    `LoopPlayer: Creating new player for video ID: ${data.videoId}`
+                  );
+                  player = new YT.Player("player", {
+                    videoId: data.videoId,
+                    playerVars: {
+                      autoplay: 1,
+                      controls: 0,
+                      modestbranding: 1,
+                      showinfo: 0,
+                      rel: 0,
+                      fs: 1,
+                      iv_load_policy: 3,
+                    },
+                    events: {
+                      onReady: onPlayerReady,
+                      onStateChange: onPlayerStateChange,
+                      onError: onPlayerError,
+                    },
+                  });
+                } else {
+                  console.error(
+                    "LoopPlayer: YouTube IFrame API (YT.Player) is not yet ready. Cannot create player."
+                  );
+                }
+              }
+            } else if (player) {
+              // Handle other commands if player exists
+              switch (data.command) {
+                case "play":
+                  console.log("LoopPlayer: Playing video.");
+                  player.playVideo();
+                  break;
+                case "pause":
+                  console.log("LoopPlayer: Pausing video.");
+                  player.pauseVideo();
+                  break;
+                case "stop":
+                  console.log("LoopPlayer: Stopping and destroying player.");
+                  player.stopVideo();
+                  player.destroy(); // Destroy player to clear video
+                  player = null;
+                  break;
+                case "mute":
+                  console.log("LoopPlayer: Muting video.");
+                  player.mute();
+                  break;
+                case "unmute":
+                  console.log("LoopPlayer: Unmuting video.");
+                  player.unMute();
+                  break;
+                case "setVolume":
+                  if (typeof data.volume === "number") {
+                    console.log(
+                      `LoopPlayer: Setting volume to ${data.volume}.`
+                    );
+                    player.setVolume(data.volume);
+                  }
+                  break;
+                case "seekTo":
+                  if (typeof data.seconds === "number") {
+                    console.log(
+                      `LoopPlayer: Seeking to ${data.seconds} seconds.`
+                    );
+                    player.seekTo(data.seconds, true); // true for allowSeekAhead
+                  }
+                  break;
+                case "destroy":
+                  console.log("LoopPlayer: Destroying player.");
+                  player.destroy();
+                  player = null;
+                  break;
+              }
+            }
+          } catch (e) {
+            console.error("LoopPlayer: Error parsing localStorage command:", e);
+          }
+        }
+      });
+
+      function onPlayerReady(event) {
+        console.log("LoopPlayer: Player is ready!");
+        event.target.playVideo(); // Autoplay on ready
+      }
+
+      function onPlayerStateChange(event) {
+        let state;
+        switch (event.data) {
+          case YT.PlayerState.ENDED:
+            state = "ended";
+            // Notify Controller.html that video has ended
+            localStorage.setItem(
+              PLAYER_EVENT_KEY,
+              JSON.stringify({ playerType: "loop", event: "videoEnded" })
+            );
+            setTimeout(() => {
+              localStorage.removeItem(PLAYER_EVENT_KEY); // Clear the item after a short delay
+            }, 100);
+            break;
+          case YT.PlayerState.PLAYING:
+            state = "playing";
+            break;
+          case YT.PlayerState.PAUSED:
+            state = "paused";
+            break;
+          case YT.PlayerState.BUFFERING:
+            state = "buffering";
+            break;
+          case YT.PlayerState.CUED:
+            state = "cued";
+            break;
+          case YT.PlayerState.UNSTARTED:
+            state = "unstarted";
+            break;
+          default:
+            state = "unknown";
+        }
+        console.log("LoopPlayer: State changed to:", state);
+      }
+
+      // Function to handle player errors
+      function onPlayerError(event) {
+        let errorMessage = "Unknown error";
+        switch (event.data) {
+          case 2:
+            errorMessage = "Invalid video ID or video not found.";
+            break;
+          case 100:
+            errorMessage = "Video not found.";
+            break;
+          case 101:
+          case 150:
+            errorMessage =
+              "Video cannot be played in an embedded player (e.g., private video, restricted playback).";
+            break;
+        }
+        console.error(
+          "LoopPlayer: Error:",
+          errorMessage,
+          "Error code:",
+          event.data
+        );
+        // Notify Controller.html that the video failed to load/play
+        localStorage.setItem(
+          PLAYER_EVENT_KEY,
+          JSON.stringify({
+            playerType: "loop",
+            event: "videoError",
+            errorCode: event.data,
+          })
+        );
+        setTimeout(() => {
+          localStorage.removeItem(PLAYER_EVENT_KEY); // Clear the item after a short delay
+        }, 100);
+      }
+      function reportEvent(eventName, data = {}) {
+        const eventData = {
+          playerType: "delay",
+          event: eventName,
+          timestamp: Date.now(),
+          ...data,
+        };
+        localStorage.setItem(PLAYER_EVENT_KEY, JSON.stringify(eventData));
+        // Clear the item after a short delay to ensure the 'storage' event fires cleanly
+        setTimeout(() => {
+          localStorage.removeItem(PLAYER_EVENT_KEY);
+        }, 100);
+      }
+
+            setInterval(() => {
+        // FIX 3: Add a guard clause to ensure the player object exists and is ready
+        if (!player || typeof player.getPlayerState !== "function") {
+          return;
+        }
+        if(!videoDuration) videoDuration = player.getDuration()
+        const currentTime= player.getCurrentTime()
+        // FIX 2: Check state using the correct method and constant
+        if (player.getPlayerState() === YT.PlayerState.PLAYING) {
+          reportEvent("timeUpdate", {
+            // FIX 2: Get time using the correct method
+            currentTime,
+            remainingTime: videoDuration - currentTime
+          });
+        }
+      }, 1000);
+    
+      // Load the YouTube API when the page loads
+      loadYouTubeAPI();
+    </script>
+  </body>
+</html>

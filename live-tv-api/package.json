@@ -1,0 +1,15 @@
+{
+  "name": "live-tv-api",
+  "version": "1.0.0",
+  "description": "SMK TV — stable YouTube data API. Only this file needs updating when YouTube changes.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "devDependencies": {
+    "vercel": "^37.0.0"
+  }
+}
