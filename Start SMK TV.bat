@@ -28,18 +28,49 @@ for /f "tokens=5" %%P in ('netstat -aon 2^>nul ^| findstr ":3004 "') do (
 
 timeout /t 1 /nobreak >nul
 
-:: ── Start services via PM2 ────────────────────────────────────────────────────
-echo [3/4] Starting services...
-where pm2 >nul 2>&1
+:: ── Check Node.js is installed ───────────────────────────────────────────────
+where node >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo  ERROR: pm2 not found in PATH.
-    echo  Please install it first:
-    echo    npm install -g pm2
+    echo  ERROR: Node.js is not installed.
+    echo  Download and install it from: https://nodejs.org
+    echo  Then re-run this launcher.
     echo.
     pause
     exit /b 1
 )
+
+:: ── Auto-install PM2 if missing ───────────────────────────────────────────────
+echo [3/4] Checking PM2...
+where pm2 >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo  PM2 not found — installing automatically...
+    npm install -g pm2
+    if %ERRORLEVEL% NEQ 0 (
+        echo.
+        echo  ERROR: Failed to install PM2. Check your internet connection.
+        echo.
+        pause
+        exit /b 1
+    )
+    echo  PM2 installed successfully.
+)
+
+:: ── Install node_modules if missing (first run) ───────────────────────────────
+if not exist "%ROOT%\live-tv-api\node_modules" (
+    echo  Installing API dependencies...
+    pushd "%ROOT%\live-tv-api"
+    npm install
+    popd
+)
+if not exist "%ROOT%\live-tv-controller-react\node_modules" (
+    echo  Installing UI dependencies...
+    pushd "%ROOT%\live-tv-controller-react"
+    npm install
+    popd
+)
+
+echo [3/4] Starting services...
 
 pm2 startOrRestart "%ECOSYSTEM%" --update-env
 if %ERRORLEVEL% NEQ 0 (
