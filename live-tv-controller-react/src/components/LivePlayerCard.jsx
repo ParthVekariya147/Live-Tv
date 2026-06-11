@@ -11,11 +11,13 @@ import ThumbnailLoader from './common/ThumbnailLoader';
 const DEFAULT_LIVE_VIDEO_ID = "T3wvnwSSw8g";
 
 const LivePlayerCard = () => {
-    const { sourceState, setSourceVisibility } = useOBS();
+    const { sourceState } = useOBS();
     const isVisible = sourceState["Live Player"];
     const isInitialized = useRef(false);
 
     const [videoId, setVideoId] = useState(DEFAULT_LIVE_VIDEO_ID);
+    const videoIdRef = useRef(videoId);
+    useEffect(() => { videoIdRef.current = videoId; }, [videoId]);
     const [priority, setPriority] = useState("matchSearchTerms");
 
     // Playback
@@ -75,8 +77,9 @@ const LivePlayerCard = () => {
 
     // Resume playback when OBS visibility changes - sends actual player commands
     const resumePlayback = () => {
-        if (videoId) {
-            sendPlayerCommand('livePlayerCommand', 'loadVideo', videoId);
+        const vid = videoIdRef.current;
+        if (vid) {
+            sendPlayerCommand('livePlayerCommand', 'loadVideo', vid);
             sendPlayerCommand('livePlayerCommand', 'play');
             sendPlayerCommand('livePlayerCommand', 'unmute');
             setIsPlaying(true);

@@ -9,13 +9,17 @@ import PlayerControlBtn from './common/PlayerControlBtn';
 import ThumbnailLoader from './common/ThumbnailLoader';
 
 const LoopPlayerCard = () => {
-    const { sourceState, setSourceVisibility } = useOBS();
+    const { sourceState } = useOBS();
     const isVisible = sourceState["Loop Player"];
     const isInitialized = useRef(false);
     const hasUserData = useRef(false); // Track if we have actual user data to save
 
     const [playlist, setPlaylist] = useState([]);
     const [currentIndex, setCurrentIndex] = useState(0);
+    const playlistRef = useRef(playlist);
+    const currentIndexRef = useRef(currentIndex);
+    useEffect(() => { playlistRef.current = playlist; }, [playlist]);
+    useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
     const [inputValue, setInputValue] = useState("");
     const [jumpIndex, setJumpIndex] = useState(""); // For jump to index feature
 
@@ -115,8 +119,10 @@ const LoopPlayerCard = () => {
 
     // Resume playback of existing playlist without parsing inputValue
     const resumePlayback = () => {
-        if (playlist.length > 0) {
-            const vid = playlist[currentIndex] || playlist[0];
+        const pl = playlistRef.current;
+        const ci = currentIndexRef.current;
+        if (pl.length > 0) {
+            const vid = pl[ci] || pl[0];
             if (vid) {
                 sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
                 sendPlayerCommand('loopPlayerCommand', 'play');
@@ -128,25 +134,27 @@ const LoopPlayerCard = () => {
         }
     };
 
-    // Listen to player events (time update, ended)
+    // Listen to player events (time update, ended) — uses refs to avoid stale closure
     useEffect(() => {
         const handleStorage = (e) => {
             if (e.key === PLAYER_EVENT_KEY && e.newValue) {
                 try {
                     const data = JSON.parse(e.newValue);
-                    if (data.event === 'timeUpdate') {
-                        // TODO: helper for HMS
-                        // We can just format specific stats if needed, or pass raw
-                    }
                     if (data.playerType === 'loop' && (data.event === 'videoEnded' || data.event === 'videoError')) {
-                        handleNext();
+                        const ci = currentIndexRef.current;
+                        const pl = playlistRef.current;
+                        let nextIdx = ci + 1;
+                        if (nextIdx >= pl.length) nextIdx = 0;
+                        setCurrentIndex(nextIdx);
+                        const vid = pl[nextIdx];
+                        if (vid) sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
                     }
                 } catch (err) { }
             }
         };
         window.addEventListener('storage', handleStorage);
         return () => window.removeEventListener('storage', handleStorage);
-    }, [currentIndex, playlist]); // Dependencies might need check
+    }, []); // refs always have latest values — no stale closure
 
     const handleLoadAndPlay = () => {
         let currentList = playlist;

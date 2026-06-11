@@ -38,9 +38,9 @@ const MonitorCard = ({ id, title, enabled, data, error, stale, channelOptions, s
     } else if (data) {
         displayTitle = data.title;
         videoId = data.videoId;
-        channelName = "Swaminarayan";
+        channelName = data.channelName || "Swaminarayan";
         thumbnail = data.thumbnailUrl;
-        channelUrl = `https://www.youtube.com/channel/UC7HQ3mzdsyvLU0Y7a2t3N7A`;
+        channelUrl = data.channelUrl || `https://www.youtube.com/channel/UC7HQ3mzdsyvLU0Y7a2t3N7A`;
     } else {
         displayTitle = "No Live Event Found";
         thumbnail = "https://placehold.co/280x157.5/333333/FFFFFF?text=No+Live+Event";

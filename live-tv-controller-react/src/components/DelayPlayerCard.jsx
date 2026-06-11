@@ -9,7 +9,7 @@ import PlayerControlBtn from './common/PlayerControlBtn';
 import ThumbnailLoader from './common/ThumbnailLoader';
 
 const DelayPlayerCard = () => {
-    const { sourceState, setSourceVisibility } = useOBS();
+    const { sourceState } = useOBS();
     const isVisible = sourceState["Delay Live"];
     const isInitialized = useRef(false);
     const hasUserData = useRef(false); // Track if we have actual user data to save
@@ -17,6 +17,12 @@ const DelayPlayerCard = () => {
     const [videoId, setVideoId] = useState("");
     const [startTime, setStartTime] = useState("");
     const [endTime, setEndTime] = useState("");
+    const videoIdRef = useRef(videoId);
+    const startTimeRef = useRef(startTime);
+    const endTimeRef = useRef(endTime);
+    useEffect(() => { videoIdRef.current = videoId; }, [videoId]);
+    useEffect(() => { startTimeRef.current = startTime; }, [startTime]);
+    useEffect(() => { endTimeRef.current = endTime; }, [endTime]);
 
     const [isPlaying, setIsPlaying] = useState(true);
     const [isMuted, setIsMuted] = useState(false);
@@ -124,10 +130,11 @@ const DelayPlayerCard = () => {
 
     // Resume playback of existing video without modifying state
     const resumePlayback = () => {
-        if (videoId) {
-            const startSeconds = startTime ? timeToSeconds(startTime) : 0;
-            const endSeconds = endTime ? timeToSeconds(endTime) : null;
-            sendPlayerCommand('delayLivePlayerCommand', 'loadVideo', videoId, startSeconds, endSeconds);
+        const vid = videoIdRef.current;
+        if (vid) {
+            const startSeconds = startTimeRef.current ? timeToSeconds(startTimeRef.current) : 0;
+            const endSeconds = endTimeRef.current ? timeToSeconds(endTimeRef.current) : null;
+            sendPlayerCommand('delayLivePlayerCommand', 'loadVideo', vid, startSeconds, endSeconds);
             setIsPlaying(true);
             setIsStopped(false);
             setIsMuted(false);

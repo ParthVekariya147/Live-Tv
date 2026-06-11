@@ -82,6 +82,9 @@ const KathaMonitor = () => {
     const [pendingTimeouts, setPendingTimeouts] = useState([]);
 
     const isInitialized = useRef(false);
+    // Refs so WS handler always calls the latest version of these functions
+    const loadKathaContentRef = useRef(null);
+    const loadToDelayPlayerRef = useRef(null);
     // WebSocket connection for scheduler triggers (24/7 Reliability)
     const wsRef = useRef(null);
     const wsReconnectRef = useRef(null);
@@ -112,14 +115,13 @@ const KathaMonitor = () => {
                 try {
                     const message = JSON.parse(event.data);
 
-                    // Handle scheduler triggers for Katha actions
+                    // Use refs so handler always calls the latest function (avoids stale closure)
                     if (message.type === 'SCHEDULER_TRIGGER') {
                         const { action, source } = message.data;
-
                         if (action === 'katha_refresh' || source === 'Katha Refresh') {
-                            loadKathaContent();
+                            loadKathaContentRef.current?.();
                         } else if (action === 'katha_player' || source === 'Katha Player') {
-                            loadToDelayPlayer();
+                            loadToDelayPlayerRef.current?.();
                         }
                     }
                 } catch {
@@ -376,11 +378,10 @@ const KathaMonitor = () => {
             if (kathaVideos.length > 0) {
                 const latestVideo = kathaVideos[0];
                 const videoId = latestVideo.videoId;
-                let startTime = latestVideo.manglaCharanTimestamp.time;
-
-                if (startTime === "Not Found" || startTime.startsWith("Error")) {
-                    startTime = "00:00";
-                }
+                const tsWord = latestVideo.manglaCharanTimestamp.word || '';
+                let startTime = (tsWord === 'Not Found' || tsWord.startsWith('Error'))
+                    ? '00:00:00'
+                    : latestVideo.manglaCharanTimestamp.time;
 
                 // Dispatch custom event to DelayPlayerCard (works in same tab)
                 const prefillData = {
@@ -403,6 +404,10 @@ const KathaMonitor = () => {
             setLoadingToPlayer(false);
         }
     };
+
+    // Keep refs in sync so WS handler always calls the latest function versions
+    useEffect(() => { loadKathaContentRef.current = loadKathaContent; });
+    useEffect(() => { loadToDelayPlayerRef.current = loadToDelayPlayer; });
 
     return (
         <div className="player-control-card">

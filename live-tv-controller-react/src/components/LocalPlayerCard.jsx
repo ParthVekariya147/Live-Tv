@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useOBS } from '../context/OBSContext';
-import { fetchVideoDetails, sendPlayerCommand, LOCAL_PLAYER_EVENT_KEY, timeToSeconds } from '../utils/core-utils';
+import { sendPlayerCommand, LOCAL_PLAYER_EVENT_KEY, timeToSeconds } from '../utils/core-utils';
 import { usePlayerTime } from '../utils/usePlayerHooks';
 import { logSourceChange, logVideoEnd } from '../utils/logger';
 import PlayerControlBtn from './common/PlayerControlBtn';
@@ -37,11 +37,7 @@ const LocalPlayerCard = () => {
     const [isMuted, setIsMuted] = useState(false);
     const [isStopped, setIsStopped] = useState(false);
 
-    const [videoInfo, setVideoInfo] = useState({
-        title: "No local video loaded",
-        currentTime: "00:00:00",
-        remainingTime: "00:00:00"
-    });
+    const [videoInfo, setVideoInfo] = useState({ title: "No local video loaded" });
     const [statusText, setStatusText] = useState("Not loaded");
 
     // Use custom hook for time updates
@@ -126,17 +122,17 @@ const LocalPlayerCard = () => {
         }
     }, [endActions]);
 
-    // Resume playback when OBS visibility changes - sends actual player commands
+    // Resume playback when OBS visibility changes — uses refs to avoid stale closure
     const resumePlayback = () => {
-        if (playlist.length === 0) return;
-        const currentVideo = playlist[currentIndex];
+        const pl = playlistRef.current;
+        const ci = currentIndexRef.current;
+        if (pl.length === 0) return;
+        const currentVideo = pl[ci];
         if (currentVideo && currentVideo.path) {
             const displayName = currentVideo.name || currentVideo.path.split(/[\\/]/).pop();
-            setVideoInfo(prev => ({ ...prev, title: displayName }));
-            // Get start/end times in seconds
+            setVideoInfo({ title: displayName });
             const startSeconds = currentVideo.startTime ? timeToSeconds(currentVideo.startTime) : 0;
             const endSeconds = currentVideo.endTime ? timeToSeconds(currentVideo.endTime) : null;
-            // loadVideo command auto-plays with sound
             sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(currentVideo.path));
             setIsPlaying(true);
             setIsStopped(false);
@@ -300,8 +296,9 @@ const LocalPlayerCard = () => {
     };
 
     const removePath = (index) => {
-        const newPlaylist = playlist.filter((_, i) => i !== index);
-        setPlaylist(newPlaylist);
+        const item = playlist[index];
+        if (item?.path?.startsWith('blob:')) URL.revokeObjectURL(item.path);
+        setPlaylist(playlist.filter((_, i) => i !== index));
     };
 
     // Convert path to appropriate URL format

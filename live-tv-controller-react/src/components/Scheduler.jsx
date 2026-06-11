@@ -195,26 +195,19 @@ const Scheduler = () => {
         };
     }, [handleWsMessage, loadSchedules]);
 
-    // Update display every second (just for the countdown display)
-    const [, forceUpdate] = useState(0);
-    useEffect(() => {
-        const displayInterval = setInterval(() => {
-            forceUpdate(n => n + 1);
-        }, 1000);
-        return () => clearInterval(displayInterval);
-    }, []);
+    // Note: countdown display is driven by SCHEDULER_TICK from WebSocket (every 1s) — no polling needed
 
     // ============================================
     // SCHEDULER CONTROL
     // ============================================
 
     const handleToggleScheduler = async () => {
+        // State is driven by WebSocket SCHEDULER_STATUS — no optimistic update needed
         if (schedulerEnabled) {
             await stopScheduler();
         } else {
             await startScheduler();
         }
-        setSchedulerEnabled(!schedulerEnabled);
     };
 
     // ============================================

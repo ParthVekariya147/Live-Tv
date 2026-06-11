@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useOBS } from './context/OBSContext';
 import { getCurrentDateTimeFormatted, DELAY_PLAYER_EVENT_KEY, LIVE_PLAYER_EVENT_KEY, LOCAL_PLAYER_EVENT_KEY, sendPlayerCommand } from './utils/core-utils';
 import { logVideoEnd, logVideoError } from './utils/logger';
@@ -12,6 +12,8 @@ import LogViewer from './components/LogViewer';
 
 function App() {
   const { isConnected, SCENE_NAME, sourceState, setSourceVisibility } = useOBS();
+  const sourceStateRef = useRef(sourceState);
+  useEffect(() => { sourceStateRef.current = sourceState; }, [sourceState]);
   const [currentTime, setCurrentTime] = useState(getCurrentDateTimeFormatted());
   const [monitor1Enabled, setMonitor1Enabled] = useState(true);
   const [monitor2Enabled, setMonitor2Enabled] = useState(true);
@@ -31,27 +33,23 @@ function App() {
     if (stored2 !== null) setMonitor2Enabled(stored2 === "true");
   }, []);
 
-  // Global storage event listener for video ended events
+  // Global storage event listener for video ended events — uses ref so this never re-registers
   useEffect(() => {
     const handleStorageEvent = (event) => {
-      // Handle Delay Player video ended or error
+      const ss = sourceStateRef.current;
+
       if (event.key === DELAY_PLAYER_EVENT_KEY && event.newValue) {
         try {
           const data = JSON.parse(event.newValue);
           if (data.playerType === 'delay' && (data.event === 'videoEnded' || data.event === 'videoError')) {
             sendPlayerCommand('delayLivePlayerCommand', 'pause');
-
-            const nextAction = !sourceState["Live Player"] ? 'switch_to_loop' : 'hide_delay';
-
-            // Log the event
+            const nextAction = !ss["Live Player"] ? 'switch_to_loop' : 'hide_delay';
             if (data.event === 'videoEnded') {
               logVideoEnd('Delay Live', data.videoId || 'unknown', nextAction);
             } else {
               logVideoError('Delay Live', data.videoId || 'unknown', data.errorCode, 'Video error', nextAction);
             }
-
-            // Only switch to Loop Player if Live Player is NOT active
-            if (!sourceState["Live Player"]) {
+            if (!ss["Live Player"]) {
               setSourceVisibility("Loop Player", true);
             } else {
               setSourceVisibility("Delay Live", false);
@@ -62,33 +60,26 @@ function App() {
         }
       }
 
-      // Handle Live Player video ended or error
       if (event.key === LIVE_PLAYER_EVENT_KEY && event.newValue) {
         try {
           const data = JSON.parse(event.newValue);
           if (data.event === 'videoEnded' || data.event === 'videoError') {
-
-            // Log the event
             if (data.event === 'videoEnded') {
               logVideoEnd('Live Player', data.videoId || 'unknown', 'switch_to_loop');
             } else {
               logVideoError('Live Player', data.videoId || 'unknown', data.errorCode, 'Video error', 'switch_to_loop');
             }
-
             setSourceVisibility("Loop Player", true);
           }
         } catch (e) {
           console.error('Error parsing LivePlayer event:', e);
         }
       }
-
-      // Handle Local PC Player video ended (handled by LocalPlayerCard itself for playlist logic)
-      // The actual end action logic is in LocalPlayerCard
     };
 
     window.addEventListener('storage', handleStorageEvent);
     return () => window.removeEventListener('storage', handleStorageEvent);
-  }, [sourceState, setSourceVisibility]);
+  }, [setSourceVisibility]); // setSourceVisibility is stable; sourceState read via ref
 
   const toggleMonitor1 = () => {
     const newState = !monitor1Enabled;

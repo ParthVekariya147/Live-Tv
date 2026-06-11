@@ -149,6 +149,20 @@ wss.on('connection', (ws) => {
         console.error('[WebSocket] Error:', err.message);
         wsClients.delete(ws);
     });
+
+    // Send initial state to newly connected client (merged from second handler)
+    try {
+        ws.send(JSON.stringify({ type: 'SCHEDULER_STATUS', data: scheduler.getStatus(), timestamp: new Date().toISOString() }));
+        ws.send(JSON.stringify({ type: 'SCHEDULES_UPDATED', data: { schedules: scheduler.getAllSchedules() }, timestamp: new Date().toISOString() }));
+        ws.send(JSON.stringify({ type: 'SCHEDULER_TICK', data: { nextTriggers: scheduler.getNextTriggers(10), serverTime: new Date().toISOString() }, timestamp: new Date().toISOString() }));
+        ws.send(JSON.stringify({ type: 'STATE_SYNC', data: stateService.getAll(), timestamp: new Date().toISOString() }));
+        const unackedAlerts = scheduler.getUnacknowledgedAlerts();
+        if (unackedAlerts.length > 0) {
+            ws.send(JSON.stringify({ type: 'SCHEDULER_ALERTS', data: { alerts: unackedAlerts }, timestamp: new Date().toISOString() }));
+        }
+    } catch (err) {
+        console.error('[WebSocket] Error sending initial state:', err.message);
+    }
 });
 
 // Broadcast to all connected clients
@@ -271,49 +285,6 @@ stateService.onLog = (logEntry) => {
     }
 };
 
-// Send scheduler status and app state to newly connected WebSocket clients
-wss.on('connection', (ws) => {
-    // Send current scheduler status on connect
-    ws.send(JSON.stringify({
-        type: 'SCHEDULER_STATUS',
-        data: scheduler.getStatus(),
-        timestamp: new Date().toISOString()
-    }));
-
-    // Send full schedules list on connect
-    ws.send(JSON.stringify({
-        type: 'SCHEDULES_UPDATED',
-        data: { schedules: scheduler.getAllSchedules() },
-        timestamp: new Date().toISOString()
-    }));
-
-    // Send pending triggers immediately on connect
-    ws.send(JSON.stringify({
-        type: 'SCHEDULER_TICK',
-        data: {
-            nextTriggers: scheduler.getNextTriggers(10),
-            serverTime: new Date().toISOString()
-        },
-        timestamp: new Date().toISOString()
-    }));
-
-    // Send full app state on connect
-    ws.send(JSON.stringify({
-        type: 'STATE_SYNC',
-        data: stateService.getAll(),
-        timestamp: new Date().toISOString()
-    }));
-
-    // Also send any unacknowledged alerts
-    const unackedAlerts = scheduler.getUnacknowledgedAlerts();
-    if (unackedAlerts.length > 0) {
-        ws.send(JSON.stringify({
-            type: 'SCHEDULER_ALERTS',
-            data: { alerts: unackedAlerts },
-            timestamp: new Date().toISOString()
-        }));
-    }
-});
 
 
 // Start scheduler automatically
@@ -692,15 +663,6 @@ app.put('/api/schedules', (req, res) => {
     } catch (e) {
         res.status(400).json({ success: false, error: e.message });
     }
-});
-
-// GET /api/scheduler/next - Get next pending triggers
-app.get('/api/scheduler/next', (req, res) => {
-    const count = parseInt(req.query.count) || 5;
-    res.json({
-        success: true,
-        nextTriggers: scheduler.getNextTriggers(count)
-    });
 });
 
 // ============================================
