@@ -40,3 +40,5 @@ live-tv-controller-react/data/backups/
 live-tv-controller-react/data/app-state.json
 live-tv-controller-react/data/app-state.json.bak
 live-tv-controller-react/data/schedules.json.bak
+# Built exe files (too large for git — copy manually to share)
+exe/
