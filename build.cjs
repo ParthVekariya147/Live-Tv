@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 
 const ROOT    = __dirname;
-const EXE_DIR = path.join(ROOT, 'exe');
+const EXE_DIR = path.join(ROOT, 'windows', 'exe');
 const IS_WIN  = process.platform === 'win32';
 
 // Resolve a node_modules/.bin binary correctly on both Mac and Windows
