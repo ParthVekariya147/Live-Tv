@@ -9,24 +9,10 @@ set "ECOSYSTEM=%ROOT%\ecosystem.config.cjs"
 set "APP_URL=http://localhost:3004"
 
 echo.
-echo  ╔══════════════════════════════╗
-echo  ║       SMK TV Launcher        ║
-echo  ╚══════════════════════════════╝
+echo  +==============================+
+echo  ^|       SMK TV Launcher        ^|
+echo  +==============================+
 echo.
-
-:: ── Kill any process on port 3000 ─────────────────────────────────────────────
-echo [1/4] Clearing port 3000...
-for /f "tokens=5" %%P in ('netstat -aon 2^>nul ^| findstr ":3000 "') do (
-    taskkill /F /PID %%P >nul 2>&1
-)
-
-:: ── Kill any process on port 3004 ─────────────────────────────────────────────
-echo [2/4] Clearing port 3004...
-for /f "tokens=5" %%P in ('netstat -aon 2^>nul ^| findstr ":3004 "') do (
-    taskkill /F /PID %%P >nul 2>&1
-)
-
-timeout /t 1 /nobreak >nul
 
 :: ── Check Node.js is installed ───────────────────────────────────────────────
 where node >nul 2>&1
@@ -40,23 +26,59 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-:: ── Auto-install PM2 if missing ───────────────────────────────────────────────
-echo [3/4] Checking PM2...
+:: ── Kill any process on port 3000 ─────────────────────────────────────────────
+echo [1/5] Clearing port 3000...
+for /f "tokens=5" %%P in ('netstat -aon 2^>nul ^| findstr ":3000 "') do (
+    taskkill /F /PID %%P >nul 2>&1
+)
+
+:: ── Kill any process on port 3004 ─────────────────────────────────────────────
+echo [2/5] Clearing port 3004...
+for /f "tokens=5" %%P in ('netstat -aon 2^>nul ^| findstr ":3004 "') do (
+    taskkill /F /PID %%P >nul 2>&1
+)
+
+timeout /t 1 /nobreak >nul
+
+:: ── Find or auto-install PM2 ─────────────────────────────────────────────────
+echo [3/5] Checking PM2...
+set "PM2_CMD="
+
+:: Check if pm2 is already in PATH
 where pm2 >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo  PM2 not found — installing automatically...
+if %ERRORLEVEL% EQU 0 (
+    set "PM2_CMD=pm2"
+)
+
+:: Not in PATH — try the default npm global location on Windows
+if "!PM2_CMD!" == "" (
+    if exist "%APPDATA%\npm\pm2.cmd" (
+        set "PM2_CMD=%APPDATA%\npm\pm2.cmd"
+    )
+)
+
+:: Still not found — install it now
+if "!PM2_CMD!" == "" (
+    echo  PM2 not found - installing automatically...
     npm install -g pm2
-    if %ERRORLEVEL% NEQ 0 (
+    :: Check the file directly — don't rely on ERRORLEVEL (npm can exit non-zero even on success)
+    if exist "%APPDATA%\npm\pm2.cmd" (
+        set "PM2_CMD=%APPDATA%\npm\pm2.cmd"
+        echo  PM2 installed successfully.
+    ) else (
         echo.
-        echo  ERROR: Failed to install PM2. Check your internet connection.
+        echo  ERROR: PM2 install failed. Please run manually:
+        echo    npm install -g pm2
         echo.
         pause
         exit /b 1
     )
-    echo  PM2 installed successfully.
 )
 
+echo  Using PM2: !PM2_CMD!
+
 :: ── Install node_modules if missing (first run) ───────────────────────────────
+echo [4/5] Checking dependencies...
 if not exist "%ROOT%\live-tv-api\node_modules" (
     echo  Installing API dependencies...
     pushd "%ROOT%\live-tv-api"
@@ -70,20 +92,20 @@ if not exist "%ROOT%\live-tv-controller-react\node_modules" (
     popd
 )
 
-echo [3/4] Starting services...
-
-pm2 startOrRestart "%ECOSYSTEM%" --update-env
+:: ── Start services via PM2 ────────────────────────────────────────────────────
+echo [5/5] Starting services...
+"!PM2_CMD!" startOrRestart "%ECOSYSTEM%" --update-env
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo  ERROR: PM2 failed to start services.
-    echo  Check the ecosystem config or run: pm2 logs
+    echo  Run: pm2 logs
     echo.
     pause
     exit /b 1
 )
 
 :: ── Wait for port 3004 to respond (max 30s) ───────────────────────────────────
-echo [4/4] Waiting for SMK TV to be ready...
+echo  Waiting for SMK TV to be ready...
 set READY=0
 for /l %%i in (1,1,30) do (
     if !READY! EQU 0 (
