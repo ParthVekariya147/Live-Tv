@@ -3,9 +3,32 @@
   "version": "1.0.0",
   "description": "Live TV Controller",
   "type": "module",
+  "main": "smk-launcher.cjs",
+  "bin": "smk-launcher.cjs",
   "scripts": {
     "install:all": "npm install --prefix live-tv-api && npm install --prefix live-tv-controller-react",
     "build": "npm run build --prefix live-tv-controller-react",
-    "start": "node start.js"
+    "start": "node start.js",
+    "build:exe": "node build.cjs"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^5.11.5",
+    "esbuild": "^0.24.0"
+  },
+  "pkg": {
+    "scripts": [
+      "smk-launcher.cjs",
+      "live-tv-api/.bundle.cjs",
+      "live-tv-controller-react/server.cjs",
+      "live-tv-controller-react/scheduler-service.cjs",
+      "live-tv-controller-react/state-service.cjs"
+    ],
+    "assets": [
+      "live-tv-controller-react/dist/**/*"
+    ],
+    "targets": [
+      "node20-win-x64"
+    ],
+    "outputPath": "."
   }
 }

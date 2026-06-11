@@ -83,12 +83,6 @@ async function handleVideoDescription(req, res) {
     }
 }
 
-const routes = {
-    "/api/live": (await import("./api/live.js")).default,
-    "/api/videos": (await import("./api/videos.js")).default,
-    "/api/video-description": handleVideoDescription,
-};
-
 function createResponse(res) {
     return {
         status(code) {
@@ -107,46 +101,58 @@ function createResponse(res) {
     };
 }
 
-const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url, `http://localhost:${PORT}`);
+// Wrap in async init to avoid top-level await (needed for esbuild CJS output)
+async function init() {
+    const routes = {
+        "/api/live": (await import("./api/live.js")).default,
+        "/api/videos": (await import("./api/videos.js")).default,
+        "/api/video-description": handleVideoDescription,
+    };
 
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    const server = http.createServer(async (req, res) => {
+        const url = new URL(req.url, `http://localhost:${PORT}`);
 
-    if (req.method === "OPTIONS") {
-        res.statusCode = 200;
-        return res.end();
-    }
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    const handler = routes[url.pathname];
-    if (!handler) {
-        res.statusCode = 404;
-        res.setHeader("Content-Type", "application/json; charset=utf-8");
-        return res.end(JSON.stringify({ success: false, error: "Not Found" }));
-    }
+        if (req.method === "OPTIONS") {
+            res.statusCode = 200;
+            return res.end();
+        }
 
-    try {
-        await handler(req, createResponse(res));
-    } catch (error) {
-        console.error(`[${url.pathname}] Error:`, error);
-        res.statusCode = 500;
-        res.setHeader("Content-Type", "application/json; charset=utf-8");
-        res.end(JSON.stringify({ success: false, error: error.message }));
-    }
-});
+        const handler = routes[url.pathname];
+        if (!handler) {
+            res.statusCode = 404;
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            return res.end(JSON.stringify({ success: false, error: "Not Found" }));
+        }
 
-server.listen(PORT, () => {
-    console.log(`live-tv-api running at http://localhost:${PORT}`);
-    console.log(`GET http://localhost:${PORT}/api/live`);
-    console.log(`GET http://localhost:${PORT}/api/videos`);
+        try {
+            await handler(req, createResponse(res));
+        } catch (error) {
+            console.error(`[${url.pathname}] Error:`, error);
+            res.statusCode = 500;
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.end(JSON.stringify({ success: false, error: error.message }));
+        }
+    });
 
-    // Warm cache on startup — first real request returns instantly
-    warmCache().catch((e) => console.error("[Startup] warmCache error:", e));
+    server.listen(PORT, () => {
+        console.log(`live-tv-api running at http://localhost:${PORT}`);
+        console.log(`GET http://localhost:${PORT}/api/live`);
+        console.log(`GET http://localhost:${PORT}/api/videos`);
 
-    // Background refresh every 90s — cache stays fresh indefinitely
-    setInterval(() => {
-        fetchStreamChannel().catch((e) => console.error("[BG] streams:", e));
-        fetchKathaChannel().catch((e) => console.error("[BG] katha:", e));
-    }, 90 * 1000);
+        warmCache().catch((e) => console.error("[Startup] warmCache error:", e));
+
+        setInterval(() => {
+            fetchStreamChannel().catch((e) => console.error("[BG] streams:", e));
+            fetchKathaChannel().catch((e) => console.error("[BG] katha:", e));
+        }, 90 * 1000);
+    });
+}
+
+init().catch((e) => {
+    console.error("[FATAL] Server init failed:", e);
+    process.exit(1);
 });
