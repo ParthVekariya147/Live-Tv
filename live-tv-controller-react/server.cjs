@@ -247,6 +247,17 @@ scheduler.onTrigger = (triggerData) => {
     });
 };
 
+// After each successful execution, push updated schedules to all clients so
+// React state always has the latest lastTriggered values.  Without this,
+// drag-and-drop reorders send stale lastTriggered:null values back to the
+// server via PUT /api/schedules, which wipes the tracking and causes
+// every schedule to re-fire on the next restart (catch-up logic).
+scheduler.onExecutionComplete = (execution) => {
+    if (execution.status === 'success') {
+        broadcast('SCHEDULES_UPDATED', { schedules: scheduler.getAllSchedules() });
+    }
+};
+
 // Handle scheduler logs - write to main log file
 scheduler.onLog = (logEntry) => {
     // Write scheduler logs to main logs (skip DEBUG level to reduce noise)
@@ -664,10 +675,23 @@ app.post('/api/schedules/:id/toggle', (req, res) => {
     }
 });
 
-// PUT /api/schedules - Replace all schedules (for import)
+// PUT /api/schedules - Replace all schedules (for import / drag-and-drop reorder)
 app.put('/api/schedules', (req, res) => {
     try {
-        const schedules = scheduler.setAllSchedules(req.body.schedules || req.body);
+        const incoming = req.body.schedules || req.body;
+        // Preserve lastTriggered from the server's current state when the
+        // incoming value is null/undefined.  This prevents stale React state
+        // (which never receives lastTriggered updates unless we push them) from
+        // wiping the server's tracking and causing double-triggers on restart.
+        const existingMap = new Map(scheduler.getAllSchedules().map(s => [String(s.id), s]));
+        const merged = Array.isArray(incoming) ? incoming.map(s => {
+            const existing = existingMap.get(String(s.id));
+            if (existing && existing.lastTriggered && !s.lastTriggered) {
+                return { ...s, lastTriggered: existing.lastTriggered };
+            }
+            return s;
+        }) : incoming;
+        const schedules = scheduler.setAllSchedules(merged);
         broadcast('SCHEDULES_UPDATED', { schedules });
         res.json({ success: true, schedules });
     } catch (e) {
@@ -1116,6 +1140,29 @@ app.get('*', (req, res) => {
 // ============================================
 // SERVER STARTUP
 // ============================================
+
+let _portRetries = 0;
+server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        if (_portRetries < 3) {
+            _portRetries++;
+            console.warn(`[Server] Port ${PORT} in use — killing conflicting process and retrying (attempt ${_portRetries}/3)...`);
+            try {
+                require('child_process').execSync(
+                    `lsof -ti :${PORT} | xargs kill -9 2>/dev/null || true`,
+                    { stdio: 'ignore' }
+                );
+            } catch (_) { /* ignore */ }
+            setTimeout(() => server.listen(PORT), 1500);
+        } else {
+            console.error(`[Server] Port ${PORT} still in use after ${_portRetries} retries. Exiting.`);
+            process.exit(1);
+        }
+    } else {
+        console.error('[Server] Startup error:', err.message);
+        process.exit(1);
+    }
+});
 
 server.listen(PORT, () => {
     console.log('');

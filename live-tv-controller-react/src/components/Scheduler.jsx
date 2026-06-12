@@ -29,6 +29,8 @@ const daysList = [
     { id: 6, label: "Saturday" },
 ];
 
+const OBS_TRIGGER_EXPIRY_MS = 2 * 60 * 1000; // drop pending OBS actions after 2 min
+
 const Scheduler = () => {
     const { sourceState, setSourceVisibility, isConnected: obsConnected } = useOBS();
 
@@ -39,13 +41,15 @@ const Scheduler = () => {
     const [serverConnected, setServerConnected] = useState(false);
     const [loading, setLoading] = useState(true);
 
-    // Ref to always have fresh sourceState in WS callbacks (avoids stale closure)
+    // Refs for latest values inside WS callbacks (avoid stale closures)
     const sourceStateRef = useRef(sourceState);
+    const obsConnectedRef = useRef(obsConnected);
+    // Queue for show/hide triggers that arrived while OBS was disconnected
+    const pendingOBSTriggersRef = useRef([]);
 
-    // Keep ref in sync with latest sourceState
-    useEffect(() => {
-        sourceStateRef.current = sourceState;
-    }, [sourceState]);
+    // Keep refs in sync
+    useEffect(() => { sourceStateRef.current = sourceState; }, [sourceState]);
+    useEffect(() => { obsConnectedRef.current = obsConnected; }, [obsConnected]);
 
     // Form State
     const [time, setTime] = useState("");
@@ -75,13 +79,33 @@ const Scheduler = () => {
         }
     }, []);
 
-    // Handle trigger from server - execute OBS action
-    const handleServerTrigger = useCallback((triggerData) => {
+    // Execute a show/hide OBS action for a trigger
+    const executeOBSTrigger = useCallback((triggerData) => {
+        logInfo('SCHEDULER_TRIGGER_EXECUTING', LogCategory.SCHEDULER,
+            { ...triggerData, executingAt: new Date().toISOString() },
+            `[FRONTEND] Executing: ${triggerData.action} ${triggerData.source}`);
 
-        // Read from ref to always get the LATEST sourceState (avoids stale closure bug)
-        // Check if Live Player is active - skip ALL triggers (including those targeting Live Player)
-        // This ensures Live Player priority is maintained and it won't be hidden by any schedule
+        const targetVisibility = triggerData.action === 'show';
+        setSourceVisibility(triggerData.source, targetVisibility, 'scheduler');
+
+        logInfo('SCHEDULER_TRIGGER_EXECUTED', LogCategory.SCHEDULER,
+            { ...triggerData, executedAt: new Date().toISOString() },
+            `[FRONTEND] ✓ Executed: ${triggerData.action} ${triggerData.source} - ${triggerData.title}`);
+
+        logSchedulerTrigger(
+            triggerData.id,
+            triggerData.time,
+            triggerData.action,
+            triggerData.source,
+            triggerData.title
+        );
+    }, [setSourceVisibility]);
+
+    // Handle trigger from server - execute OBS action (or queue if OBS is disconnected)
+    const handleServerTrigger = useCallback((triggerData) => {
         const currentSourceState = sourceStateRef.current;
+
+        // Skip all OBS triggers when Live Player is active
         if (currentSourceState["Live Player"] === true) {
             logWarn('SCHEDULER_TRIGGER_SKIPPED', LogCategory.SCHEDULER,
                 { ...triggerData, reason: 'Live Player is active/visible', skippedAt: new Date().toISOString() },
@@ -97,29 +121,50 @@ const Scheduler = () => {
             return;
         }
 
-        // Log before execution
-        logInfo('SCHEDULER_TRIGGER_EXECUTING', LogCategory.SCHEDULER,
-            { ...triggerData, executingAt: new Date().toISOString() },
-            `[FRONTEND] Executing: ${triggerData.action} ${triggerData.source}`);
+        // Katha actions are handled by KathaMonitor's own WS listener — skip OBS dispatch for them
+        const isObsAction = triggerData.action === 'show' || triggerData.action === 'hide';
+        if (!isObsAction) {
+            return;
+        }
 
-        // Execute the action via OBS
-        const targetVisibility = triggerData.action === 'show';
-        setSourceVisibility(triggerData.source, targetVisibility, 'scheduler');
+        // If OBS is disconnected, queue the trigger and retry when it reconnects
+        if (!obsConnectedRef.current) {
+            logWarn('SCHEDULER_TRIGGER_OBS_QUEUED', LogCategory.SCHEDULER,
+                { ...triggerData, queuedAt: new Date().toISOString() },
+                `[FRONTEND] OBS disconnected — queuing: ${triggerData.action} ${triggerData.source}`);
+            pendingOBSTriggersRef.current.push({ ...triggerData, queuedAt: Date.now() });
+            return;
+        }
 
+        executeOBSTrigger(triggerData);
+    }, [executeOBSTrigger]); // sourceState + obsConnected read via refs — no dep needed
 
-        // Log successful execution
-        logInfo('SCHEDULER_TRIGGER_EXECUTED', LogCategory.SCHEDULER,
-            { ...triggerData, executedAt: new Date().toISOString() },
-            `[FRONTEND] ✓ Executed: ${triggerData.action} ${triggerData.source} - ${triggerData.title}`);
+    // When OBS reconnects, replay any queued triggers (with a 2s delay so source IDs load first)
+    useEffect(() => {
+        if (!obsConnected) return;
 
-        logSchedulerTrigger(
-            triggerData.id,
-            triggerData.time,
-            triggerData.action,
-            triggerData.source,
-            triggerData.title
-        );
-    }, [setSourceVisibility]); // sourceState read via ref - no dep needed
+        const timeout = setTimeout(() => {
+            const now = Date.now();
+            const fresh = pendingOBSTriggersRef.current.filter(
+                t => now - t.queuedAt < OBS_TRIGGER_EXPIRY_MS
+            );
+            pendingOBSTriggersRef.current = [];
+
+            if (fresh.length === 0) return;
+
+            logInfo('SCHEDULER_OBS_RECONNECT_RETRY', LogCategory.SCHEDULER,
+                { count: fresh.length },
+                `[FRONTEND] OBS reconnected — executing ${fresh.length} queued trigger(s)`);
+
+            fresh.forEach(triggerData => {
+                if (sourceStateRef.current["Live Player"] !== true) {
+                    executeOBSTrigger(triggerData);
+                }
+            });
+        }, 2000); // wait 2s for OBS to populate source IDs after connect
+
+        return () => clearTimeout(timeout);
+    }, [obsConnected, executeOBSTrigger]);
 
     // Handle WebSocket messages
     const handleWsMessage = useCallback((data) => {
