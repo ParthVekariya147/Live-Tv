@@ -19,6 +19,7 @@ const LivePlayerCard = () => {
     const [videoId, setVideoId] = useState(DEFAULT_LIVE_VIDEO_ID);
     const videoIdRef = useRef(videoId);
     useEffect(() => { videoIdRef.current = videoId; }, [videoId]);
+    const videoTitleRef = useRef('');
     const [priority, setPriority] = useState("matchSearchTerms");
 
     // Playback
@@ -27,6 +28,7 @@ const LivePlayerCard = () => {
     const [isStopped, setIsStopped] = useState(false);
 
     const { title: videoTitle, thumbnail: videoThumbnail, loading: thumbLoading } = useVideoInfo(videoId);
+    useEffect(() => { videoTitleRef.current = videoTitle || ''; }, [videoTitle]);
     const [loadingAction, setLoadingAction] = useState(false);
     const [statusText, setStatusText] = useState("Not loaded");
 
@@ -275,14 +277,14 @@ const LivePlayerCard = () => {
     };
 
     // ── Recording helpers (shared by manual button + auto-record logic) ──────
-    const startRecording = useCallback(async (vid) => {
+    const startRecording = useCallback(async (vid, title) => {
         if (!vid) { setRecordingStatus('No video ID — cannot record'); return false; }
         setRecordingStatus('Starting...');
         try {
             const res = await fetch(`${API_BASE}/api/recording/start`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ videoId: vid }),
+                body: JSON.stringify({ videoId: vid, title: title || undefined }),
             });
             const data = await res.json();
             if (data.success) {
@@ -329,7 +331,7 @@ const LivePlayerCard = () => {
             await stopRecording();
         } else {
             wasAutoStartedRef.current = false; // manual start
-            await startRecording(videoId);
+            await startRecording(videoId, videoTitle);
         }
     };
 
@@ -343,8 +345,9 @@ const LivePlayerCard = () => {
             // Live Player just became visible — auto-start if not already recording
             if (!isRecordingRef.current) {
                 const vid = videoIdRef.current;
+                const t = videoTitleRef.current;
                 wasAutoStartedRef.current = true;
-                startRecording(vid);
+                startRecording(vid, t);
             }
         } else {
             // Live Player just became hidden — auto-stop only if WE started it

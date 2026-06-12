@@ -56,9 +56,9 @@ const getVideosDir = () => {
 // Get recordings directory - next to EXE or project folder
 const getRecordingsDir = () => {
     if (process.pkg) {
-        return path.join(path.dirname(process.execPath), 'recordings');
+        return path.join(path.dirname(process.execPath), 'live_recordings');
     }
-    return path.join(__dirname, 'recordings');
+    return path.join(__dirname, 'live_recordings');
 };
 
 const dataDir = getDataDir();
@@ -931,7 +931,7 @@ class RecordingService {
         return process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
     }
 
-    start(videoId, onEvent) {
+    start(videoId, onEvent, title) {
         if (this.currentProcess) {
             return { success: false, error: 'Recording already in progress' };
         }
@@ -941,8 +941,13 @@ class RecordingService {
 
         const ytDlp = this._findYtDlp();
         const now = new Date();
-        const ts = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
-        const filename = `recording_${ts}_${videoId}.mp4`;
+        const ts = now.toISOString().replace(/[:.]/g, '-').slice(0, 16); // YYYY-MM-DDTHH-MM
+        const safeTitle = title
+            ? title.replace(/[/\\:*?"<>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80)
+            : null;
+        const filename = safeTitle
+            ? `${safeTitle}_${ts}.mp4`
+            : `recording_${ts}_${videoId}.mp4`;
         const outputPath = path.join(this.recordingsDir, filename);
 
         const args = [
@@ -1070,13 +1075,13 @@ app.get('/api/recording/status', (req, res) => {
 
 // POST /api/recording/start
 app.post('/api/recording/start', (req, res) => {
-    const { videoId } = req.body;
+    const { videoId, title } = req.body;
     const result = recordingService.start(videoId, (event) => {
         broadcast('RECORDING_EVENT', event);
         if (event.type === 'stopped') {
             broadcast('RECORDING_STATUS', recordingService.getStatus());
         }
-    });
+    }, title);
     if (result.success) {
         broadcast('RECORDING_STATUS', recordingService.getStatus());
         writeLog({
