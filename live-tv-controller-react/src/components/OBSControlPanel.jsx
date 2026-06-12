@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { useOBS } from '../context/OBSContext';
 import PreviewBox from './PreviewBox';
 import SettingsBackup from './SettingsBackup';
@@ -12,6 +12,33 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
         sourceState, setSourceVisibility,
         SCENE_NAME
     } = useOBS();
+
+    // Auto-record: start OBS recording when Live Player becomes visible, stop when hidden.
+    // Controlled by the same master toggle (liveAutoRecord) as the yt-dlp recording in LivePlayerCard.
+    const mountTime = useRef(Date.now());
+    const obsAutoStartedRef = useRef(false);
+    const recordActiveRef = useRef(recordActive);
+    useEffect(() => { recordActiveRef.current = recordActive; }, [recordActive]);
+
+    const isLivePlayerVisible = sourceState["Live Player"];
+    useEffect(() => {
+        if (Date.now() - mountTime.current < 1000) return;
+        let autoRecord = false;
+        try { autoRecord = JSON.parse(localStorage.getItem('liveAutoRecord') ?? 'false'); } catch { }
+        if (!autoRecord) return;
+
+        if (isLivePlayerVisible) {
+            if (!recordActiveRef.current) {
+                obsAutoStartedRef.current = true;
+                toggleRecord();
+            }
+        } else {
+            if (recordActiveRef.current && obsAutoStartedRef.current) {
+                obsAutoStartedRef.current = false;
+                toggleRecord();
+            }
+        }
+    }, [isLivePlayerVisible]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const toggleLiveLoop = () => {
         if (sourceState["Live Player"]) {
