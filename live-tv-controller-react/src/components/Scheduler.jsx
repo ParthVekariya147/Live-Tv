@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useOBS } from '../context/OBSContext';
-import { logSchedulerTrigger, logSchedulerSkip, logInfo, logWarn, logError, LogType, LogCategory } from '../utils/logger';
+import { logSchedulerTrigger, logInfo, logWarn, LogCategory } from '../utils/logger';
 import {
     startScheduler,
     stopScheduler,
@@ -40,6 +40,7 @@ const Scheduler = () => {
     const [pendingTimeouts, setPendingTimeouts] = useState([]);
     const [serverConnected, setServerConnected] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [lastFiredId, setLastFiredId] = useState(null); // ID of most recently triggered schedule
 
     // Refs for latest values inside WS callbacks (avoid stale closures)
     const sourceStateRef = useRef(sourceState);
@@ -103,24 +104,6 @@ const Scheduler = () => {
 
     // Handle trigger from server - execute OBS action (or queue if OBS is disconnected)
     const handleServerTrigger = useCallback((triggerData) => {
-        const currentSourceState = sourceStateRef.current;
-
-        // Skip all OBS triggers when Live Player is active
-        if (currentSourceState["Live Player"] === true) {
-            logWarn('SCHEDULER_TRIGGER_SKIPPED', LogCategory.SCHEDULER,
-                { ...triggerData, reason: 'Live Player is active/visible', skippedAt: new Date().toISOString() },
-                `[FRONTEND] Skipped: ${triggerData.action} ${triggerData.source} - Live Player is active/visible`);
-            logSchedulerSkip(
-                triggerData.id,
-                triggerData.time,
-                triggerData.action,
-                triggerData.source,
-                triggerData.title,
-                'Live Player is active/visible'
-            );
-            return;
-        }
-
         // Katha actions are handled by KathaMonitor's own WS listener — skip OBS dispatch for them
         const isObsAction = triggerData.action === 'show' || triggerData.action === 'hide';
         if (!isObsAction) {
@@ -137,7 +120,7 @@ const Scheduler = () => {
         }
 
         executeOBSTrigger(triggerData);
-    }, [executeOBSTrigger]); // sourceState + obsConnected read via refs — no dep needed
+    }, [executeOBSTrigger]); // obsConnected read via ref — no dep needed
 
     // When OBS reconnects, replay any queued triggers (with a 2s delay so source IDs load first)
     useEffect(() => {
@@ -157,9 +140,7 @@ const Scheduler = () => {
                 `[FRONTEND] OBS reconnected — executing ${fresh.length} queued trigger(s)`);
 
             fresh.forEach(triggerData => {
-                if (sourceStateRef.current["Live Player"] !== true) {
-                    executeOBSTrigger(triggerData);
-                }
+                executeOBSTrigger(triggerData);
             });
         }, 2000); // wait 2s for OBS to populate source IDs after connect
 
@@ -211,6 +192,11 @@ const Scheduler = () => {
                 logInfo('SCHEDULER_TRIGGER_RECEIVED', LogCategory.SCHEDULER,
                     { source: data.data?.source, action: data.data?.action, title: data.data?.title },
                     `Frontend received trigger from server: ${data.data?.action} ${data.data?.source}`);
+                // Highlight the schedule row that just fired
+                if (data.data?.id) {
+                    setLastFiredId(data.data.id);
+                    setTimeout(() => setLastFiredId(null), 5000);
+                }
                 // Handle the trigger - execute OBS action
                 handleServerTrigger(data.data);
                 break;
@@ -595,6 +581,7 @@ const Scheduler = () => {
                                 <th className="px-3 py-2 text-left font-medium">Action</th>
                                 <th className="px-3 py-2 text-left font-medium">When</th>
                                 <th className="px-3 py-2 text-left font-medium">Title</th>
+                                <th className="px-3 py-2 text-left font-medium">Last Fired</th>
                                 <th className="px-3 py-2 text-center font-medium">Status</th>
                                 <th className="px-3 py-2 text-center font-medium">Actions</th>
                             </tr>
@@ -607,7 +594,9 @@ const Scheduler = () => {
                                     onDragStart={(e) => onDragStart(e, index)}
                                     onDragOver={(e) => onDragOver(e, index)}
                                     onDrop={(e) => onDrop(e, index)}
-                                    className="bg-gray-900/50 hover:bg-gray-800 cursor-move transition-colors"
+                                    className={`cursor-move transition-colors ${lastFiredId === schedule.id
+                                        ? 'bg-green-900/60 hover:bg-green-800/60'
+                                        : 'bg-gray-900/50 hover:bg-gray-800'}`}
                                 >
                                     <td className="px-3 py-2 text-cyan-400 font-mono">{formatTime12Hr(schedule.time)}</td>
                                     <td className="px-3 py-2 text-white">{schedule.source}</td>
@@ -626,6 +615,16 @@ const Scheduler = () => {
                                         }
                                     </td>
                                     <td className="px-3 py-2 text-gray-300">{schedule.title || '-'}</td>
+                                    <td className="px-3 py-2">
+                                        {schedule.lastTriggeredAt ? (
+                                            <span className={`text-xs font-mono ${lastFiredId === schedule.id ? 'text-green-400 font-semibold' : 'text-gray-400'}`}>
+                                                {lastFiredId === schedule.id && <span className="mr-1">✓</span>}
+                                                {new Date(schedule.lastTriggeredAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs text-gray-600">Never</span>
+                                        )}
+                                    </td>
                                     <td className="px-3 py-2 text-center">
                                         <button
                                             onClick={() => handleToggleEnable(schedule.id)}

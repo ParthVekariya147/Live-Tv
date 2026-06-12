@@ -6,9 +6,13 @@
   "main": "smk-launcher.cjs",
   "bin": "smk-launcher.cjs",
   "scripts": {
-    "install:all": "npm install --prefix live-tv-api && npm install --prefix live-tv-controller-react",
-    "build": "npm run build --prefix live-tv-controller-react",
-    "start": "node start.js",
+    "smk": "node smk.cjs",
+    "dev": "node smk.cjs dev",
+    "build": "node smk.cjs build",
+    "exe": "node smk.cjs exe",
+    "start": "node smk.cjs start",
+    "stop": "node smk.cjs stop",
+    "install:all": "node smk.cjs install",
     "build:exe": "node build.cjs"
   },
   "devDependencies": {
