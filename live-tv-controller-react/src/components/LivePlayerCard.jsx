@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useOBS } from '../context/OBSContext';
-import { sendPlayerCommand, LIVE_PLAYER_EVENT_KEY } from '../utils/core-utils';
+import { sendPlayerCommand, LIVE_PLAYER_EVENT_KEY, secondsToHMS } from '../utils/core-utils';
 import { usePlayerTime } from '../utils/usePlayerHooks';
 import { useVideoInfo } from '../hooks/useVideoInfo';
 import { logVideoLoad, logVideoPlay } from '../utils/logger';
@@ -9,6 +9,7 @@ import PlayerControlBtn from './common/PlayerControlBtn';
 import ThumbnailLoader from './common/ThumbnailLoader';
 
 const DEFAULT_LIVE_VIDEO_ID = "T3wvnwSSw8g";
+const API_BASE = '';
 
 const LivePlayerCard = () => {
     const { sourceState } = useOBS();
@@ -28,6 +29,15 @@ const LivePlayerCard = () => {
     const { title: videoTitle, thumbnail: videoThumbnail, loading: thumbLoading } = useVideoInfo(videoId);
     const [loadingAction, setLoadingAction] = useState(false);
     const [statusText, setStatusText] = useState("Not loaded");
+
+    // Recording state
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingFile, setRecordingFile] = useState(null);
+    const [recordingDuration, setRecordingDuration] = useState(0);
+    const [autoDeleteCount, setAutoDeleteCount] = useState(0);
+    const [autoDeleteInput, setAutoDeleteInput] = useState('0');
+    const [recordingStatus, setRecordingStatus] = useState('');
+    const recordingPollRef = useRef(null);
 
     // Use custom hook for time updates
     const timeInfo = usePlayerTime(LIVE_PLAYER_EVENT_KEY, 'live');
@@ -55,6 +65,72 @@ const LivePlayerCard = () => {
         localStorage.setItem('livePlayerState', JSON.stringify(state));
     }, [videoId, priority, isPlaying, isMuted, isStopped]);
 
+    // Load recording settings from server
+    useEffect(() => {
+        fetch(`${API_BASE}/api/recording/settings`)
+            .then(r => r.json())
+            .then(d => {
+                if (d.success) {
+                    const count = d.settings.autoDeleteCount || 0;
+                    setAutoDeleteCount(count);
+                    setAutoDeleteInput(String(count));
+                }
+            })
+            .catch(() => { });
+
+        // Check if a recording is already active (e.g. server restarted while recording)
+        fetch(`${API_BASE}/api/recording/status`)
+            .then(r => r.json())
+            .then(d => {
+                if (d.success && d.isRecording) {
+                    setIsRecording(true);
+                    setRecordingFile(d.currentFile);
+                    setRecordingDuration(d.durationSeconds || 0);
+                }
+            })
+            .catch(() => { });
+    }, []);
+
+    // Poll recording status while recording
+    const startStatusPoll = useCallback(() => {
+        if (recordingPollRef.current) return;
+        recordingPollRef.current = setInterval(() => {
+            fetch(`${API_BASE}/api/recording/status`)
+                .then(r => r.json())
+                .then(d => {
+                    if (d.success) {
+                        setIsRecording(d.isRecording);
+                        setRecordingDuration(d.durationSeconds || 0);
+                        if (!d.isRecording) {
+                            clearInterval(recordingPollRef.current);
+                            recordingPollRef.current = null;
+                            setRecordingFile(null);
+                            setRecordingDuration(0);
+                            setRecordingStatus('Recording saved');
+                        }
+                    }
+                })
+                .catch(() => { });
+        }, 2000);
+    }, []);
+
+    const stopStatusPoll = useCallback(() => {
+        if (recordingPollRef.current) {
+            clearInterval(recordingPollRef.current);
+            recordingPollRef.current = null;
+        }
+    }, []);
+
+    useEffect(() => {
+        if (isRecording) {
+            startStatusPoll();
+        }
+        return () => { if (!isRecording) stopStatusPoll(); };
+    }, [isRecording, startStatusPoll, stopStatusPoll]);
+
+    // Cleanup on unmount
+    useEffect(() => () => stopStatusPoll(), [stopStatusPoll]);
+
     // Listen for auto-load events from MonitorManager
     useEffect(() => {
         const handleAutoLoad = (event) => {
@@ -75,7 +151,7 @@ const LivePlayerCard = () => {
         return () => window.removeEventListener('livePlayerAutoLoad', handleAutoLoad);
     }, []);
 
-    // Resume playback when OBS visibility changes - sends actual player commands
+    // Resume playback when OBS visibility changes
     const resumePlayback = () => {
         const vid = videoIdRef.current;
         if (vid) {
@@ -89,13 +165,10 @@ const LivePlayerCard = () => {
         }
     };
 
-    // Track mount time to prevent visibility commands on initial mount
     const mountTime = useRef(Date.now());
     const prevIsVisible = useRef(undefined);
 
-    // Visibility Reaction - ONLY react to actual changes, not initial mount
     useEffect(() => {
-        // Guard: Ignore any visibility effects within 500ms of mount
         const timeSinceMount = Date.now() - mountTime.current;
         if (timeSinceMount < 500) {
             prevIsVisible.current = isVisible;
@@ -107,10 +180,7 @@ const LivePlayerCard = () => {
             return;
         }
 
-        if (prevIsVisible.current === isVisible) {
-            return;
-        }
-
+        if (prevIsVisible.current === isVisible) return;
         prevIsVisible.current = isVisible;
 
         if (isVisible) {
@@ -189,6 +259,73 @@ const LivePlayerCard = () => {
         }
     };
 
+    // ── Recording handlers ─────────────────────────────────────
+    const handleToggleRecording = async () => {
+        if (isRecording) {
+            setRecordingStatus('Stopping...');
+            try {
+                const res = await fetch(`${API_BASE}/api/recording/stop`, { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    setIsRecording(false);
+                    setRecordingFile(null);
+                    setRecordingDuration(0);
+                    setRecordingStatus('Recording saved');
+                    stopStatusPoll();
+                } else {
+                    setRecordingStatus(`Stop failed: ${data.error}`);
+                }
+            } catch (e) {
+                setRecordingStatus(`Error: ${e.message}`);
+            }
+        } else {
+            if (!videoId) {
+                setRecordingStatus('Load a video first');
+                return;
+            }
+            setRecordingStatus('Starting...');
+            try {
+                const res = await fetch(`${API_BASE}/api/recording/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ videoId }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    setIsRecording(true);
+                    setRecordingFile(data.filename);
+                    setRecordingDuration(0);
+                    setRecordingStatus('Recording...');
+                    startStatusPoll();
+                } else {
+                    setRecordingStatus(`Start failed: ${data.error}`);
+                }
+            } catch (e) {
+                setRecordingStatus(`Error: ${e.message}`);
+            }
+        }
+    };
+
+    const handleAutoDeleteChange = (e) => {
+        const raw = e.target.value.replace(/[^0-9]/g, '');
+        setAutoDeleteInput(raw);
+    };
+
+    const handleAutoDeleteBlur = async () => {
+        const count = Math.max(0, parseInt(autoDeleteInput, 10) || 0);
+        setAutoDeleteCount(count);
+        setAutoDeleteInput(String(count));
+        try {
+            await fetch(`${API_BASE}/api/recording/settings`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ autoDeleteCount: count }),
+            });
+        } catch (e) { /* silent */ }
+    };
+
+    const recordingDurationLabel = secondsToHMS(recordingDuration);
+
     return (
         <div className="player-control-card">
             <h3>Live Player</h3>
@@ -233,6 +370,44 @@ const LivePlayerCard = () => {
                     {!isMuted ? "Unmuted" : "Muted"}
                 </PlayerControlBtn>
             </div>
+
+            {/* Recording section */}
+            <div className="recording-section">
+                <div className="recording-row">
+                    <button
+                        className={`recording-toggle-btn${isRecording ? ' recording-active' : ''}`}
+                        onClick={handleToggleRecording}
+                        title={isRecording ? 'Stop Recording' : 'Start Recording'}
+                    >
+                        <span className={`rec-dot${isRecording ? ' rec-dot-pulse' : ''}`} />
+                        {isRecording ? `REC  ${recordingDurationLabel}` : 'REC'}
+                    </button>
+
+                    <div className="auto-delete-field">
+                        <label className="auto-delete-label">Keep last</label>
+                        <input
+                            type="text"
+                            className="auto-delete-input"
+                            value={autoDeleteInput}
+                            onChange={handleAutoDeleteChange}
+                            onBlur={handleAutoDeleteBlur}
+                            title="Auto-delete oldest recordings, keeping only this many (0 = keep all)"
+                        />
+                        <label className="auto-delete-label">recordings</label>
+                    </div>
+                </div>
+
+                {recordingStatus ? (
+                    <p className="recording-status-text">{recordingStatus}</p>
+                ) : null}
+
+                {isRecording && recordingFile ? (
+                    <p className="recording-filename" title={recordingFile}>
+                        {recordingFile.length > 40 ? '…' + recordingFile.slice(-38) : recordingFile}
+                    </p>
+                ) : null}
+            </div>
+
             <div className="btn-group mt-2">
                 <PlayerControlBtn className="btn-neutral" onClick={handleExport}>Export Data</PlayerControlBtn>
             </div>

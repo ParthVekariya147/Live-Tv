@@ -12,6 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const WebSocket = require('ws');
+const { spawn } = require('child_process');
 
 const app = express();
 // Use 3004 for development (API only, Vite handles frontend)
@@ -52,12 +53,21 @@ const getVideosDir = () => {
     return path.join(__dirname, 'videos');
 };
 
+// Get recordings directory - next to EXE or project folder
+const getRecordingsDir = () => {
+    if (process.pkg) {
+        return path.join(path.dirname(process.execPath), 'recordings');
+    }
+    return path.join(__dirname, 'recordings');
+};
+
 const dataDir = getDataDir();
 const logsDir = getLogsDir();
 const videosDir = getVideosDir();
+const recordingsDir = getRecordingsDir();
 
 // Ensure directories exist
-[dataDir, logsDir, videosDir].forEach(dir => {
+[dataDir, logsDir, videosDir, recordingsDir].forEach(dir => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
         console.log(`Created directory: ${dir}`);
@@ -795,6 +805,294 @@ app.delete('/api/logs', (req, res) => {
 });
 
 // ============================================
+// RECORDING SERVICE
+// ============================================
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+}
+
+class RecordingService {
+    constructor({ recordingsDir }) {
+        this.recordingsDir = recordingsDir;
+        this.settingsFile = path.join(recordingsDir, 'settings.json');
+        this.currentProcess = null;
+        this.currentRecording = null;
+        this.recordingStartTime = null;
+        this.currentVideoId = null;
+    }
+
+    getSettings() {
+        try {
+            if (fs.existsSync(this.settingsFile)) {
+                return JSON.parse(fs.readFileSync(this.settingsFile, 'utf8'));
+            }
+        } catch (e) { /* ignore */ }
+        return { autoDeleteCount: 0 };
+    }
+
+    saveSettings(settings) {
+        fs.writeFileSync(this.settingsFile, JSON.stringify(settings, null, 2), 'utf8');
+    }
+
+    getStatus() {
+        const durationSecs = this.recordingStartTime
+            ? Math.floor((Date.now() - this.recordingStartTime) / 1000)
+            : 0;
+        return {
+            isRecording: !!this.currentProcess,
+            currentFile: this.currentRecording,
+            videoId: this.currentVideoId,
+            startTime: this.recordingStartTime,
+            durationSeconds: durationSecs,
+        };
+    }
+
+    listRecordings() {
+        try {
+            return fs.readdirSync(this.recordingsDir)
+                .filter(f => /\.(mp4|mkv|ts|webm)$/.test(f))
+                .map(f => {
+                    const fp = path.join(this.recordingsDir, f);
+                    const stat = fs.statSync(fp);
+                    return {
+                        filename: f,
+                        size: stat.size,
+                        sizeFormatted: formatFileSize(stat.size),
+                        createdAt: stat.birthtime.toISOString(),
+                        modifiedAt: stat.mtime.toISOString(),
+                    };
+                })
+                .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        } catch (e) {
+            return [];
+        }
+    }
+
+    _findYtDlp() {
+        if (process.pkg) {
+            const exeDir = path.dirname(process.execPath);
+            const candidates = [
+                path.join(exeDir, 'yt-dlp.exe'),
+                path.join(exeDir, 'yt-dlp'),
+            ];
+            for (const c of candidates) {
+                if (fs.existsSync(c)) return c;
+            }
+        }
+        return process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+    }
+
+    start(videoId, onEvent) {
+        if (this.currentProcess) {
+            return { success: false, error: 'Recording already in progress' };
+        }
+        if (!videoId) {
+            return { success: false, error: 'videoId is required' };
+        }
+
+        const ytDlp = this._findYtDlp();
+        const now = new Date();
+        const ts = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const filename = `recording_${ts}_${videoId}.mp4`;
+        const outputPath = path.join(this.recordingsDir, filename);
+
+        const args = [
+            '--no-part',
+            '--no-continue',
+            '-f', 'bestvideo+bestaudio/best',
+            '--merge-output-format', 'mp4',
+            '-o', outputPath,
+            `https://www.youtube.com/watch?v=${videoId}`,
+        ];
+
+        let proc;
+        try {
+            proc = spawn(ytDlp, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+        } catch (err) {
+            return { success: false, error: `Failed to start yt-dlp: ${err.message}` };
+        }
+
+        this.currentProcess = proc;
+        this.currentRecording = filename;
+        this.recordingStartTime = Date.now();
+        this.currentVideoId = videoId;
+
+        const logLine = (level, msg) => {
+            const trimmed = msg.trim();
+            if (!trimmed) return;
+            console.log(`[Recording][${level}] ${trimmed}`);
+            if (onEvent) onEvent({ type: 'log', level, message: trimmed });
+        };
+
+        proc.stdout.on('data', d => logLine('info', d.toString()));
+        proc.stderr.on('data', d => logLine('info', d.toString()));
+
+        proc.on('error', err => {
+            console.error('[Recording] Process error:', err.message);
+            this.currentProcess = null;
+            this.currentRecording = null;
+            this.recordingStartTime = null;
+            this.currentVideoId = null;
+            if (onEvent) onEvent({ type: 'error', message: err.message });
+        });
+
+        proc.on('close', code => {
+            console.log(`[Recording] Process exited with code ${code}`);
+            const stoppedFile = this.currentRecording;
+            this.currentProcess = null;
+            this.currentRecording = null;
+            this.recordingStartTime = null;
+            this.currentVideoId = null;
+
+            // Auto-delete enforcement
+            const { autoDeleteCount } = this.getSettings();
+            if (autoDeleteCount > 0) {
+                this._enforceAutoDelete(autoDeleteCount);
+            }
+
+            if (onEvent) onEvent({ type: 'stopped', filename: stoppedFile, exitCode: code });
+        });
+
+        return { success: true, filename, outputPath };
+    }
+
+    stop() {
+        if (!this.currentProcess) {
+            return { success: false, error: 'No recording in progress' };
+        }
+        const filename = this.currentRecording;
+        const pid = this.currentProcess.pid;
+
+        if (process.platform === 'win32') {
+            try {
+                require('child_process').execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' });
+            } catch (e) {
+                try { this.currentProcess.kill(); } catch (_) { /* ignore */ }
+            }
+        } else {
+            try { this.currentProcess.kill('SIGINT'); } catch (_) { /* ignore */ }
+        }
+
+        return { success: true, filename };
+    }
+
+    _enforceAutoDelete(maxCount) {
+        const recordings = this.listRecordings();
+        if (recordings.length <= maxCount) return;
+        const toDelete = recordings.slice(maxCount); // oldest are at the end (sorted newest-first)
+        for (const rec of toDelete) {
+            try {
+                fs.unlinkSync(path.join(this.recordingsDir, rec.filename));
+                console.log(`[Recording] Auto-deleted: ${rec.filename}`);
+            } catch (e) {
+                console.error(`[Recording] Failed to auto-delete ${rec.filename}:`, e.message);
+            }
+        }
+    }
+
+    deleteRecording(filename) {
+        const safe = path.basename(filename);
+        const fp = path.join(this.recordingsDir, safe);
+        if (!fp.startsWith(this.recordingsDir + path.sep) && fp !== path.join(this.recordingsDir, safe)) {
+            return { success: false, error: 'Invalid filename' };
+        }
+        if (!fs.existsSync(fp)) {
+            return { success: false, error: 'File not found' };
+        }
+        try {
+            fs.unlinkSync(fp);
+            return { success: true };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    }
+}
+
+const recordingService = new RecordingService({ recordingsDir });
+
+// ============================================
+// RECORDING API ENDPOINTS
+// ============================================
+
+// GET /api/recording/status
+app.get('/api/recording/status', (req, res) => {
+    res.json({ success: true, ...recordingService.getStatus() });
+});
+
+// POST /api/recording/start
+app.post('/api/recording/start', (req, res) => {
+    const { videoId } = req.body;
+    const result = recordingService.start(videoId, (event) => {
+        broadcast('RECORDING_EVENT', event);
+        if (event.type === 'stopped') {
+            broadcast('RECORDING_STATUS', recordingService.getStatus());
+        }
+    });
+    if (result.success) {
+        broadcast('RECORDING_STATUS', recordingService.getStatus());
+        writeLog({
+            level: 'info',
+            type: 'RECORDING_START',
+            category: 'recording',
+            message: `Recording started: ${result.filename}`,
+            data: { videoId, filename: result.filename },
+        });
+    }
+    res.json(result);
+});
+
+// POST /api/recording/stop
+app.post('/api/recording/stop', (req, res) => {
+    const result = recordingService.stop();
+    if (result.success) {
+        writeLog({
+            level: 'info',
+            type: 'RECORDING_STOP',
+            category: 'recording',
+            message: `Recording stopped: ${result.filename}`,
+            data: { filename: result.filename },
+        });
+    }
+    res.json(result);
+});
+
+// GET /api/recording/list
+app.get('/api/recording/list', (req, res) => {
+    res.json({ success: true, recordings: recordingService.listRecordings() });
+});
+
+// GET /api/recording/settings
+app.get('/api/recording/settings', (req, res) => {
+    res.json({ success: true, settings: recordingService.getSettings() });
+});
+
+// PUT /api/recording/settings
+app.put('/api/recording/settings', (req, res) => {
+    const current = recordingService.getSettings();
+    const updated = { ...current, ...req.body };
+    if (typeof updated.autoDeleteCount !== 'number' || updated.autoDeleteCount < 0) {
+        return res.status(400).json({ success: false, error: 'autoDeleteCount must be a non-negative number' });
+    }
+    recordingService.saveSettings(updated);
+    res.json({ success: true, settings: updated });
+});
+
+// DELETE /api/recording/:filename
+app.delete('/api/recording/:filename', (req, res) => {
+    const result = recordingService.deleteRecording(req.params.filename);
+    res.json(result);
+});
+
+// Serve recordings as static files
+app.use('/recordings', express.static(recordingsDir, {
+    setHeaders: (res) => { res.setHeader('Accept-Ranges', 'bytes'); }
+}));
+
+// ============================================
 // SPA ROUTING (must be after API routes)
 // ============================================
 
@@ -826,9 +1124,10 @@ server.listen(PORT, () => {
     console.log('='.repeat(60));
     console.log(`  Server:      http://localhost:${PORT}/`);
     console.log(`  WebSocket:   ws://localhost:${PORT}/ws`);
-    console.log(`  Data dir:    ${dataDir}`);
-    console.log(`  Logs dir:    ${logsDir}`);
-    console.log(`  Videos dir:  ${videosDir}`);
+    console.log(`  Data dir:       ${dataDir}`);
+    console.log(`  Logs dir:       ${logsDir}`);
+    console.log(`  Videos dir:     ${videosDir}`);
+    console.log(`  Recordings dir: ${recordingsDir}`);
     console.log('');
     console.log('  Scheduler:');
     console.log(`    Status:    ${scheduler.isRunning ? 'RUNNING' : 'STOPPED'}`);
@@ -842,6 +1141,10 @@ server.listen(PORT, () => {
 // Graceful shutdown
 process.on('SIGINT', () => {
     console.log('\nShutting down...');
+    if (recordingService.getStatus().isRecording) {
+        console.log('[Recording] Stopping active recording...');
+        recordingService.stop();
+    }
     scheduler.stop();
     server.close(() => {
         console.log('Server closed');

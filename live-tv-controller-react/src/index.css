@@ -1597,3 +1597,127 @@ input[type="number"]:focus {
   animation: shimmer 1.4s infinite linear;
   margin: 6px 0;
 }
+
+/* ============================================
+   RECORDING SECTION
+   ============================================ */
+
+.recording-section {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #0f1923;
+  border: 1px solid #1e3a4a;
+  border-radius: 8px;
+}
+
+.recording-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* REC toggle button */
+.recording-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1.5px solid #4a5568;
+  background: #1a202c;
+  color: #a0aec0;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  min-width: 64px;
+  white-space: nowrap;
+}
+
+.recording-toggle-btn:hover {
+  background: #2d3748;
+  border-color: #718096;
+  color: #e2e8f0;
+}
+
+.recording-toggle-btn.recording-active {
+  background: #1a0a0a;
+  border-color: #e53e3e;
+  color: #fc8181;
+}
+
+.recording-toggle-btn.recording-active:hover {
+  background: #2d0f0f;
+  border-color: #fc8181;
+}
+
+/* Red dot indicator */
+.rec-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #718096;
+  flex-shrink: 0;
+}
+
+.rec-dot-pulse {
+  background: #e53e3e;
+  animation: rec-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes rec-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.35; transform: scale(0.75); }
+}
+
+/* Auto-delete field */
+.auto-delete-field {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+}
+
+.auto-delete-label {
+  font-size: 0.7rem;
+  color: #718096;
+  white-space: nowrap;
+}
+
+.auto-delete-input {
+  width: 42px;
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 3px 5px;
+  border-radius: 5px;
+  border: 1px solid #2d3748;
+  background: #1a202c;
+  color: #e2e8f0;
+  outline: none;
+  -moz-appearance: textfield;
+}
+
+.auto-delete-input:focus {
+  border-color: #4299e1;
+}
+
+/* Status and filename text */
+.recording-status-text {
+  font-size: 0.7rem;
+  color: #fc8181;
+  margin: 5px 0 0 0;
+  text-align: center;
+}
+
+.recording-filename {
+  font-size: 0.65rem;
+  color: #4a5568;
+  margin: 3px 0 0 0;
+  text-align: center;
+  word-break: break-all;
+}

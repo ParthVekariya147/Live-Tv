@@ -1,0 +1,31 @@
+#!/bin/bash
+# SMK TV Launcher — clears ports, starts services via PM2, opens browser
+
+PM2="/Users/yashmadhavtech/.nvm/versions/node/v20.19.4/bin/pm2"
+PROJECT="/Users/yashmadhavtech/Documents/live-tv-old-main 3"
+ECOSYSTEM="$PROJECT/ecosystem.config.cjs"
+APP_URL="http://localhost:3004"
+
+# Clear ports 3000 and 3004 (in case old processes are lingering)
+for PORT in 3000 3004; do
+    PIDS=$(lsof -ti ":$PORT" 2>/dev/null)
+    if [ -n "$PIDS" ]; then
+        kill -9 $PIDS 2>/dev/null
+    fi
+done
+sleep 1
+
+# Start or restart services with PM2
+"$PM2" startOrRestart "$ECOSYSTEM" --update-env
+
+# Wait until port 3004 is ready (max 30s)
+echo "Waiting for SMK TV to start..."
+for i in $(seq 1 30); do
+    if curl -s --max-time 1 "$APP_URL" > /dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+# Open browser
+open "$APP_URL"
