@@ -350,6 +350,7 @@ export const OBSProvider = ({ children }) => {
             isConnected,
             connectionError,
             sourceState,
+            sourceIds,
             streamActive,
             recordActive,
             virtualCamActive,
@@ -360,7 +361,7 @@ export const OBSProvider = ({ children }) => {
             toggleSource,
             SCENE_NAME,
             SOURCE_NAMES,
-            socket: socketRef.current, // Expose for scheduler if needed
+            socket: socketRef.current,
         }}>
             {children}
         </OBSContext.Provider>

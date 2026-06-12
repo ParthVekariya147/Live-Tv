@@ -39,6 +39,21 @@ const LivePlayerCard = () => {
     const [recordingStatus, setRecordingStatus] = useState('');
     const recordingPollRef = useRef(null);
 
+    // Auto-record master switch
+    const [autoRecord, setAutoRecord] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('liveAutoRecord') ?? 'false'); }
+        catch { return false; }
+    });
+    const autoRecordRef = useRef(autoRecord);
+    useEffect(() => {
+        autoRecordRef.current = autoRecord;
+        localStorage.setItem('liveAutoRecord', JSON.stringify(autoRecord));
+    }, [autoRecord]);
+    // true while the current recording was started automatically (not by the user)
+    const wasAutoStartedRef = useRef(false);
+    const isRecordingRef = useRef(isRecording);
+    useEffect(() => { isRecordingRef.current = isRecording; }, [isRecording]);
+
     // Use custom hook for time updates
     const timeInfo = usePlayerTime(LIVE_PLAYER_EVENT_KEY, 'live');
 
@@ -259,52 +274,86 @@ const LivePlayerCard = () => {
         }
     };
 
-    // ── Recording handlers ─────────────────────────────────────
+    // ── Recording helpers (shared by manual button + auto-record logic) ──────
+    const startRecording = useCallback(async (vid) => {
+        if (!vid) { setRecordingStatus('No video ID — cannot record'); return false; }
+        setRecordingStatus('Starting...');
+        try {
+            const res = await fetch(`${API_BASE}/api/recording/start`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ videoId: vid }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                setIsRecording(true);
+                setRecordingFile(data.filename);
+                setRecordingDuration(0);
+                setRecordingStatus('Recording...');
+                startStatusPoll();
+                return true;
+            }
+            setRecordingStatus(`Start failed: ${data.error}`);
+            return false;
+        } catch (e) {
+            setRecordingStatus(`Error: ${e.message}`);
+            return false;
+        }
+    }, [startStatusPoll]);
+
+    const stopRecording = useCallback(async () => {
+        setRecordingStatus('Stopping...');
+        try {
+            const res = await fetch(`${API_BASE}/api/recording/stop`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                setIsRecording(false);
+                setRecordingFile(null);
+                setRecordingDuration(0);
+                setRecordingStatus('Recording saved');
+                stopStatusPoll();
+                return true;
+            }
+            setRecordingStatus(`Stop failed: ${data.error}`);
+            return false;
+        } catch (e) {
+            setRecordingStatus(`Error: ${e.message}`);
+            return false;
+        }
+    }, [stopStatusPoll]);
+
+    // ── Manual toggle (REC button) ────────────────────────────────────────────
     const handleToggleRecording = async () => {
         if (isRecording) {
-            setRecordingStatus('Stopping...');
-            try {
-                const res = await fetch(`${API_BASE}/api/recording/stop`, { method: 'POST' });
-                const data = await res.json();
-                if (data.success) {
-                    setIsRecording(false);
-                    setRecordingFile(null);
-                    setRecordingDuration(0);
-                    setRecordingStatus('Recording saved');
-                    stopStatusPoll();
-                } else {
-                    setRecordingStatus(`Stop failed: ${data.error}`);
-                }
-            } catch (e) {
-                setRecordingStatus(`Error: ${e.message}`);
-            }
+            wasAutoStartedRef.current = false;
+            await stopRecording();
         } else {
-            if (!videoId) {
-                setRecordingStatus('Load a video first');
-                return;
-            }
-            setRecordingStatus('Starting...');
-            try {
-                const res = await fetch(`${API_BASE}/api/recording/start`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ videoId }),
-                });
-                const data = await res.json();
-                if (data.success) {
-                    setIsRecording(true);
-                    setRecordingFile(data.filename);
-                    setRecordingDuration(0);
-                    setRecordingStatus('Recording...');
-                    startStatusPoll();
-                } else {
-                    setRecordingStatus(`Start failed: ${data.error}`);
-                }
-            } catch (e) {
-                setRecordingStatus(`Error: ${e.message}`);
-            }
+            wasAutoStartedRef.current = false; // manual start
+            await startRecording(videoId);
         }
     };
+
+    // ── Auto-record: start when Live Player becomes visible, stop when hidden ─
+    useEffect(() => {
+        const timeSinceMount = Date.now() - mountTime.current;
+        if (timeSinceMount < 500) return; // ignore on initial mount
+        if (!autoRecordRef.current) return; // master switch is OFF
+
+        if (isVisible) {
+            // Live Player just became visible — auto-start if not already recording
+            if (!isRecordingRef.current) {
+                const vid = videoIdRef.current;
+                wasAutoStartedRef.current = true;
+                startRecording(vid);
+            }
+        } else {
+            // Live Player just became hidden — auto-stop only if WE started it
+            if (isRecordingRef.current && wasAutoStartedRef.current) {
+                wasAutoStartedRef.current = false;
+                stopRecording();
+            }
+        }
+    }, [isVisible, startRecording, stopRecording]);
 
     const handleAutoDeleteChange = (e) => {
         const raw = e.target.value.replace(/[^0-9]/g, '');
@@ -371,6 +420,28 @@ const LivePlayerCard = () => {
                 </PlayerControlBtn>
             </div>
 
+            {/* Auto-Record master switch */}
+            <div
+                className={`w-full mt-3 px-3 py-2 rounded-lg border flex items-center justify-between gap-2 cursor-pointer select-none transition-all ${
+                    autoRecord
+                        ? 'bg-red-900/40 border-red-500/60'
+                        : 'bg-gray-800/60 border-gray-600/60'
+                }`}
+                onClick={() => setAutoRecord(v => !v)}
+                title="When ON: recording auto-starts when Live Player becomes visible and auto-stops when it hides"
+            >
+                <div className="flex items-center gap-2">
+                    <span className={`w-3 h-3 rounded-full flex-shrink-0 ${autoRecord ? 'bg-red-500 animate-pulse' : 'bg-gray-500'}`} />
+                    <span className="text-sm font-semibold text-white">Auto-Record</span>
+                    <span className="text-xs text-gray-400">
+                        {autoRecord ? '— will record when Live is active' : '— disabled'}
+                    </span>
+                </div>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded ${autoRecord ? 'bg-red-600 text-white' : 'bg-gray-600 text-gray-300'}`}>
+                    {autoRecord ? 'ON' : 'OFF'}
+                </span>
+            </div>
+
             {/* Recording section */}
             <div className="recording-section">
                 <div className="recording-row">
@@ -380,7 +451,9 @@ const LivePlayerCard = () => {
                         title={isRecording ? 'Stop Recording' : 'Start Recording'}
                     >
                         <span className={`rec-dot${isRecording ? ' rec-dot-pulse' : ''}`} />
-                        {isRecording ? `REC  ${recordingDurationLabel}` : 'REC'}
+                        {isRecording
+                            ? `REC  ${recordingDurationLabel}${wasAutoStartedRef.current ? ' (auto)' : ''}`
+                            : 'REC'}
                     </button>
 
                     <div className="auto-delete-field">

@@ -141,6 +141,19 @@ export const importSchedules = async (schedules) => {
 };
 
 /**
+ * Immediately fire a schedule (test/manual trigger)
+ */
+export const fireSchedule = async (id) => {
+    try {
+        const response = await fetch(`${API_BASE}/api/schedules/${id}/fire`, { method: 'POST' });
+        return await response.json();
+    } catch (error) {
+        console.error('Error firing schedule:', error);
+        return { success: false, error: error.message };
+    }
+};
+
+/**
  * Get next pending triggers
  */
 export const getNextTriggers = async (count = 5) => {

@@ -11,6 +11,7 @@ import {
     updateSchedule as apiUpdateSchedule,
     deleteSchedule as apiDeleteSchedule,
     toggleSchedule as apiToggleSchedule,
+    fireSchedule as apiFireSchedule,
     importSchedules,
     connectWebSocket,
     disconnectWebSocket,
@@ -32,7 +33,7 @@ const daysList = [
 const OBS_TRIGGER_EXPIRY_MS = 2 * 60 * 1000; // drop pending OBS actions after 2 min
 
 const Scheduler = () => {
-    const { sourceState, setSourceVisibility, isConnected: obsConnected } = useOBS();
+    const { sourceState, sourceIds, setSourceVisibility, isConnected: obsConnected } = useOBS();
 
     // Server state
     const [schedules, setSchedules] = useState([]);
@@ -40,17 +41,20 @@ const Scheduler = () => {
     const [pendingTimeouts, setPendingTimeouts] = useState([]);
     const [serverConnected, setServerConnected] = useState(false);
     const [loading, setLoading] = useState(true);
-    const [lastFiredId, setLastFiredId] = useState(null); // ID of most recently triggered schedule
+    const [lastFiredId, setLastFiredId] = useState(null);
+    const [triggerLog, setTriggerLog] = useState([]); // last few trigger results shown to user
 
     // Refs for latest values inside WS callbacks (avoid stale closures)
     const sourceStateRef = useRef(sourceState);
     const obsConnectedRef = useRef(obsConnected);
+    const sourceIdsRef = useRef(sourceIds);
     // Queue for show/hide triggers that arrived while OBS was disconnected
     const pendingOBSTriggersRef = useRef([]);
 
     // Keep refs in sync
     useEffect(() => { sourceStateRef.current = sourceState; }, [sourceState]);
     useEffect(() => { obsConnectedRef.current = obsConnected; }, [obsConnected]);
+    useEffect(() => { sourceIdsRef.current = sourceIds; }, [sourceIds]);
 
     // Form State
     const [time, setTime] = useState("");
@@ -80,18 +84,66 @@ const Scheduler = () => {
         }
     }, []);
 
+    // Push an entry to the visible trigger log (max 5 entries)
+    const pushTriggerLog = useCallback((entry) => {
+        setTriggerLog(prev => [entry, ...prev].slice(0, 5));
+    }, []);
+
     // Execute a show/hide OBS action for a trigger
     const executeOBSTrigger = useCallback((triggerData) => {
+        const now = new Date();
+
+        // Check OBS connected
+        if (!obsConnectedRef.current) {
+            pushTriggerLog({
+                time: now,
+                source: triggerData.source,
+                action: triggerData.action,
+                title: triggerData.title,
+                ok: false,
+                reason: 'OBS not connected — trigger queued'
+            });
+            return;
+        }
+
+        // Check source ID exists in OBS
+        if (!sourceIdsRef.current[triggerData.source]) {
+            const knownSources = Object.keys(sourceIdsRef.current);
+            const reason = knownSources.length === 0
+                ? 'OBS scene items not loaded yet — is OBS open and connected?'
+                : `Source "${triggerData.source}" not found in OBS scene. Available: ${knownSources.join(', ')}`;
+
+            pushTriggerLog({
+                time: now,
+                source: triggerData.source,
+                action: triggerData.action,
+                title: triggerData.title,
+                ok: false,
+                reason
+            });
+
+            logWarn('SCHEDULER_SOURCE_NOT_FOUND', LogCategory.SCHEDULER,
+                { source: triggerData.source, knownSources },
+                `[FRONTEND] ✗ Source "${triggerData.source}" not found in OBS`);
+            return;
+        }
+
+        // All checks pass — execute
         logInfo('SCHEDULER_TRIGGER_EXECUTING', LogCategory.SCHEDULER,
-            { ...triggerData, executingAt: new Date().toISOString() },
+            { ...triggerData, executingAt: now.toISOString() },
             `[FRONTEND] Executing: ${triggerData.action} ${triggerData.source}`);
 
         const targetVisibility = triggerData.action === 'show';
         setSourceVisibility(triggerData.source, targetVisibility, 'scheduler');
 
-        logInfo('SCHEDULER_TRIGGER_EXECUTED', LogCategory.SCHEDULER,
-            { ...triggerData, executedAt: new Date().toISOString() },
-            `[FRONTEND] ✓ Executed: ${triggerData.action} ${triggerData.source} - ${triggerData.title}`);
+        pushTriggerLog({
+            time: now,
+            source: triggerData.source,
+            action: triggerData.action,
+            title: triggerData.title,
+            ok: true,
+            reason: null
+        });
 
         logSchedulerTrigger(
             triggerData.id,
@@ -100,7 +152,7 @@ const Scheduler = () => {
             triggerData.source,
             triggerData.title
         );
-    }, [setSourceVisibility]);
+    }, [setSourceVisibility, pushTriggerLog]);
 
     // Handle trigger from server - execute OBS action (or queue if OBS is disconnected)
     const handleServerTrigger = useCallback((triggerData) => {
@@ -110,17 +162,26 @@ const Scheduler = () => {
             return;
         }
 
-        // If OBS is disconnected, queue the trigger and retry when it reconnects
+        // If OBS is disconnected, queue for when it reconnects
         if (!obsConnectedRef.current) {
             logWarn('SCHEDULER_TRIGGER_OBS_QUEUED', LogCategory.SCHEDULER,
                 { ...triggerData, queuedAt: new Date().toISOString() },
                 `[FRONTEND] OBS disconnected — queuing: ${triggerData.action} ${triggerData.source}`);
             pendingOBSTriggersRef.current.push({ ...triggerData, queuedAt: Date.now() });
+            // Still show in the log so the user knows it was received
+            pushTriggerLog({
+                time: new Date(),
+                source: triggerData.source,
+                action: triggerData.action,
+                title: triggerData.title,
+                ok: false,
+                reason: 'OBS not connected — queued, will retry on reconnect'
+            });
             return;
         }
 
         executeOBSTrigger(triggerData);
-    }, [executeOBSTrigger]); // obsConnected read via ref — no dep needed
+    }, [executeOBSTrigger, pushTriggerLog]);
 
     // When OBS reconnects, replay any queued triggers (with a 2s delay so source IDs load first)
     useEffect(() => {
@@ -302,6 +363,11 @@ const Scheduler = () => {
         loadSchedules();
     };
 
+    const handleFireNow = async (id) => {
+        await apiFireSchedule(id);
+        // The server broadcasts SCHEDULER_TRIGGER via WS — handled automatically
+    };
+
     const resetForm = () => {
         setTime("");
         setSource("Live Player");
@@ -400,11 +466,21 @@ const Scheduler = () => {
         <div id="scheduler-container" className="w-full px-2">
             <h2 className="text-2xl font-bold mb-4 text-[#00adb5] text-center">Scheduler</h2>
 
-            {/* Server Status */}
-            <div className="flex justify-center gap-2 mb-2">
+            {/* Server + OBS Status */}
+            <div className="flex justify-center gap-2 mb-2 flex-wrap">
                 <span className={`text-xs px-2 py-1 rounded ${serverConnected ? 'bg-green-600/30 text-green-400' : 'bg-red-600/30 text-red-400'}`}>
-                    {serverConnected ? '🟢 Server Connected' : '🔴 Server Disconnected'}
+                    {serverConnected ? '🟢 Server' : '🔴 Server Disconnected'}
                 </span>
+                <span className={`text-xs px-2 py-1 rounded ${obsConnected ? 'bg-green-600/30 text-green-400' : 'bg-red-600/30 text-red-400'}`}>
+                    {obsConnected
+                        ? `🟢 OBS (${Object.keys(sourceIds).length} sources loaded)`
+                        : '🔴 OBS Not Connected'}
+                </span>
+                {obsConnected && Object.keys(sourceIds).length === 0 && (
+                    <span className="text-xs px-2 py-1 rounded bg-yellow-600/30 text-yellow-400">
+                        ⚠ OBS scene items loading...
+                    </span>
+                )}
             </div>
 
             {/* Toggle Button */}
@@ -456,6 +532,38 @@ const Scheduler = () => {
                         {pendingTimeouts.length > 3 && (
                             <div className="text-xs text-gray-500 text-center">+{pendingTimeouts.length - 3} more...</div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* Trigger Log — shows last 5 trigger results */}
+            {triggerLog.length > 0 && (
+                <div className="mb-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
+                    <h3 className="text-sm font-semibold text-gray-300 mb-2 flex items-center gap-2">
+                        <span>📋</span> Last Trigger Results
+                        <button
+                            onClick={() => setTriggerLog([])}
+                            className="ml-auto text-xs text-gray-500 hover:text-gray-300"
+                        >clear</button>
+                    </h3>
+                    <div className="grid gap-1">
+                        {triggerLog.map((entry, i) => (
+                            <div key={i} className={`flex flex-col py-1 px-2 rounded text-xs ${entry.ok ? 'bg-green-900/30 border border-green-700/40' : 'bg-red-900/30 border border-red-700/40'}`}>
+                                <div className="flex items-center gap-2">
+                                    <span>{entry.ok ? '✅' : '❌'}</span>
+                                    <span className={`font-semibold ${entry.ok ? 'text-green-400' : 'text-red-400'}`}>
+                                        {entry.action} {entry.source}
+                                    </span>
+                                    {entry.title && <span className="text-gray-400">— {entry.title}</span>}
+                                    <span className="ml-auto text-gray-500">
+                                        {entry.time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+                                    </span>
+                                </div>
+                                {!entry.ok && entry.reason && (
+                                    <div className="mt-0.5 text-red-300 text-xs pl-6">{entry.reason}</div>
+                                )}
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}
@@ -638,6 +746,13 @@ const Scheduler = () => {
                                     </td>
                                     <td className="px-3 py-2 text-center space-x-1">
                                         <button
+                                            onClick={() => handleFireNow(schedule.id)}
+                                            title="Fire this schedule right now (test)"
+                                            className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs"
+                                        >
+                                            ▶
+                                        </button>
+                                        <button
                                             onClick={() => handleEdit(schedule)}
                                             className="px-2 py-1 bg-yellow-600 hover:bg-yellow-700 text-white rounded text-xs"
                                         >
@@ -691,12 +806,6 @@ const Scheduler = () => {
                 </div>
             )}
 
-            {/* Connection Status */}
-            <p className="text-xs text-gray-500 text-center mt-4">
-                {obsConnected ? '✓ OBS Connected' : '⚠ OBS WebSocket not connected'}
-                {' | '}
-                {serverConnected ? '✓ Scheduler Server Connected' : '⚠ Scheduler Server not connected'}
-            </p>
         </div>
     );
 };

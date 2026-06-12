@@ -675,6 +675,27 @@ app.post('/api/schedules/:id/toggle', (req, res) => {
     }
 });
 
+// POST /api/schedules/:id/fire - Immediately fire a schedule (for testing)
+app.post('/api/schedules/:id/fire', (req, res) => {
+    const id = parseInt(req.params.id) || req.params.id;
+    const schedule = scheduler.getSchedule(id);
+    if (!schedule) {
+        return res.status(404).json({ success: false, error: 'Schedule not found' });
+    }
+    const triggerData = {
+        id: schedule.id,
+        source: schedule.source,
+        action: schedule.action,
+        title: schedule.title,
+        time: schedule.time,
+        triggerKey: `test-${Date.now()}`,
+        reason: 'manual-test'
+    };
+    broadcast('SCHEDULER_TRIGGER', triggerData);
+    console.log(`[Scheduler] Manual fire: ${schedule.action} ${schedule.source} (${schedule.title || 'no title'})`);
+    res.json({ success: true, fired: triggerData });
+});
+
 // PUT /api/schedules - Replace all schedules (for import / drag-and-drop reorder)
 app.put('/api/schedules', (req, res) => {
     try {
