@@ -10,11 +10,47 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
         toggleRecord, recordActive,
         toggleVirtualCam, virtualCamActive,
         sourceState, setSourceVisibility,
+        obsSettings, updateOBSSettings,
+        isConnected,
         SCENE_NAME
     } = useOBS();
 
-    // Auto-record: start OBS recording when Live Player becomes visible, stop when hidden.
-    // Controlled by the same master toggle (liveAutoRecord) as the yt-dlp recording in LivePlayerCard.
+    // OBS Setup panel state
+    const [showOBSSetup, setShowOBSSetup] = React.useState(false);
+    const [obsHost, setObsHost] = React.useState(obsSettings?.host || 'localhost');
+    const [obsPort, setObsPort] = React.useState(String(obsSettings?.port || 4455));
+
+    const handleOBSSave = () => {
+        const port = parseInt(obsPort, 10);
+        if (!obsHost.trim() || isNaN(port) || port < 1 || port > 65535) return;
+        updateOBSSettings({ host: obsHost.trim(), port });
+        setShowOBSSetup(false);
+    };
+
+    // Auto-record state — shared with LivePlayerCard via localStorage key 'liveAutoRecord'
+    const [autoRecord, setAutoRecord] = React.useState(() => {
+        try { return JSON.parse(localStorage.getItem('liveAutoRecord') ?? 'false'); } catch { return false; }
+    });
+    const autoRecordRef = useRef(autoRecord);
+    useEffect(() => { autoRecordRef.current = autoRecord; }, [autoRecord]);
+
+    // Stay in sync when LivePlayerCard toggles the value
+    useEffect(() => {
+        const onStorage = (e) => {
+            if (e.key === 'liveAutoRecord') {
+                try { setAutoRecord(JSON.parse(e.newValue ?? 'false')); } catch { }
+            }
+        };
+        window.addEventListener('storage', onStorage);
+        return () => window.removeEventListener('storage', onStorage);
+    }, []);
+
+    const toggleAutoRecord = () => {
+        const next = !autoRecordRef.current;
+        setAutoRecord(next);
+        localStorage.setItem('liveAutoRecord', JSON.stringify(next));
+    };
+
     const mountTime = useRef(Date.now());
     const obsAutoStartedRef = useRef(false);
     const recordActiveRef = useRef(recordActive);
@@ -23,9 +59,7 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
     const isLivePlayerVisible = sourceState["Live Player"];
     useEffect(() => {
         if (Date.now() - mountTime.current < 1000) return;
-        let autoRecord = false;
-        try { autoRecord = JSON.parse(localStorage.getItem('liveAutoRecord') ?? 'false'); } catch { }
-        if (!autoRecord) return;
+        if (!autoRecordRef.current) return;
 
         if (isLivePlayerVisible) {
             if (!recordActiveRef.current) {
@@ -119,7 +153,56 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
 
             {/* OBS Controls - Compact Column */}
             <div className="flex flex-col gap-1 items-end">
-                <span className="text-xs text-cyan-400 font-semibold mb-1">OBS</span>
+                <div className="flex items-center gap-2 mb-1">
+                    <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-500'}`} />
+                    <span className="text-xs text-cyan-400 font-semibold">OBS</span>
+                    <button
+                        onClick={() => setShowOBSSetup(v => !v)}
+                        title="OBS WebSocket Setup"
+                        className={`px-1.5 py-0.5 rounded text-xs font-medium transition-all ${showOBSSetup ? 'bg-cyan-700 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}
+                    >
+                        ⚙ Setup
+                    </button>
+                </div>
+
+                {showOBSSetup && (
+                    <div className="bg-gray-900 border border-cyan-700/50 rounded-lg p-3 mb-1 w-64 text-xs">
+                        <p className="text-cyan-400 font-semibold mb-2">OBS WebSocket</p>
+                        <div className="flex flex-col gap-2">
+                            <div className="flex items-center gap-2">
+                                <label className="text-gray-400 w-10 flex-shrink-0">Host</label>
+                                <input
+                                    value={obsHost}
+                                    onChange={e => setObsHost(e.target.value)}
+                                    className="flex-1 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white text-xs"
+                                    placeholder="localhost"
+                                />
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <label className="text-gray-400 w-10 flex-shrink-0">Port</label>
+                                <input
+                                    value={obsPort}
+                                    onChange={e => setObsPort(e.target.value)}
+                                    className="flex-1 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white text-xs"
+                                    placeholder="4455"
+                                    type="number"
+                                />
+                            </div>
+                            <div className="flex gap-2 mt-1">
+                                <button onClick={handleOBSSave} className="flex-1 bg-cyan-700 hover:bg-cyan-600 text-white rounded px-2 py-1 text-xs font-medium">
+                                    Save & Reconnect
+                                </button>
+                                <button onClick={() => setShowOBSSetup(false)} className="bg-gray-700 hover:bg-gray-600 text-gray-300 rounded px-2 py-1 text-xs">
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                        <p className="text-gray-500 mt-2">
+                            Current: {obsSettings?.host || 'localhost'}:{obsSettings?.port || 4455}
+                        </p>
+                    </div>
+                )}
+
                 <div className="flex gap-1">
                     <button
                         onClick={toggleStream}
@@ -138,6 +221,16 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
                             }`}
                     >
                         {recordActive ? "⏹ Rec" : "● Rec"}
+                    </button>
+                    <button
+                        onClick={toggleAutoRecord}
+                        title="Auto-record: start OBS recording when Live Player turns on, stop when it turns off"
+                        className={`px-2 py-1 rounded text-xs font-medium transition-all ${autoRecord
+                            ? 'bg-red-800 text-red-200 ring-1 ring-red-500'
+                            : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                            }`}
+                    >
+                        {autoRecord ? '⏺ Auto' : '○ Auto'}
                     </button>
                     <button
                         onClick={toggleVirtualCam}

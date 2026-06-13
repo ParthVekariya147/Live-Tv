@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "lastModified": "2026-06-12T09:00:00.547Z",
+  "lastModified": "2026-06-13T11:32:58.387Z",
   "schedulerEnabled": true,
   "schedules": [
     {
@@ -13,8 +13,8 @@
       "scheduledDay": null,
       "title": "Local",
       "enabled": true,
-      "lastTriggered": "2026-06-11-22:52",
-      "lastTriggeredAt": "2026-06-11T17:22:00.620Z",
+      "lastTriggered": "2026-06-12-22:52",
+      "lastTriggeredAt": "2026-06-12T17:22:00.083Z",
       "createdAt": "2026-01-23T17:10:08.541Z"
     },
     {
@@ -27,8 +27,8 @@
       "scheduledDay": null,
       "title": "Delay",
       "enabled": true,
-      "lastTriggered": "2026-06-12-14:30",
-      "lastTriggeredAt": "2026-06-12T09:00:00.547Z",
+      "lastTriggered": "2026-06-13-14:30",
+      "lastTriggeredAt": "2026-06-13T09:00:00.612Z",
       "createdAt": "2026-01-24T08:58:26.689Z"
     },
     {
@@ -41,8 +41,8 @@
       "scheduledDay": null,
       "title": "Live",
       "enabled": true,
-      "lastTriggered": "2026-06-11-21:20",
-      "lastTriggeredAt": "2026-06-11T15:50:00.193Z",
+      "lastTriggered": "2026-06-12-21:20",
+      "lastTriggeredAt": "2026-06-12T15:50:00.502Z",
       "createdAt": "2026-01-24T15:48:47.536Z"
     },
     {
@@ -69,8 +69,8 @@
       "scheduledDay": null,
       "title": "Refresh Katha Content",
       "enabled": true,
-      "lastTriggered": "2026-06-11-21:43",
-      "lastTriggeredAt": "2026-06-11T16:13:00.091Z",
+      "lastTriggered": null,
+      "lastTriggeredAt": "2026-06-12T16:13:00.353Z",
       "createdAt": "2026-01-24T16:04:11.423Z",
       "skipIfLivePlaying": false
     },
@@ -83,8 +83,8 @@
       "days": [],
       "title": "Load Katha to Delay Player",
       "enabled": true,
-      "lastTriggered": "2026-06-11-21:39",
-      "lastTriggeredAt": "2026-06-11T16:09:00.349Z",
+      "lastTriggered": null,
+      "lastTriggeredAt": "2026-06-12T16:09:01.035Z",
       "createdAt": "2026-01-24T16:04:42.396Z",
       "skipIfLivePlaying": false
     },
@@ -103,8 +103,8 @@
       "scheduledDay": null,
       "title": "",
       "enabled": true,
-      "lastTriggered": "2026-06-11-21:45",
-      "lastTriggeredAt": "2026-06-11T16:15:00.183Z",
+      "lastTriggered": "2026-06-12-21:45",
+      "lastTriggeredAt": "2026-06-12T16:15:00.516Z",
       "createdAt": "2026-01-24T16:13:40.084Z"
     }
   ],
@@ -371,6 +371,78 @@
       "status": "success",
       "reason": "scheduled",
       "executionTimeMs": 84,
+      "error": null
+    },
+    {
+      "id": 1781254800573,
+      "timestamp": "2026-06-12T09:00:00.573Z",
+      "scheduleId": 1769245106689,
+      "source": "Delay Live",
+      "action": "show",
+      "title": "Delay",
+      "status": "success",
+      "reason": "scheduled",
+      "executionTimeMs": 24,
+      "error": null
+    },
+    {
+      "id": 1781279400533,
+      "timestamp": "2026-06-12T15:50:00.533Z",
+      "scheduleId": 1769269727536,
+      "source": "Live Player",
+      "action": "show",
+      "title": "Live",
+      "status": "success",
+      "reason": "scheduled",
+      "executionTimeMs": 34,
+      "error": null
+    },
+    {
+      "id": 1781280541057,
+      "timestamp": "2026-06-12T16:09:01.057Z",
+      "scheduleId": 1769270682396,
+      "source": "Katha Player",
+      "action": "katha_player",
+      "title": "Load Katha to Delay Player",
+      "status": "success",
+      "reason": "scheduled",
+      "executionTimeMs": 55,
+      "error": null
+    },
+    {
+      "id": 1781280780375,
+      "timestamp": "2026-06-12T16:13:00.375Z",
+      "scheduleId": 1769270651423,
+      "source": "Katha Refresh",
+      "action": "katha_refresh",
+      "title": "Refresh Katha Content",
+      "status": "success",
+      "reason": "scheduled",
+      "executionTimeMs": 27,
+      "error": null
+    },
+    {
+      "id": 1781280900540,
+      "timestamp": "2026-06-12T16:15:00.540Z",
+      "scheduleId": 1769271220084,
+      "source": "Local Player",
+      "action": "hide",
+      "title": "",
+      "status": "success",
+      "reason": "scheduled",
+      "executionTimeMs": 33,
+      "error": null
+    },
+    {
+      "id": 1781284920102,
+      "timestamp": "2026-06-12T17:22:00.102Z",
+      "scheduleId": 1769188208541,
+      "source": "Local Player",
+      "action": "show",
+      "title": "Local",
+      "status": "success",
+      "reason": "scheduled",
+      "executionTimeMs": 19,
       "error": null
     }
   ]

@@ -253,12 +253,42 @@ function cmdStart() {
 }
 
 function cmdStop() {
-    header('Stop Services');
-    const pm2 = pm2Cmd();
-    if (!pm2) { warn('PM2 not found — nothing to stop.'); return; }
+    header('Stop ALL Services');
 
-    tryRun(`${pm2} stop smk-api smk-controller`);
-    ok('Services stopped.');
+    const pm2 = pm2Cmd();
+    if (pm2) {
+        info('Stopping all PM2 processes...');
+        tryRun(`${pm2} stop all`);
+
+        info('Deleting all PM2 processes...');
+        tryRun(`${pm2} delete all`);
+
+        info('Killing PM2 daemon...');
+        tryRun(`${pm2} kill`);
+
+        ok('PM2 fully stopped.');
+    } else {
+        warn('PM2 not found — skipping PM2 shutdown.');
+    }
+
+    info('Freeing ports 3000, 3003, 3004...');
+    if (IS_WIN) {
+        for (const port of [3000, 3003, 3004]) {
+            try {
+                const pids = execSync(`netstat -aon 2>nul | findstr ":${port} "`, { shell: true })
+                    .toString().trim().split('\n')
+                    .map(l => l.trim().split(/\s+/).pop())
+                    .filter(p => p && /^\d+$/.test(p));
+                pids.forEach(pid => tryRun(`taskkill /F /PID ${pid}`));
+            } catch { /* already free */ }
+        }
+    } else {
+        for (const port of [3000, 3003, 3004]) {
+            tryRun(`lsof -ti :${port} | xargs kill -9 2>/dev/null || true`);
+        }
+    }
+
+    ok('All services stopped. Ports 3000 / 3003 / 3004 are free.');
 }
 
 function cmdRestart() {

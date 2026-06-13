@@ -41,6 +41,12 @@ const LivePlayerCard = () => {
     const [recordingStatus, setRecordingStatus] = useState('');
     const recordingPollRef = useRef(null);
 
+    // File manager state
+    const [showFiles, setShowFiles] = useState(false);
+    const [recordingsList, setRecordingsList] = useState([]);
+    const [filesLoading, setFilesLoading] = useState(false);
+    const [folderPath, setFolderPath] = useState('');
+
     // Auto-record master switch
     const [autoRecord, setAutoRecord] = useState(() => {
         try { return JSON.parse(localStorage.getItem('liveAutoRecord') ?? 'false'); }
@@ -324,6 +330,42 @@ const LivePlayerCard = () => {
         }
     }, [stopStatusPoll]);
 
+    // ── File Manager ─────────────────────────────────────────────────────────
+    const fetchRecordingsList = useCallback(async () => {
+        setFilesLoading(true);
+        try {
+            const [listRes, pathRes] = await Promise.all([
+                fetch(`${API_BASE}/api/recording/list`),
+                fetch(`${API_BASE}/api/recording/folder-path`),
+            ]);
+            const listData = await listRes.json();
+            const pathData = await pathRes.json();
+            if (listData.success) setRecordingsList(listData.recordings || []);
+            if (pathData.success) setFolderPath(pathData.path || '');
+        } catch { /* ignore */ }
+        finally { setFilesLoading(false); }
+    }, []);
+
+    const handleToggleFiles = useCallback(async () => {
+        const next = !showFiles;
+        setShowFiles(next);
+        if (next) await fetchRecordingsList();
+    }, [showFiles, fetchRecordingsList]);
+
+    const handleOpenFolder = useCallback(async () => {
+        try { await fetch(`${API_BASE}/api/recording/open-folder`, { method: 'POST' }); }
+        catch { /* ignore */ }
+    }, []);
+
+    const handleDeleteRecording = useCallback(async (filename) => {
+        if (!window.confirm(`Delete "${filename}"?`)) return;
+        try {
+            const res = await fetch(`${API_BASE}/api/recording/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) setRecordingsList(prev => prev.filter(r => r.filename !== filename));
+        } catch { /* ignore */ }
+    }, []);
+
     // ── Manual toggle (REC button) ────────────────────────────────────────────
     const handleToggleRecording = async () => {
         if (isRecording) {
@@ -459,6 +501,14 @@ const LivePlayerCard = () => {
                             : 'REC'}
                     </button>
 
+                    <button
+                        onClick={handleToggleFiles}
+                        title="View saved recordings"
+                        className={`px-2 py-1 rounded text-xs font-medium transition-all ${showFiles ? 'bg-blue-700 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                    >
+                        📁 Files
+                    </button>
+
                     <div className="auto-delete-field">
                         <label className="auto-delete-label">Keep last</label>
                         <input
@@ -482,6 +532,55 @@ const LivePlayerCard = () => {
                         {recordingFile.length > 40 ? '…' + recordingFile.slice(-38) : recordingFile}
                     </p>
                 ) : null}
+
+                {/* File Manager Panel */}
+                {showFiles && (
+                    <div className="mt-2 border border-gray-600 rounded-lg bg-gray-900/60 overflow-hidden">
+                        <div className="flex items-center justify-between px-3 py-2 bg-gray-800/80 border-b border-gray-700">
+                            <span className="text-xs font-semibold text-blue-300">📁 live_recordings</span>
+                            <div className="flex gap-1.5">
+                                <button
+                                    onClick={handleOpenFolder}
+                                    title="Open folder in Explorer / Finder"
+                                    className="px-2 py-0.5 rounded text-xs bg-blue-800 hover:bg-blue-700 text-white font-medium"
+                                >
+                                    Open Folder ↗
+                                </button>
+                                <button
+                                    onClick={fetchRecordingsList}
+                                    title="Refresh list"
+                                    className="px-2 py-0.5 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-300"
+                                >
+                                    ↻
+                                </button>
+                            </div>
+                        </div>
+                        {folderPath && (
+                            <p className="px-3 py-1 text-xs text-gray-500 border-b border-gray-800 truncate" title={folderPath}>
+                                {folderPath}
+                            </p>
+                        )}
+                        <div className="max-h-48 overflow-y-auto">
+                            {filesLoading ? (
+                                <p className="px-3 py-3 text-xs text-gray-400">Loading...</p>
+                            ) : recordingsList.length === 0 ? (
+                                <p className="px-3 py-3 text-xs text-gray-500">No recordings found</p>
+                            ) : recordingsList.map(r => (
+                                <div key={r.filename} className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800/60 hover:bg-gray-800/40 group">
+                                    <span className="flex-1 text-xs text-gray-300 truncate" title={r.filename}>{r.filename}</span>
+                                    <span className="text-xs text-gray-500 flex-shrink-0">{r.sizeFormatted}</span>
+                                    <button
+                                        onClick={() => handleDeleteRecording(r.filename)}
+                                        className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 text-xs px-1 flex-shrink-0"
+                                        title="Delete"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
 
             <div className="btn-group mt-2">

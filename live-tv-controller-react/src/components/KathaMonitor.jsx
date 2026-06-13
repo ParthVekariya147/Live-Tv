@@ -70,7 +70,7 @@ const KathaMonitor = () => {
     const [loadingToPlayer, setLoadingToPlayer] = useState(false);
     const [error, setError] = useState(null);
     const [statusText, setStatusText] = useState("Katha Monitor Ready");
-    const [dateFilter, setDateFilter] = useState("today");
+    const [dateFilter, setDateFilter] = useState("auto"); // auto | today | yesterday | week | all
 
     // Katha Schedulers
     const [refreshSchedulerEnabled, setRefreshSchedulerEnabled] = useState(false);
@@ -272,85 +272,95 @@ const KathaMonitor = () => {
     }, []);
 
     // Fetch Katha channel content
-    const getKathaChannelContent = async (filterType) => {
+    // Returns videos filtered by the given mode
+    // mode: "today" | "yesterday" | "week" | "all"
+    const getKathaChannelContent = async (mode) => {
         const response = await fetch(`${LOCAL_API_BASE}/api/videos`, {
             signal: AbortSignal.timeout(15000),
         });
-        if (!response.ok) {
-            throw new Error(`Local API HTTP ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`Local API HTTP ${response.status}`);
 
         const payload = await response.json();
+        // API already returns only Katha channel — sort newest first
         const rawVideoItems = (payload.data || [])
-            .filter((video) => video.channelId === KATHA_CHANNEL_ID)
             .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
-        const today = new Date();
-        const yesterday = new Date(today);
-        yesterday.setDate(today.getDate() - 1);
 
-        const targetDateFormatted = filterType === "today"
-            ? formatDateToDDMMMYYYY(today)
-            : formatDateToDDMMMYYYY(yesterday);
+        const now = new Date();
+        const todayStr = formatDateToDDMMMYYYY(now);
+        const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+        const yesterdayStr = formatDateToDDMMMYYYY(yesterday);
+        const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 7);
 
-        let processedData = [];
-
-        for (const video of rawVideoItems) {
-            const title = video.title || "No Title";
+        const videoMatchesMode = (video) => {
+            if (mode === 'all') return true;
             const publishedDate = video.publishedAt ? new Date(video.publishedAt) : null;
-            const matchesDate =
-                publishedDate && !Number.isNaN(publishedDate.getTime())
-                    ? formatDateToDDMMMYYYY(publishedDate) === targetDateFormatted
-                    : false;
+            const pubStr = publishedDate && !isNaN(publishedDate) ? formatDateToDDMMMYYYY(publishedDate) : null;
+            const title = video.title || '';
 
-            if (title.includes(targetDateFormatted) || matchesDate) {
-                const videoId = video.videoId;
-                let manglaCharanTimestamp = { time: '00:00', word: "Fetching..." };
+            if (mode === 'today')
+                return title.includes(todayStr) || pubStr === todayStr;
+            if (mode === 'yesterday')
+                return title.includes(yesterdayStr) || pubStr === yesterdayStr;
+            if (mode === 'week')
+                return !publishedDate || publishedDate >= weekAgo;
+            return false;
+        };
 
-                const fullDescription = await fetchKathaVideoFullDescription(videoId);
-                if (fullDescription.startsWith("Error fetching description:")) {
-                    manglaCharanTimestamp.word = `Error`;
-                    manglaCharanTimestamp.time = '00:00';
-                } else {
-                    manglaCharanTimestamp = extractManglaCharanTimestamp(fullDescription);
-                }
+        const matched = rawVideoItems.filter(videoMatchesMode);
+        const processedData = [];
 
-                const thumbnailUrl = video.thumbnail ||
-                    "https://placehold.co/320x180/cccccc/333333?text=No+Image";
-                const videoUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : "#";
+        for (const video of matched) {
+            const videoId = video.videoId;
+            let manglaCharanTimestamp = { time: '00:00', word: "Fetching..." };
 
-                processedData.push({
-                    title,
-                    thumbnailUrl,
-                    videoUrl,
-                    videoId,
-                    manglaCharanTimestamp,
-                });
+            const fullDescription = await fetchKathaVideoFullDescription(videoId);
+            if (fullDescription.startsWith("Error fetching description:")) {
+                manglaCharanTimestamp = { time: '00:00', word: 'Error' };
+            } else {
+                manglaCharanTimestamp = extractManglaCharanTimestamp(fullDescription);
             }
+
+            processedData.push({
+                title: video.title || "No Title",
+                thumbnailUrl: video.thumbnail || "https://placehold.co/320x180/cccccc/333333?text=No+Image",
+                videoUrl: videoId ? `https://www.youtube.com/watch?v=${videoId}` : "#",
+                videoId,
+                manglaCharanTimestamp,
+                publishedAt: video.publishedAt,
+            });
         }
 
         return processedData;
     };
 
-    const loadKathaContent = async () => {
+    const loadKathaContent = async (modeOverride) => {
         setLoading(true);
         setError(null);
         setStatusText("Refreshing Katha content list...");
 
         try {
-            let filter = "today";
-            let content = await getKathaChannelContent(filter);
+            const requestedMode = modeOverride || dateFilter;
+            let resolvedMode = requestedMode;
+            let content = [];
 
-            if (content.length === 0) {
-                filter = "yesterday";
-                content = await getKathaChannelContent(filter);
+            if (requestedMode === 'auto') {
+                // Auto: try today first, fall back to yesterday
+                content = await getKathaChannelContent('today');
+                resolvedMode = 'today';
+                if (content.length === 0) {
+                    content = await getKathaChannelContent('yesterday');
+                    resolvedMode = 'yesterday';
+                }
+            } else {
+                content = await getKathaChannelContent(requestedMode);
+                resolvedMode = requestedMode;
             }
 
             setVideos(content);
-            setDateFilter(filter);
-            setStatusText(`Content updated. Showing videos for ${filter}.`);
+            const label = { today: 'Today', yesterday: 'Yesterday', week: 'Last 7 days', all: 'All' }[resolvedMode] || resolvedMode;
+            setStatusText(`Showing ${content.length} video${content.length !== 1 ? 's' : ''} — ${label}`);
 
-            // Log the refresh and any new videos found
-            logKathaRefresh(content.length, filter, 'manual');
+            logKathaRefresh(content.length, resolvedMode, 'manual');
             for (const video of content) {
                 logKathaVideoFound(video.videoId, video.title, video.manglaCharanTimestamp?.time, video.manglaCharanTimestamp?.word);
             }
@@ -413,13 +423,33 @@ const KathaMonitor = () => {
         <div className="player-control-card">
             <h3 className="live-monitor-card-h3">Katha Monitor</h3>
 
+            {/* Filter row */}
+            <div className="flex gap-1 mb-2 w-full">
+                {['auto', 'today', 'yesterday', 'week', 'all'].map(mode => (
+                    <button
+                        key={mode}
+                        onClick={() => {
+                            setDateFilter(mode);
+                            loadKathaContent(mode);
+                        }}
+                        className={`flex-1 px-1 py-1 rounded text-xs font-medium transition-all capitalize ${
+                            dateFilter === mode
+                                ? 'bg-cyan-700 text-white'
+                                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                        }`}
+                    >
+                        {mode === 'auto' ? 'Auto' : mode === 'week' ? '7d' : mode === 'all' ? 'All' : mode.charAt(0).toUpperCase() + mode.slice(1)}
+                    </button>
+                ))}
+            </div>
+
             <div className="flex justify-center space-x-2 mb-2 w-full">
                 <button
                     className="common-btn-style btn-secondary flex-1"
-                    onClick={loadKathaContent}
+                    onClick={() => loadKathaContent()}
                     disabled={loading}
                 >
-                    {loading ? "Loading..." : "Refresh List"}
+                    {loading ? "Loading..." : "Refresh"}
                 </button>
                 <button
                     className={`common-btn-style btn-primary flex-1${loadingToPlayer ? ' btn-loading' : ''}`}
@@ -484,7 +514,7 @@ const KathaMonitor = () => {
 
             <div className="grid grid-cols-1 gap-4 w-full mb-4">
                 {!loading && !error && videos.length === 0 && (
-                    <p className="text-center text-gray-600">No content found for {dateFilter}'s date filter.</p>
+                    <p className="text-center text-gray-600">No videos found — try a different filter or click Refresh.</p>
                 )}
                 {videos.map((video, index) => (
                     <div

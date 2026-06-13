@@ -1137,8 +1137,25 @@ app.delete('/api/recording/:filename', (req, res) => {
     res.json(result);
 });
 
+// POST /api/recording/open-folder — open the live_recordings folder in OS file manager
+app.post('/api/recording/open-folder', (req, res) => {
+    if (!fs.existsSync(recordingsDir)) fs.mkdirSync(recordingsDir, { recursive: true });
+    const { exec } = require('child_process');
+    let cmd;
+    if (process.platform === 'win32') cmd = `explorer "${recordingsDir}"`;
+    else if (process.platform === 'darwin') cmd = `open "${recordingsDir}"`;
+    else cmd = `xdg-open "${recordingsDir}"`;
+    exec(cmd, () => {});
+    res.json({ success: true, path: recordingsDir });
+});
+
+// GET /api/recording/folder-path — return path for display
+app.get('/api/recording/folder-path', (req, res) => {
+    res.json({ success: true, path: recordingsDir });
+});
+
 // Serve recordings as static files
-app.use('/recordings', express.static(recordingsDir, {
+app.use('/live_recordings', express.static(recordingsDir, {
     setHeaders: (res) => { res.setHeader('Accept-Ranges', 'bytes'); }
 }));
 

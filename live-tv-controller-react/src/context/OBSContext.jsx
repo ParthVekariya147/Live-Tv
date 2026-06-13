@@ -15,10 +15,19 @@ const SOURCE_NAMES = [
 ];
 const POLL_INTERVAL_MS = 1000;
 const ACTIVE_SOURCE_KEY = "obsActiveSource";
+const OBS_SETTINGS_KEY = "obsSettings";
+
+const readOBSSettings = () => {
+    try { return JSON.parse(localStorage.getItem(OBS_SETTINGS_KEY) ?? '{}'); } catch { return {}; }
+};
 
 export const OBSProvider = ({ children }) => {
     const [isConnected, setIsConnected] = useState(false);
     const [connectionError, setConnectionError] = useState(null);
+
+    const [obsSettings, setObsSettings] = useState(readOBSSettings);
+    const obsSettingsRef = useRef(obsSettings);
+    useEffect(() => { obsSettingsRef.current = obsSettings; }, [obsSettings]);
 
     const [sourceState, setSourceState] = useState({});
     const [sourceIds, setSourceIds] = useState({});
@@ -143,7 +152,10 @@ export const OBSProvider = ({ children }) => {
             obsReconnectTimeoutRef.current = null;
         }
 
-        const ws = new WebSocket("ws://localhost:4455");
+        const s = obsSettingsRef.current;
+        const obsHost = s.host || 'localhost';
+        const obsPort = s.port || 4455;
+        const ws = new WebSocket(`ws://${obsHost}:${obsPort}`);
         socketRef.current = ws;
 
         ws.onopen = () => {
@@ -345,6 +357,21 @@ export const OBSProvider = ({ children }) => {
         setSourceVisibility(sourceName, !current);
     }, [setSourceVisibility]);
 
+    const updateOBSSettings = useCallback((newSettings) => {
+        const merged = { ...obsSettingsRef.current, ...newSettings };
+        obsSettingsRef.current = merged;
+        setObsSettings(merged);
+        localStorage.setItem(OBS_SETTINGS_KEY, JSON.stringify(merged));
+        // Force reconnect with new settings
+        if (socketRef.current) {
+            socketRef.current.close();
+            socketRef.current = null;
+        }
+        setIsConnected(false);
+        obsReconnectDelayRef.current = 1000;
+        obsReconnectTimeoutRef.current = setTimeout(() => connectOBS(), 500);
+    }, [connectOBS]);
+
     return (
         <OBSContext.Provider value={{
             isConnected,
@@ -359,6 +386,8 @@ export const OBSProvider = ({ children }) => {
             toggleVirtualCam,
             setSourceVisibility,
             toggleSource,
+            obsSettings,
+            updateOBSSettings,
             SCENE_NAME,
             SOURCE_NAMES,
             socket: socketRef.current,
