@@ -66,6 +66,7 @@ const Scheduler = () => {
     const [selectedDays, setSelectedDays] = useState([]);
     const [title, setTitle] = useState("");
     const [editingId, setEditingId] = useState(null);
+    const editingScheduledDayRef = useRef(null); // preserves weekly scheduledDay when editing
 
     // Import/Export State
     const [showImportArea, setShowImportArea] = useState(false);
@@ -308,15 +309,35 @@ const Scheduler = () => {
     // SCHEDULE CRUD HANDLERS
     // ============================================
 
+    // Normalize time string to HH:MM — returns null if invalid
+    const normalizeTime = (raw) => {
+        if (!raw || !raw.includes(':')) return null;
+        const [hStr, mStr] = raw.split(':');
+        const h = parseInt(hStr, 10);
+        const m = parseInt(mStr, 10);
+        if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    };
+
     const handleAddSchedule = async () => {
-        if (!time || !source || !action) {
-            alert("Please fill in all required fields.");
+        const normalizedTime = normalizeTime(time);
+        if (!normalizedTime || !source || !action) {
+            alert(!normalizedTime
+                ? "Invalid time — enter HH:MM (e.g. 14:30 for 2:30 PM)"
+                : "Please fill in all required fields.");
             return;
         }
 
+        // Keep displayed value normalized so formatTime12Hr doesn't get garbage input
+        if (normalizedTime !== time) setTime(normalizedTime);
+
         let scheduledDay = null;
         if (recurrence === "weekly") {
-            scheduledDay = new Date().getDay();
+            // When editing an existing weekly schedule preserve the original day;
+            // only use today when creating a new one.
+            scheduledDay = (editingId !== null && editingScheduledDayRef.current !== null)
+                ? editingScheduledDayRef.current
+                : new Date().getDay();
         }
         if (recurrence === "days" && selectedDays.length === 0) {
             alert("Please select at least one day for 'Specific Days' recurrence.");
@@ -324,7 +345,7 @@ const Scheduler = () => {
         }
 
         const scheduleData = {
-            time,
+            time: normalizedTime,
             source,
             action,
             recurrence,
@@ -353,6 +374,10 @@ const Scheduler = () => {
         setTitle(schedule.title);
         setSelectedDays(schedule.days || []);
         setEditingId(schedule.id);
+        // Preserve original scheduledDay so editing on a different weekday doesn't change it
+        editingScheduledDayRef.current = schedule.recurrence === 'weekly'
+            ? (schedule.scheduledDay ?? null)
+            : null;
     };
 
     const handleDelete = async (id) => {
@@ -388,6 +413,7 @@ const Scheduler = () => {
         setSelectedDays([]);
         setTitle("");
         setEditingId(null);
+        editingScheduledDayRef.current = null;
     };
 
     const handleDayToggle = (dayId) => {
@@ -399,11 +425,13 @@ const Scheduler = () => {
     };
 
     const formatTime12Hr = (timeString) => {
-        if (!timeString) return "";
-        const [hours, minutes] = timeString.split(":").map(Number);
+        if (!timeString || !timeString.includes(':')) return timeString || "";
+        const [hStr, mStr] = timeString.split(":");
+        const hours = parseInt(hStr, 10);
+        const minutes = parseInt(mStr, 10);
+        if (isNaN(hours) || isNaN(minutes)) return timeString;
         const date = new Date();
-        date.setHours(hours);
-        date.setMinutes(minutes);
+        date.setHours(hours, minutes, 0, 0);
         return date.toLocaleTimeString("en-US", {
             hour: "2-digit",
             minute: "2-digit",
@@ -568,7 +596,7 @@ const Scheduler = () => {
                                     </span>
                                     {entry.title && <span className="text-gray-400">— {entry.title}</span>}
                                     <span className="ml-auto text-gray-500">
-                                        {entry.time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+                                        {entry.time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
                                     </span>
                                 </div>
                                 {!entry.ok && entry.reason && (
@@ -587,9 +615,18 @@ const Scheduler = () => {
                     <div>
                         <label className="text-xs text-gray-400 block mb-1">Time</label>
                         <input
-                            type="time"
+                            type="text"
                             value={time}
-                            onChange={(e) => setTime(e.target.value)}
+                            onChange={(e) => {
+                                let v = e.target.value.replace(/[^\d:]/g, '');
+                                // Auto-insert colon after 2 digits
+                                if (v.length === 2 && !v.includes(':') && e.nativeEvent.inputType !== 'deleteContentBackward') {
+                                    v = v + ':';
+                                }
+                                if (v.length <= 5) setTime(v);
+                            }}
+                            placeholder="HH:MM"
+                            maxLength={5}
                             className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white text-sm focus:border-cyan-500 focus:outline-none"
                         />
                     </div>

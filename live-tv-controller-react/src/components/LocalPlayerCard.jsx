@@ -16,7 +16,7 @@ const LocalPlayerCard = () => {
     const isVisible = sourceState["Local Player"];
     const isInitialized = useRef(false);
     const dragIndex = useRef(null);
-    const isPlayingRef = useRef(false);
+    const isPlayingRef = useRef(true);  // matches isPlaying initial state (true)
     const isStoppedRef = useRef(false);
     // Tracks whether the user has explicitly started playback this session.
     // Prevents the proactive-skip effect from firing during initial load or
@@ -152,7 +152,8 @@ const LocalPlayerCard = () => {
             } catch (e) {}
         }
 
-        setTimeout(() => { isInitialized.current = true; }, 100);
+        const t = setTimeout(() => { isInitialized.current = true; }, 100);
+        return () => clearTimeout(t);
     }, []);
 
     // Save main player state
@@ -161,9 +162,13 @@ const LocalPlayerCard = () => {
         const persistablePlaylist = playlist
             .map(item => ({ ...item, path: item.path?.startsWith('blob:') ? '' : item.path }))
             .filter(item => item.path && item.path.trim() !== '');
-        localStorage.setItem('localPCPlayerState', JSON.stringify({
-            playlist: persistablePlaylist, currentIndex, isPlaying, isMuted, isStopped
-        }));
+        try {
+            localStorage.setItem('localPCPlayerState', JSON.stringify({
+                playlist: persistablePlaylist, currentIndex, isPlaying, isMuted, isStopped
+            }));
+        } catch (e) {
+            console.warn('LocalPCPlayer: localStorage save failed (quota?):', e.message);
+        }
     }, [playlist, currentIndex, isPlaying, isMuted, isStopped]);
 
     // Save endActions
@@ -354,9 +359,11 @@ const LocalPlayerCard = () => {
     };
 
     const removePath = (index) => {
-        const item = playlist[index];
-        if (item?.path?.startsWith('blob:')) URL.revokeObjectURL(item.path);
-        setPlaylist(prev => prev.filter((_, i) => i !== index));
+        setPlaylist(prev => {
+            const item = prev[index];
+            if (item?.path?.startsWith('blob:')) URL.revokeObjectURL(item.path);
+            return prev.filter((_, i) => i !== index);
+        });
     };
 
     // ============================================
@@ -517,19 +524,24 @@ const LocalPlayerCard = () => {
         // Let parent handle filesystem drops
         if (e.dataTransfer.types.includes('Files')) return;
         e.preventDefault();
-        e.stopPropagation(); // prevent parent handlePlaylistFileDrop from firing
-        if (dragIndex.current === null || dragIndex.current === targetIndex) return;
-
-        const newPlaylist = [...playlist];
-        const [movedItem] = newPlaylist.splice(dragIndex.current, 1);
-        newPlaylist.splice(targetIndex, 0, movedItem);
-        setPlaylist(newPlaylist);
-
-        if (dragIndex.current === currentIndex) setCurrentIndex(targetIndex);
-        else if (dragIndex.current < currentIndex && targetIndex >= currentIndex) setCurrentIndex(currentIndex - 1);
-        else if (dragIndex.current > currentIndex && targetIndex <= currentIndex) setCurrentIndex(currentIndex + 1);
-
+        e.stopPropagation();
+        const from = dragIndex.current;
+        if (from === null || from === targetIndex) return;
         dragIndex.current = null;
+
+        setPlaylist(prev => {
+            const next = [...prev];
+            const [moved] = next.splice(from, 1);
+            next.splice(targetIndex, 0, moved);
+            return next;
+        });
+        // Adjust currentIndex to follow the playing item
+        setCurrentIndex(prev => {
+            if (from === prev) return targetIndex;
+            if (from < prev && targetIndex >= prev) return prev - 1;
+            if (from > prev && targetIndex <= prev) return prev + 1;
+            return prev;
+        });
         setStatusText("Playlist reordered");
     };
 
@@ -914,7 +926,13 @@ const LocalPlayerCard = () => {
                 {playlist.length > 0 && (
                     <button
                         className="common-btn-style btn-danger"
-                        onClick={() => { setPlaylist([]); setStatusText("Playlist cleared"); }}
+                        onClick={() => {
+                            setPlaylist(prev => {
+                                prev.forEach(item => { if (item?.path?.startsWith('blob:')) URL.revokeObjectURL(item.path); });
+                                return [];
+                            });
+                            setStatusText("Playlist cleared");
+                        }}
                         title="Clear entire playlist"
                     >Clear All</button>
                 )}

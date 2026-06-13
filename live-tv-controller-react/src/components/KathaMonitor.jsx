@@ -334,10 +334,10 @@ const KathaMonitor = () => {
 
             if (kathaVideos.length > 0) {
                 const latestVideo = kathaVideos[0];
-                const tsWord = latestVideo.manglaCharanTimestamp.word || '';
+                const tsWord = latestVideo.manglaCharanTimestamp?.word || '';
                 const startTime = (tsWord === 'Not Found' || tsWord.startsWith('Error'))
                     ? '00:00:00'
-                    : latestVideo.manglaCharanTimestamp.time;
+                    : latestVideo.manglaCharanTimestamp?.time;
 
                 window.dispatchEvent(new CustomEvent('delayPlayerPrefill', {
                     detail: { videoId: latestVideo.videoId, startTime, endTime: "" }
@@ -483,7 +483,7 @@ const KathaMonitor = () => {
                             </h4>
                             <div className="mt-2 text-sm">
                                 <p className="katha-video-info">
-                                    {video.manglaCharanTimestamp.word}: <span className="katha-timestamp">{video.manglaCharanTimestamp.time}</span>
+                                    {video.manglaCharanTimestamp?.word}: <span className="katha-timestamp">{video.manglaCharanTimestamp?.time}</span>
                                 </p>
                                 <div className="flex flex-wrap justify-center gap-2 mt-2">
                                     <button
@@ -497,7 +497,7 @@ const KathaMonitor = () => {
                                         !video.manglaCharanTimestamp?.word?.startsWith("Error") && (
                                             <button
                                                 type="button"
-                                                onClick={() => copyToClipboard(video.manglaCharanTimestamp.time)}
+                                                onClick={() => copyToClipboard(video.manglaCharanTimestamp?.time)}
                                                 className="katha-copy-btn bg-purple-600 hover:bg-purple-700"
                                             >
                                                 Copy Timestamp

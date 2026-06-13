@@ -141,8 +141,12 @@ export const OBSProvider = ({ children }) => {
     }, []);
 
     const connectOBS = useCallback(() => {
-        // Avoid double connections
-        if (socketRef.current && (socketRef.current.readyState === WebSocket.OPEN || socketRef.current.readyState === WebSocket.CONNECTING)) {
+        // Avoid double connections — also block if socket is CLOSING (mid-teardown)
+        if (socketRef.current && (
+            socketRef.current.readyState === WebSocket.OPEN ||
+            socketRef.current.readyState === WebSocket.CONNECTING ||
+            socketRef.current.readyState === WebSocket.CLOSING
+        )) {
             return;
         }
 
@@ -226,8 +230,12 @@ export const OBSProvider = ({ children }) => {
         };
 
         ws.onmessage = (event) => {
-            const msg = JSON.parse(event.data);
-            handleOBSMessage(msg);
+            try {
+                const msg = JSON.parse(event.data);
+                handleOBSMessage(msg);
+            } catch (e) {
+                console.error("OBS message parse error:", e);
+            }
         };
 
         ws.onclose = () => {

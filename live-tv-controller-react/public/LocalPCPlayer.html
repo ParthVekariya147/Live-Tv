@@ -37,6 +37,8 @@
     let endTime = null;
     let timeCheckInterval = null;
     let isPausedByCommand = false; // Track if pause was requested by controller
+    let userRequestedMute = false; // Track explicit mute command — prevents late-unmute from overriding it
+    let needsPlay = false;         // Set before load(); play triggered from loadedmetadata after seek
 
     function reportEvent(eventName, data = {}) {
       const eventData = {
@@ -79,7 +81,7 @@
         src: videoPlayer.src
       });
 
-      // Set initial position
+      // Seek FIRST so play() starts at the correct position
       if (startTime > 0) {
         videoPlayer.currentTime = startTime;
       }
@@ -89,6 +91,12 @@
         startTime: startTime,
         endTime: endTime,
       });
+
+      // Play after seek is applied — avoids brief play from 0 before jumping to startTime
+      if (needsPlay) {
+        needsPlay = false;
+        playVideoWithSound();
+      }
     });
 
     videoPlayer.addEventListener("play", () => {
@@ -153,10 +161,12 @@
           videoPlayer.muted = true;
           await videoPlayer.play();
           console.log("LocalPCPlayer: Playing muted (autoplay policy)");
-          // Try to unmute after a short delay (user interaction may have happened)
+          // Try to unmute after a short delay — but only if user hasn't explicitly muted
           setTimeout(() => {
-            videoPlayer.muted = false;
-            console.log("LocalPCPlayer: Attempted late unmute");
+            if (!userRequestedMute) {
+              videoPlayer.muted = false;
+              console.log("LocalPCPlayer: Attempted late unmute");
+            }
           }, 500);
         } catch (e2) {
           console.error("LocalPCPlayer: All play attempts failed:", e2.message);
@@ -173,11 +183,10 @@
           switch (data.command) {
             case "loadVideo":
               if (data.videoPath) {
-                // Stop any existing time checking
                 stopTimeChecking();
                 isPausedByCommand = false;
+                userRequestedMute = false; // reset explicit-mute flag on new video load
 
-                // Update time constraints
                 startTime = data?.startSeconds || 0;
                 endTime = data?.endSeconds || null;
 
@@ -187,11 +196,12 @@
                   endTime: endTime,
                 });
 
+                // Set needsPlay BEFORE load() so loadedmetadata fires play after seek
+                needsPlay = true;
                 videoPlayer.src = data.videoPath;
                 videoPlayer.load();
-
-                // Play with sound using our robust method
-                playVideoWithSound();
+                // playVideoWithSound() is now called from the loadedmetadata handler
+                // after currentTime is set — this ensures startTime is respected
               }
               break;
 
@@ -207,6 +217,7 @@
 
             case "stop":
               stopTimeChecking();
+              needsPlay = false; // cancel any pending play-on-load
               isPausedByCommand = true;
               videoPlayer.pause();
               videoPlayer.currentTime = 0;
@@ -217,11 +228,13 @@
               break;
 
             case "mute":
+              userRequestedMute = true;
               videoPlayer.muted = true;
               console.log("LocalPCPlayer: Muted");
               break;
 
             case "unmute":
+              userRequestedMute = false;
               videoPlayer.muted = false;
               console.log("LocalPCPlayer: Unmuted");
               break;

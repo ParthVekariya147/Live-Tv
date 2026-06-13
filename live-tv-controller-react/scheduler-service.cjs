@@ -878,7 +878,7 @@ class SchedulerService {
     setAllSchedules(schedules) {
         this.schedules = schedules.map(s => ({
             ...s,
-            id: s.id || Date.now() + Math.random(),
+            id: s.id || (Date.now() + Math.floor(Math.random() * 10000)),
             enabled: s.enabled !== false,
             lastTriggered: s.lastTriggered || null
         }));

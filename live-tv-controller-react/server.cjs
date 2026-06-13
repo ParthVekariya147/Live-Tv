@@ -124,7 +124,11 @@ const readLogs = (yearMonth) => {
 // Write logs to file
 const writeLogs = (logs, yearMonth) => {
     const filePath = getLogFilePath(yearMonth);
-    fs.writeFileSync(filePath, JSON.stringify(logs, null, 2), 'utf8');
+    try {
+        fs.writeFileSync(filePath, JSON.stringify(logs, null, 2), 'utf8');
+    } catch (e) {
+        console.error('[writeLogs] Failed to write log file:', e.message);
+    }
 };
 
 // Write single log entry
@@ -189,7 +193,12 @@ function broadcast(type, data) {
     const message = JSON.stringify({ type, data, timestamp: new Date().toISOString() });
     wsClients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
-            client.send(message);
+            try {
+                client.send(message);
+            } catch (e) {
+                console.error('[WebSocket] broadcast send error:', e.message);
+                wsClients.delete(client);
+            }
         }
     });
 }
@@ -1013,7 +1022,7 @@ class BackupService {
         }
         const dir = type === 'manual' ? this.manualDir : this.autoDir;
         const filepath = path.join(dir, filename);
-        if (!filepath.startsWith(dir + path.sep) && filepath !== path.join(dir, filename)) {
+        if (!filepath.startsWith(dir + path.sep)) {
             throw new Error('Path traversal detected');
         }
 
