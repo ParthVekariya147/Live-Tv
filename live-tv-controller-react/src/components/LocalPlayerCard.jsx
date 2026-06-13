@@ -1,13 +1,15 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useOBS } from '../context/OBSContext';
-import { sendPlayerCommand, LOCAL_PLAYER_EVENT_KEY, timeToSeconds } from '../utils/core-utils';
+import { sendPlayerCommand, LOCAL_PLAYER_EVENT_KEY, secondsToHM, timeHMToSeconds } from '../utils/core-utils';
 import { usePlayerTime } from '../utils/usePlayerHooks';
 import { logSourceChange, logVideoEnd } from '../utils/logger';
 import PlayerControlBtn from './common/PlayerControlBtn';
 
 const daysMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const sourceNames = ["Loop Player", "Live Player", "Delay Live", "Local Player"];
+const WS_INITIAL_RECONNECT_DELAY = 1000;
+const WS_MAX_RECONNECT_DELAY = 30000;
 
 const LocalPlayerCard = () => {
     const { sourceState, setSourceVisibility } = useOBS();
@@ -16,6 +18,20 @@ const LocalPlayerCard = () => {
     const dragIndex = useRef(null);
     const isPlayingRef = useRef(false);
     const isStoppedRef = useRef(false);
+    // Tracks whether the user has explicitly started playback this session.
+    // Prevents the proactive-skip effect from firing during initial load or
+    // when the user just toggles videos before ever pressing Load & Play.
+    const hasExplicitlyStarted = useRef(false);
+    // Always-current ref for setSourceVisibility — avoids stale closure in
+    // the storage event listener (which is added once at mount).
+    const setSourceVisibilityRef = useRef(null);
+    // Refs for WS-triggered scheduler actions (always hold latest function)
+    const handleLoadAndPlayRef = useRef(null);
+    const handleStopRef = useRef(null);
+    const handleNextRef = useRef(null);
+    const wsRef = useRef(null);
+    const wsReconnectRef = useRef(null);
+    const wsReconnectDelayRef = useRef(WS_INITIAL_RECONNECT_DELAY);
 
     const endActionsRef = useRef([null, null, null, null, null, null, null]);
     const playlistRef = useRef([]);
@@ -38,6 +54,7 @@ const LocalPlayerCard = () => {
     useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
     useEffect(() => { isVisibleRef.current = isVisible; }, [isVisible]);
     useEffect(() => { sourceStateRef.current = sourceState; }, [sourceState]);
+    useEffect(() => { setSourceVisibilityRef.current = setSourceVisibility; }, [setSourceVisibility]);
 
     const [isPlaying, setIsPlaying] = useState(true);
     const [isMuted, setIsMuted] = useState(false);
@@ -52,14 +69,13 @@ const LocalPlayerCard = () => {
 
     const timeInfo = usePlayerTime(LOCAL_PLAYER_EVENT_KEY, 'local');
 
-    // PROACTIVE SKIP: whenever playlist or currentIndex changes, check if current video is
-    // disabled. If yes and player is in playing mode → immediately advance to next enabled.
-    // This is the "human thinking" logic: you don't wait for a disabled video to "end" —
-    // you just skip past it the moment you notice it's OFF.
+    // PROACTIVE SKIP: when the currently-playing video is disabled by the user → skip
+    // immediately to the next enabled one. Only fires if the user has explicitly started
+    // playback (hasExplicitlyStarted) to avoid unexpected loads on initial page load.
     useEffect(() => {
         if (!isInitialized.current) return;
+        if (!hasExplicitlyStarted.current) return; // user hasn't hit Load & Play yet
         if (playlist.length === 0) return;
-        // Only auto-skip when actively in playing mode (not stopped by user)
         if (isStoppedRef.current || !isPlayingRef.current) return;
 
         const current = playlist[currentIndex];
@@ -73,8 +89,8 @@ const LocalPlayerCard = () => {
             if (nextVideo?.path) {
                 const displayName = nextVideo.name || nextVideo.path.split(/[\\/]/).pop();
                 setVideoInfo({ title: displayName });
-                const startSec = nextVideo.startTime ? timeToSeconds(nextVideo.startTime) : 0;
-                const endSec = nextVideo.endTime ? timeToSeconds(nextVideo.endTime) : null;
+                const startSec = nextVideo.startTime ? timeHMToSeconds(nextVideo.startTime) : 0;
+                const endSec = nextVideo.endTime ? timeHMToSeconds(nextVideo.endTime) : null;
                 sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSec, endSec, convertToFileUrl(nextVideo.path));
                 setIsPlaying(true);
                 setIsStopped(false);
@@ -190,9 +206,10 @@ const LocalPlayerCard = () => {
         if (currentVideo?.path) {
             const displayName = currentVideo.name || currentVideo.path.split(/[\\/]/).pop();
             setVideoInfo({ title: displayName });
-            const startSeconds = currentVideo.startTime ? timeToSeconds(currentVideo.startTime) : 0;
-            const endSeconds = currentVideo.endTime ? timeToSeconds(currentVideo.endTime) : null;
+            const startSeconds = currentVideo.startTime ? timeHMToSeconds(currentVideo.startTime) : 0;
+            const endSeconds = currentVideo.endTime ? timeHMToSeconds(currentVideo.endTime) : null;
             sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(currentVideo.path));
+            hasExplicitlyStarted.current = true;
             setIsPlaying(true);
             setIsStopped(false);
             setIsMuted(false);
@@ -244,8 +261,8 @@ const LocalPlayerCard = () => {
             if (nextVideo?.path) {
                 const displayName = nextVideo.name || nextVideo.path.split(/[\\/]/).pop();
                 setVideoInfo(prev => ({ ...prev, title: displayName }));
-                const startSeconds = nextVideo.startTime ? timeToSeconds(nextVideo.startTime) : 0;
-                const endSeconds = nextVideo.endTime ? timeToSeconds(nextVideo.endTime) : null;
+                const startSeconds = nextVideo.startTime ? timeHMToSeconds(nextVideo.startTime) : 0;
+                const endSeconds = nextVideo.endTime ? timeHMToSeconds(nextVideo.endTime) : null;
                 sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(nextVideo.path));
                 setIsPlaying(true);
                 setIsStopped(false);
@@ -261,17 +278,18 @@ const LocalPlayerCard = () => {
 
             if (isVisibleRef.current) {
                 const currentSourceState = sourceStateRef.current;
+                const setSrcVis = setSourceVisibilityRef.current ?? setSourceVisibility;
                 if (targetScene && sourceNames.includes(targetScene) && targetScene !== "Local Player") {
                     logSourceChange(targetScene, true, 'playlist_ended', 'Local Player');
                     logVideoEnd('Local Player', null, `switch_to_${targetScene}`);
-                    if (currentSourceState["Live Player"] && targetScene === "Loop Player") setSourceVisibility("Live Player", false);
-                    setSourceVisibility(targetScene, true);
+                    if (currentSourceState["Live Player"] && targetScene === "Loop Player") setSrcVis("Live Player", false);
+                    setSrcVis(targetScene, true);
                     setStatusText(`Switched to ${targetScene}`);
                 } else {
                     logSourceChange('Loop Player', true, 'playlist_ended_default', 'Local Player');
                     logVideoEnd('Local Player', null, 'switch_to_Loop Player');
-                    if (currentSourceState["Live Player"]) setSourceVisibility("Live Player", false);
-                    setSourceVisibility("Loop Player", true);
+                    if (currentSourceState["Live Player"]) setSrcVis("Live Player", false);
+                    setSrcVis("Loop Player", true);
                     setStatusText("Switched to Loop Player");
                 }
             }
@@ -497,9 +515,10 @@ const LocalPlayerCard = () => {
         if (currentVideo?.path) {
             const displayName = currentVideo.name || currentVideo.path.split(/[\\/]/).pop();
             setVideoInfo(prev => ({ ...prev, title: displayName }));
-            const startSeconds = currentVideo.startTime ? timeToSeconds(currentVideo.startTime) : 0;
-            const endSeconds = currentVideo.endTime ? timeToSeconds(currentVideo.endTime) : null;
+            const startSeconds = currentVideo.startTime ? timeHMToSeconds(currentVideo.startTime) : 0;
+            const endSeconds = currentVideo.endTime ? timeHMToSeconds(currentVideo.endTime) : null;
             sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(currentVideo.path));
+            hasExplicitlyStarted.current = true;
             setIsPlaying(true);
             setIsStopped(false);
             setIsMuted(false);
@@ -521,6 +540,7 @@ const LocalPlayerCard = () => {
 
     const handleStop = () => {
         sendPlayerCommand('localPCPlayerCommand', 'stop');
+        hasExplicitlyStarted.current = false;
         setIsPlaying(false);
         setIsStopped(true);
         setStatusText("Stopped");
@@ -536,9 +556,10 @@ const LocalPlayerCard = () => {
         if (video?.path) {
             const displayName = video.name || video.path.split(/[\\/]/).pop();
             setVideoInfo(prev => ({ ...prev, title: displayName }));
-            const startSeconds = video.startTime ? timeToSeconds(video.startTime) : 0;
-            const endSeconds = video.endTime ? timeToSeconds(video.endTime) : null;
+            const startSeconds = video.startTime ? timeHMToSeconds(video.startTime) : 0;
+            const endSeconds = video.endTime ? timeHMToSeconds(video.endTime) : null;
             sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(video.path));
+            hasExplicitlyStarted.current = true;
             setIsPlaying(true);
             setIsStopped(false);
             setStatusText("Playing");
@@ -564,9 +585,10 @@ const LocalPlayerCard = () => {
         if (video?.path) {
             const displayName = video.name || video.path.split(/[\\/]/).pop();
             setVideoInfo(prev => ({ ...prev, title: displayName }));
-            const startSeconds = video.startTime ? timeToSeconds(video.startTime) : 0;
-            const endSeconds = video.endTime ? timeToSeconds(video.endTime) : null;
+            const startSeconds = video.startTime ? timeHMToSeconds(video.startTime) : 0;
+            const endSeconds = video.endTime ? timeHMToSeconds(video.endTime) : null;
             sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(video.path));
+            hasExplicitlyStarted.current = true;
             setIsPlaying(true);
             setIsStopped(false);
             setStatusText("Playing");
@@ -579,14 +601,51 @@ const LocalPlayerCard = () => {
         if (video?.path) {
             const displayName = video.name || video.path.split(/[\\/]/).pop();
             setVideoInfo({ title: displayName });
-            const startSeconds = video.startTime ? timeToSeconds(video.startTime) : 0;
-            const endSeconds = video.endTime ? timeToSeconds(video.endTime) : null;
+            const startSeconds = video.startTime ? timeHMToSeconds(video.startTime) : 0;
+            const endSeconds = video.endTime ? timeHMToSeconds(video.endTime) : null;
             sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(video.path));
+            hasExplicitlyStarted.current = true;
             setIsPlaying(true);
             setIsStopped(false);
             setStatusText(`Playing: ${displayName}`);
         }
     };
+
+    // Keep WS-action refs current so the WS handler never has stale closures
+    useEffect(() => { handleLoadAndPlayRef.current = handleLoadAndPlay; });
+    useEffect(() => { handleStopRef.current = handleStop; });
+    useEffect(() => { handleNextRef.current = handleNext; });
+
+    // WebSocket connection for scheduler triggers (local_player_start / stop / next)
+    useEffect(() => {
+        const connectWebSocket = () => {
+            if (wsReconnectRef.current) { clearTimeout(wsReconnectRef.current); wsReconnectRef.current = null; }
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            wsRef.current = new WebSocket(`${protocol}//${window.location.host}/ws`);
+            wsRef.current.onopen = () => { wsReconnectDelayRef.current = WS_INITIAL_RECONNECT_DELAY; };
+            wsRef.current.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    if (message.type === 'SCHEDULER_TRIGGER') {
+                        const { action } = message.data;
+                        if (action === 'local_player_start') handleLoadAndPlayRef.current?.();
+                        else if (action === 'local_player_stop') handleStopRef.current?.();
+                        else if (action === 'local_player_next') handleNextRef.current?.();
+                    }
+                } catch {}
+            };
+            wsRef.current.onclose = () => {
+                wsReconnectRef.current = setTimeout(connectWebSocket, wsReconnectDelayRef.current);
+                wsReconnectDelayRef.current = Math.min(wsReconnectDelayRef.current * 1.5, WS_MAX_RECONNECT_DELAY);
+            };
+            wsRef.current.onerror = () => {};
+        };
+        connectWebSocket();
+        return () => {
+            if (wsRef.current) wsRef.current.close();
+            if (wsReconnectRef.current) clearTimeout(wsReconnectRef.current);
+        };
+    }, []);
 
     const handleMute = () => {
         if (isMuted) {
@@ -627,7 +686,7 @@ const LocalPlayerCard = () => {
         <div className="player-control-card">
             <h3>Local PC Player</h3>
             <p className="video-title">{videoInfo.title}</p>
-            <p className="video-time-display">{timeInfo.currentTime} / {timeInfo.remainingTime}</p>
+            <p className="video-time-display">{secondsToHM(timeInfo.currentSeconds)} / {secondsToHM(timeInfo.remainingSeconds)}</p>
             <p className="video-info-display">
                 {playlist.length > 0 ? `Video ${currentIndex + 1} of ${playlist.length} (${enabledCount} enabled)` : ''}
             </p>
@@ -765,13 +824,13 @@ const LocalPlayerCard = () => {
                                 />
                             </div>
 
-                            {/* Start / End times */}
+                            {/* Start / End times — format: H:MM (e.g. 1:30 = 1 hr 30 min) */}
                             <input
                                 type="text"
                                 className="input-field"
                                 style={{ width: '58px', fontSize: '11px' }}
-                                placeholder="Start"
-                                title="Start time (MM:SS)"
+                                placeholder="H:MM"
+                                title="Start time — H:MM (e.g. 1:30 = 1 hour 30 min)"
                                 value={item.startTime || ''}
                                 onChange={(e) => updateStartTime(index, e.target.value)}
                             />
@@ -779,8 +838,8 @@ const LocalPlayerCard = () => {
                                 type="text"
                                 className="input-field"
                                 style={{ width: '58px', fontSize: '11px' }}
-                                placeholder="End"
-                                title="End time (MM:SS)"
+                                placeholder="H:MM"
+                                title="End time — H:MM (e.g. 2:00 = 2 hours)"
                                 value={item.endTime || ''}
                                 onChange={(e) => updateEndTime(index, e.target.value)}
                             />

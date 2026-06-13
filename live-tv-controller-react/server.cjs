@@ -979,12 +979,18 @@ class BackupService {
             files: this._collectData(),
         };
         fs.writeFileSync(filepath, JSON.stringify(payload, null, 2), 'utf8');
-        console.log(`[Backup] ${type} backup saved → ${filename}`);
+
+        // Verify the file was actually written to disk
+        if (!fs.existsSync(filepath)) {
+            throw new Error(`Backup write failed — file not found after write: ${filepath}`);
+        }
+
+        console.log(`[Backup] ${type} backup saved → ${filepath}`);
 
         // Retention: manual=30 files, auto=14 files (2 weeks)
         this._pruneOld(dir, type === 'manual' ? 30 : 14);
 
-        return { filename, backedUpAt: payload.backedUpAt, fileCount: Object.keys(payload.files).length };
+        return { filename, savedDir: dir, backedUpAt: payload.backedUpAt, fileCount: Object.keys(payload.files).length };
     }
 
     listBackups(type = 'manual') {
@@ -1360,6 +1366,7 @@ app.get('/api/backup/status', (req, res) => {
         manual: { count: manual.length, latest: manual[0] || null },
         auto:   { count: auto.length,   latest: auto[0]   || null },
         autoSettings: backupService.getAutoSettings(),
+        paths: { manual: backupService.manualDir, auto: backupService.autoDir },
     });
 });
 

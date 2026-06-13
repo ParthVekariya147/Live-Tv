@@ -141,7 +141,7 @@ export default function SettingsBackup() {
             const res = await fetch('/api/backup/manual', { method: 'POST' });
             const data = await res.json();
             if (data.success) {
-                flash('success', `Backup saved: ${data.filename}`);
+                flash('success', `Saved: ${data.filename}`);
                 await loadBackupStatus();
                 if (showBackups) await loadBackupList();
             } else {
@@ -365,10 +365,15 @@ export default function SettingsBackup() {
 
                     {/* ── Manual Backup History ────────────────────────── */}
                     <div className="border-t border-gray-700 pt-2">
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center justify-between mb-1">
                             <p className="text-purple-400 font-semibold">Manual Backups</p>
                             <button onClick={loadBackupList} className="text-gray-500 hover:text-gray-300">↻</button>
                         </div>
+                        {backupStatus?.paths?.manual && (
+                            <p className="text-gray-600 text-xs font-mono break-all mb-2" title="Backup folder location">
+                                📁 {backupStatus.paths.manual}
+                            </p>
+                        )}
                         {backupList.length === 0 ? (
                             <p className="text-gray-500 text-center py-2">No manual backups yet</p>
                         ) : (
