@@ -198,8 +198,11 @@ export default function SettingsBackup() {
             const a = document.createElement('a');
             a.href = url;
             a.download = filename;
+            a.style.display = 'none';
+            document.body.appendChild(a);
             a.click();
-            URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
 
             const schedCount = (fullExport.schedules || []).length;
             const lsCount = Object.keys(localStorageData).length;
