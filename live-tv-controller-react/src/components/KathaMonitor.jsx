@@ -3,18 +3,14 @@ import { copyToClipboard, formatDateToDDMMMYYYY } from '../utils/core-utils';
 import { logKathaRefresh, logKathaVideoFound, logKathaLoadPlayer } from '../utils/logger';
 
 const LOCAL_API_BASE = "http://localhost:3000";
-const KATHA_CHANNEL_ID = "UCQXWP4gEdEwlb6vodwrU75A";
 
-// Fetch full video description
 async function fetchKathaVideoFullDescription(videoId) {
     try {
         const response = await fetch(
             `${LOCAL_API_BASE}/api/video-description?videoId=${encodeURIComponent(videoId)}`,
             { signal: AbortSignal.timeout(15000) }
         );
-        if (!response.ok) {
-            throw new Error(`Local API HTTP ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`Local API HTTP ${response.status}`);
         const payload = await response.json();
         return payload.description || "";
     } catch (error) {
@@ -23,104 +19,177 @@ async function fetchKathaVideoFullDescription(videoId) {
     }
 }
 
-// Extract ManglaCharan timestamp from description
 function extractManglaCharanTimestamp(fullDescriptionText) {
     const timePattern = /(\d{1,2}:\d{2}(?::\d{2})?)/;
-
-    // Priority 1: Mangla Charan variations
     const manglaCharanRegex = new RegExp(
         timePattern.source +
         "\\s*(?:manglacharan|mangalacharan|manglacharan|mangala\\s*charan|mangla\\s*charan|manglachhan|msnglachran|mangla\\s*chran|mnglacharan|mnglachharan)",
         "i"
     );
     const manglaMatch = fullDescriptionText.match(manglaCharanRegex);
-    if (manglaMatch) {
-        return { time: manglaMatch[1], word: "Mangla Charan" };
-    }
-
-    // Priority 2: katha
+    if (manglaMatch) return { time: manglaMatch[1], word: "Mangla Charan" };
     const kathaRegex = new RegExp(timePattern.source + "\\s*katha", "i");
     const kathaMatch = fullDescriptionText.match(kathaRegex);
-    if (kathaMatch) {
-        return { time: kathaMatch[1], word: "katha" };
-    }
-
+    if (kathaMatch) return { time: kathaMatch[1], word: "katha" };
     return { time: '00:00:00', word: 'Not Found' };
 }
 
-/**
- * Format milliseconds to human readable time
- */
 function formatTimeRemaining(ms) {
     if (ms < 0) return "Now";
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
-
     if (days > 0) return `${days}d ${hours % 24}h ${minutes % 60}m`;
     if (hours > 0) return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
     if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
     return `${seconds}s`;
 }
 
+// Pure local filter — zero API calls
+function filterByMode(videos, mode) {
+    const now = new Date();
+    const todayStr = formatDateToDDMMMYYYY(now);
+    const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+    const yesterdayStr = formatDateToDDMMMYYYY(yesterday);
+
+    if (mode === 'today') return videos.filter(v => v.title?.includes(todayStr));
+    if (mode === 'yesterday') return videos.filter(v => v.title?.includes(yesterdayStr));
+    if (mode === 'auto') {
+        const today = videos.filter(v => v.title?.includes(todayStr));
+        return today.length > 0 ? today : videos.filter(v => v.title?.includes(yesterdayStr));
+    }
+    return videos; // 'all'
+}
+
 const KathaMonitor = () => {
-    const [videos, setVideos] = useState([]);
+    // allVideos: the full 30-video dataset fetched once from API (with descriptions)
+    // displayVideos: locally-filtered subset shown to user — updated instantly on mode switch
+    const [allVideos, setAllVideos] = useState([]);
+    const [displayVideos, setDisplayVideos] = useState([]);
     const [loading, setLoading] = useState(false);
     const [loadingToPlayer, setLoadingToPlayer] = useState(false);
     const [error, setError] = useState(null);
     const [statusText, setStatusText] = useState("Katha Monitor Ready");
     const [dateFilter, setDateFilter] = useState(() => localStorage.getItem('kathaLastFilter') || 'auto');
-    const resultsCache = useRef({}); // { mode: { data, fetchedAt (ms timestamp) } }
+    const [fetchedAt, setFetchedAt] = useState(null);
 
-    // Katha Schedulers
     const [refreshSchedulerEnabled, setRefreshSchedulerEnabled] = useState(false);
     const [refreshSchedulerTime, setRefreshSchedulerTime] = useState("00:00");
     const [playerSchedulerEnabled, setPlayerSchedulerEnabled] = useState(false);
     const [playerSchedulerTime, setPlayerSchedulerTime] = useState("00:00");
-
-    // Pending Timeouts Display
     const [pendingTimeouts, setPendingTimeouts] = useState([]);
 
     const isInitialized = useRef(false);
-    // Refs so WS handler always calls the latest version of these functions
-    const loadKathaContentRef = useRef(null);
+    const fetchAllVideosRef = useRef(null);
     const loadToDelayPlayerRef = useRef(null);
-    // WebSocket connection for scheduler triggers (24/7 Reliability)
     const wsRef = useRef(null);
     const wsReconnectRef = useRef(null);
     const wsReconnectDelayRef = useRef(3000);
     const WS_MAX_RECONNECT_DELAY = 30000;
     const WS_INITIAL_RECONNECT_DELAY = 3000;
 
-    // Connect to WebSocket for scheduler triggers with exponential backoff
+    // Re-filter whenever allVideos or dateFilter changes — instant, zero API calls
+    useEffect(() => {
+        const filtered = filterByMode(allVideos, dateFilter);
+        setDisplayVideos(filtered);
+
+        if (allVideos.length === 0) return;
+
+        const todayStr = formatDateToDDMMMYYYY(new Date());
+        const minsAgo = fetchedAt ? Math.round((Date.now() - fetchedAt) / 60000) : 0;
+        const agoStr = minsAgo === 0 ? 'just now' : `${minsAgo}m ago`;
+
+        if (dateFilter === 'auto') {
+            const isToday = filtered.some(v => v.title?.includes(todayStr));
+            setStatusText(
+                filtered.length === 0
+                    ? 'No Katha videos found for today or yesterday.'
+                    : `${filtered.length} video${filtered.length !== 1 ? 's' : ''} — ${isToday ? 'Today' : 'Yesterday'} (fetched ${agoStr})`
+            );
+        } else {
+            const label = { today: 'Today', yesterday: 'Yesterday', all: 'All 30' }[dateFilter] || dateFilter;
+            setStatusText(
+                filtered.length === 0
+                    ? `No videos for ${label}`
+                    : `${filtered.length} video${filtered.length !== 1 ? 's' : ''} — ${label} (fetched ${agoStr})`
+            );
+        }
+    }, [allVideos, dateFilter, fetchedAt]);
+
+    // Fetch last 30 videos + all descriptions in parallel — called on mount and on Refresh
+    const fetchAllVideos = async () => {
+        setLoading(true);
+        setError(null);
+        setStatusText("Loading Katha videos...");
+
+        try {
+            const response = await fetch(`${LOCAL_API_BASE}/api/videos`, {
+                signal: AbortSignal.timeout(15000),
+            });
+            if (!response.ok) throw new Error(`Local API HTTP ${response.status}`);
+
+            const payload = await response.json();
+            const rawVideos = (payload.data || [])
+                .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0))
+                .slice(0, 30);
+
+            setStatusText(`Fetching descriptions for ${rawVideos.length} videos...`);
+
+            // Parallel description fetches — much faster than the old serial loop
+            const processed = await Promise.all(rawVideos.map(async (video) => {
+                const fullDescription = await fetchKathaVideoFullDescription(video.videoId);
+                const manglaCharanTimestamp = fullDescription.startsWith("Error fetching description:")
+                    ? { time: '00:00', word: 'Error' }
+                    : extractManglaCharanTimestamp(fullDescription);
+                return {
+                    title: video.title || "No Title",
+                    thumbnailUrl: video.thumbnail || "https://placehold.co/320x180/cccccc/333333?text=No+Image",
+                    videoUrl: video.videoId ? `https://www.youtube.com/watch?v=${video.videoId}` : "#",
+                    videoId: video.videoId,
+                    manglaCharanTimestamp,
+                    publishedAt: video.publishedAt,
+                };
+            }));
+
+            setFetchedAt(Date.now());
+            setAllVideos(processed);
+
+            logKathaRefresh(processed.length, 'all', 'fetch');
+            for (const video of processed) {
+                logKathaVideoFound(video.videoId, video.title, video.manglaCharanTimestamp?.time, video.manglaCharanTimestamp?.word);
+            }
+        } catch (err) {
+            setError(`Failed to load Katha content: ${err.message}`);
+            setStatusText(`Error: ${err.message}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // WebSocket connection for scheduler triggers with exponential backoff
     useEffect(() => {
         const connectWebSocket = () => {
-            // Clear any pending reconnect timeout
             if (wsReconnectRef.current) {
                 clearTimeout(wsReconnectRef.current);
                 wsReconnectRef.current = null;
             }
 
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws`;
-
-            wsRef.current = new WebSocket(wsUrl);
+            wsRef.current = new WebSocket(`${protocol}//${window.location.host}/ws`);
 
             wsRef.current.onopen = () => {
-                // Reset reconnect delay on successful connection
                 wsReconnectDelayRef.current = WS_INITIAL_RECONNECT_DELAY;
             };
 
             wsRef.current.onmessage = (event) => {
                 try {
                     const message = JSON.parse(event.data);
-
-                    // Use refs so handler always calls the latest function (avoids stale closure)
                     if (message.type === 'SCHEDULER_TRIGGER') {
                         const { action, source } = message.data;
                         if (action === 'katha_refresh' || source === 'Katha Refresh') {
-                            loadKathaContentRef.current?.();
+                            // Re-fetch all 30 from API on scheduled refresh
+                            fetchAllVideosRef.current?.();
                         } else if (action === 'katha_player' || source === 'Katha Player') {
                             loadToDelayPlayerRef.current?.();
                         }
@@ -131,17 +200,8 @@ const KathaMonitor = () => {
             };
 
             wsRef.current.onclose = () => {
-
-                // Schedule reconnect with exponential backoff
-                wsReconnectRef.current = setTimeout(() => {
-                    connectWebSocket();
-                }, wsReconnectDelayRef.current);
-
-                // Increase delay for next time (exponential backoff)
-                wsReconnectDelayRef.current = Math.min(
-                    wsReconnectDelayRef.current * 1.5,
-                    WS_MAX_RECONNECT_DELAY
-                );
+                wsReconnectRef.current = setTimeout(connectWebSocket, wsReconnectDelayRef.current);
+                wsReconnectDelayRef.current = Math.min(wsReconnectDelayRef.current * 1.5, WS_MAX_RECONNECT_DELAY);
             };
 
             wsRef.current.onerror = (err) => {
@@ -150,25 +210,21 @@ const KathaMonitor = () => {
         };
 
         connectWebSocket();
-
         return () => {
             if (wsRef.current) wsRef.current.close();
             if (wsReconnectRef.current) clearTimeout(wsReconnectRef.current);
         };
     }, []);
 
-    // Load Katha schedules from server on mount
+    // Load Katha schedules and do the initial 30-video fetch on mount
     useEffect(() => {
         const loadSchedulesFromServer = async () => {
             try {
                 const res = await fetch('/api/schedules');
                 const data = await res.json();
-
                 if (data.success && data.schedules) {
-                    // Find Katha schedules
                     const kathaRefresh = data.schedules.find(s => s.action === 'katha_refresh');
                     const kathaPlayer = data.schedules.find(s => s.action === 'katha_player');
-
                     if (kathaRefresh) {
                         setRefreshSchedulerEnabled(kathaRefresh.enabled);
                         setRefreshSchedulerTime(kathaRefresh.time);
@@ -178,7 +234,6 @@ const KathaMonitor = () => {
                         setPlayerSchedulerTime(kathaPlayer.time);
                     }
                 }
-
                 isInitialized.current = true;
             } catch (e) {
                 console.error('[KathaMonitor] Error loading schedules:', e);
@@ -187,37 +242,30 @@ const KathaMonitor = () => {
         };
 
         loadSchedulesFromServer();
-        const savedFilter = localStorage.getItem('kathaLastFilter') || 'auto';
-        loadKathaContent(savedFilter);
-    }, []);
+        fetchAllVideos();
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Save scheduler state to server when changed
     const saveKathaSchedule = async (type, enabled, time) => {
         const scheduleData = {
             source: type === 'refresh' ? 'Katha Refresh' : 'Katha Player',
             action: type === 'refresh' ? 'katha_refresh' : 'katha_player',
             title: type === 'refresh' ? 'Refresh Katha Content' : 'Load Katha to Delay Player',
-            time: time,
-            enabled: enabled,
+            time,
+            enabled,
             recurrence: 'daily',
             skipIfLivePlaying: false
         };
-
         try {
-            // Check if schedule already exists
             const res = await fetch('/api/schedules');
             const data = await res.json();
             const existing = data.schedules?.find(s => s.action === scheduleData.action);
-
             if (existing) {
-                // Update existing
                 await fetch(`/api/schedules/${existing.id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ...existing, ...scheduleData })
                 });
             } else {
-                // Create new
                 await fetch('/api/schedules', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -229,29 +277,23 @@ const KathaMonitor = () => {
         }
     };
 
-    // Update server when refresh scheduler changes
     useEffect(() => {
         if (!isInitialized.current) return;
         saveKathaSchedule('refresh', refreshSchedulerEnabled, refreshSchedulerTime);
     }, [refreshSchedulerEnabled, refreshSchedulerTime]);
 
-    // Update server when player scheduler changes
     useEffect(() => {
         if (!isInitialized.current) return;
         saveKathaSchedule('player', playerSchedulerEnabled, playerSchedulerTime);
     }, [playerSchedulerEnabled, playerSchedulerTime]);
 
-    // Update display every 5 seconds (fetch pending timeouts from server)
     const [, forceUpdate] = useState(0);
-
     useEffect(() => {
         const fetchPendingTimeouts = async () => {
             try {
                 const res = await fetch('/api/scheduler/status');
                 const data = await res.json();
-
                 if (data.nextTriggers) {
-                    // Filter to only show Katha-related triggers
                     const kathaTimeouts = data.nextTriggers
                         .filter(t => t.action === 'katha_refresh' || t.action === 'katha_player')
                         .map(t => ({
@@ -273,158 +315,38 @@ const KathaMonitor = () => {
         return () => clearInterval(displayInterval);
     }, []);
 
-    // Fetch Katha channel content
-    // mode: "today" | "yesterday" | "week" | "all"
-    // Title format is always "DD MMM YYYY" (e.g. "13 Jun 2026") — use that for date matching.
-    // Never use publishedAt for filtering: old videos get re-uploaded with today's date, making
-    // publishedAt unreliable. Title is the only trustworthy date source.
-    const getKathaChannelContent = async (mode) => {
-        const response = await fetch(`${LOCAL_API_BASE}/api/videos`, {
-            signal: AbortSignal.timeout(15000),
-        });
-        if (!response.ok) throw new Error(`Local API HTTP ${response.status}`);
-
-        const payload = await response.json();
-        const allVideos = (payload.data || [])
-            .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
-
-        const now = new Date();
-        const todayStr = formatDateToDDMMMYYYY(now);
-        const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
-        const yesterdayStr = formatDateToDDMMMYYYY(yesterday);
-        const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 7);
-
-        // Step 1: filter by title (fast — no API call)
-        const titleFiltered = allVideos.filter(video => {
-            const title = video.title || '';
-            if (mode === 'today')     return title.includes(todayStr);
-            if (mode === 'yesterday') return title.includes(yesterdayStr);
-            if (mode === 'week') {
-                // show if title contains a date from the last 7 days
-                for (let d = 0; d <= 7; d++) {
-                    const day = new Date(now); day.setDate(now.getDate() - d);
-                    if (title.includes(formatDateToDDMMMYYYY(day))) return true;
-                }
-                return false;
-            }
-            return true; // 'all' — no title filter
-        });
-
-        // Step 2: fetch description ONLY for matched videos to get ManglaCharan timestamp
-        const processedData = [];
-        for (const video of titleFiltered) {
-            const videoId = video.videoId;
-            const fullDescription = await fetchKathaVideoFullDescription(videoId);
-            const manglaCharanTimestamp = fullDescription.startsWith("Error fetching description:")
-                ? { time: '00:00', word: 'Error' }
-                : extractManglaCharanTimestamp(fullDescription);
-
-            processedData.push({
-                title: video.title || "No Title",
-                thumbnailUrl: video.thumbnail || "https://placehold.co/320x180/cccccc/333333?text=No+Image",
-                videoUrl: videoId ? `https://www.youtube.com/watch?v=${videoId}` : "#",
-                videoId,
-                manglaCharanTimestamp,
-                publishedAt: video.publishedAt,
-            });
-        }
-
-        return processedData;
-    };
-
-    const FILTER_LABELS = { today: 'Today', yesterday: 'Yesterday', week: 'Last 7 Days', all: 'All', auto: 'Auto' };
-
-    const loadKathaContent = async (modeOverride, forceRefresh = false) => {
-        const requestedMode = modeOverride ?? dateFilter;
-
-        // Serve from cache if available and not forcing refresh (skip for 'auto' — always resolve live)
-        if (!forceRefresh && requestedMode !== 'auto' && resultsCache.current[requestedMode]) {
-            const cached = resultsCache.current[requestedMode];
-            setVideos(cached.data);
-            const minsAgo = Math.round((Date.now() - cached.fetchedAt) / 60000);
-            const timeAgoStr = minsAgo === 0 ? 'just now' : `${minsAgo}m ago`;
-            setStatusText(`${cached.data.length} video${cached.data.length !== 1 ? 's' : ''} — ${FILTER_LABELS[requestedMode] || requestedMode} (fetched ${timeAgoStr})`);
-            return;
-        }
-
-        setLoading(true);
-        setError(null);
-        setStatusText("Refreshing Katha content...");
-
-        try {
-            let resolvedMode = requestedMode;
-            let content = [];
-
-            if (requestedMode === 'auto') {
-                content = await getKathaChannelContent('today');
-                resolvedMode = 'today';
-                if (content.length === 0) {
-                    content = await getKathaChannelContent('yesterday');
-                    resolvedMode = 'yesterday';
-                }
-            } else {
-                content = await getKathaChannelContent(requestedMode);
-                resolvedMode = requestedMode;
-            }
-
-            // Store in cache (keyed by resolved mode)
-            resultsCache.current[resolvedMode] = { data: content, fetchedAt: Date.now() };
-
-            setVideos(content);
-            const label = FILTER_LABELS[resolvedMode] || resolvedMode;
-            if (content.length === 0 && requestedMode === 'auto') {
-                setStatusText('No Katha videos found for today or yesterday.');
-            } else {
-                setStatusText(`Showing ${content.length} video${content.length !== 1 ? 's' : ''} — ${label}`);
-            }
-
-            logKathaRefresh(content.length, resolvedMode, 'manual');
-            for (const video of content) {
-                logKathaVideoFound(video.videoId, video.title, video.manglaCharanTimestamp?.time, video.manglaCharanTimestamp?.word);
-            }
-        } catch (err) {
-            setError(`Failed to load Katha content: ${err.message}`);
-            setStatusText(`Error: ${err.message}`);
-        } finally {
-            setLoading(false);
-        }
-    };
-
+    // Load to Delay Player — filters from already-fetched allVideos, no API call
     const loadToDelayPlayer = async () => {
         setLoadingToPlayer(true);
         setStatusText("Attempting to load Katha to Delay Player...");
-
         try {
-            let filter = "today";
-            let kathaVideos = await getKathaChannelContent(filter);
+            const now = new Date();
+            const todayStr = formatDateToDDMMMYYYY(now);
+            const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+            const yesterdayStr = formatDateToDDMMMYYYY(yesterday);
 
+            let kathaVideos = allVideos.filter(v => v.title?.includes(todayStr));
+            let filter = "today";
             if (kathaVideos.length === 0) {
+                kathaVideos = allVideos.filter(v => v.title?.includes(yesterdayStr));
                 filter = "yesterday";
-                kathaVideos = await getKathaChannelContent(filter);
             }
 
             if (kathaVideos.length > 0) {
                 const latestVideo = kathaVideos[0];
-                const videoId = latestVideo.videoId;
                 const tsWord = latestVideo.manglaCharanTimestamp.word || '';
-                let startTime = (tsWord === 'Not Found' || tsWord.startsWith('Error'))
+                const startTime = (tsWord === 'Not Found' || tsWord.startsWith('Error'))
                     ? '00:00:00'
                     : latestVideo.manglaCharanTimestamp.time;
 
-                // Dispatch custom event to DelayPlayerCard (works in same tab)
-                const prefillData = {
-                    videoId: videoId,
-                    startTime: startTime,
-                    endTime: ""
-                };
-                window.dispatchEvent(new CustomEvent('delayPlayerPrefill', { detail: prefillData }));
+                window.dispatchEvent(new CustomEvent('delayPlayerPrefill', {
+                    detail: { videoId: latestVideo.videoId, startTime, endTime: "" }
+                }));
 
                 setStatusText(`Added "${latestVideo.title}" to Delay Player. Click Load in Delay Player to play.`);
-
-                // Log the load to player
-                logKathaLoadPlayer(videoId, latestVideo.title, startTime, 'Delay Live', 'manual');
+                logKathaLoadPlayer(latestVideo.videoId, latestVideo.title, startTime, 'Delay Live', 'manual');
             } else {
-                setStatusText(`No Katha videos found for ${filter}.`);
+                setStatusText(`No Katha videos found for today or yesterday. Try ↻ Refresh first.`);
             }
         } catch (err) {
             setStatusText(`Error loading Katha: ${err.message}`);
@@ -434,53 +356,58 @@ const KathaMonitor = () => {
     };
 
     // Keep refs in sync so WS handler always calls the latest function versions
-    useEffect(() => { loadKathaContentRef.current = loadKathaContent; });
+    useEffect(() => { fetchAllVideosRef.current = fetchAllVideos; });
     useEffect(() => { loadToDelayPlayerRef.current = loadToDelayPlayer; });
+
+    // Card border: green for today, red for yesterday, blue for all
+    const todayStr = formatDateToDDMMMYYYY(new Date());
+    const cardBorderColor = dateFilter === 'all'
+        ? 'border-blue-700'
+        : displayVideos.some(v => v.title?.includes(todayStr))
+            ? 'border-green-600'
+            : 'border-red-600';
 
     return (
         <div className="player-control-card">
             <h3 className="live-monitor-card-h3">Katha Monitor</h3>
 
-            {/* Filter row */}
+            {/* Filter row — local filtering only, zero API calls per click */}
             <div className="flex gap-1 mb-2 w-full">
                 {[
                     { mode: 'auto', label: 'Auto' },
                     { mode: 'today', label: 'Today' },
                     { mode: 'yesterday', label: 'Yesterday' },
-                    { mode: 'week', label: '7d' },
                     { mode: 'all', label: 'All' },
                 ].map(({ mode, label }) => (
                     <button
                         key={mode}
+                        type="button"
                         onClick={() => {
                             setDateFilter(mode);
                             localStorage.setItem('kathaLastFilter', mode);
-                            loadKathaContent(mode);
                         }}
                         className={`flex-1 px-1 py-1 rounded text-xs font-medium transition-all ${
                             dateFilter === mode
                                 ? 'bg-cyan-700 text-white'
-                                : resultsCache.current[mode]
-                                    ? 'bg-gray-700 text-cyan-300 hover:bg-gray-600'
-                                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
                         }`}
-                        title={resultsCache.current[mode] ? `Cached — click to use, or Refresh to re-fetch` : ''}
                     >
                         {label}
-                        {resultsCache.current[mode] && dateFilter !== mode && <span className="ml-1 text-xs opacity-60">●</span>}
                     </button>
                 ))}
             </div>
 
             <div className="flex justify-center space-x-2 mb-2 w-full">
                 <button
+                    type="button"
                     className="common-btn-style btn-secondary flex-1"
-                    onClick={() => loadKathaContent(dateFilter, true)}
+                    onClick={fetchAllVideos}
                     disabled={loading}
                 >
                     {loading ? "Loading..." : "↻ Refresh"}
                 </button>
                 <button
+                    type="button"
                     className={`common-btn-style btn-primary flex-1${loadingToPlayer ? ' btn-loading' : ''}`}
                     onClick={loadToDelayPlayer}
                     disabled={loadingToPlayer}
@@ -502,23 +429,15 @@ const KathaMonitor = () => {
                     </h4>
                     <div className="grid gap-2">
                         {pendingTimeouts.map((pt) => {
-                            const now = new Date();
-                            const remaining = pt.nextTrigger.getTime() - now.getTime();
+                            const remaining = pt.nextTrigger.getTime() - Date.now();
                             return (
-                                <div
-                                    key={pt.id}
-                                    className="flex justify-between items-center p-2 bg-gray-900 rounded border border-gray-700"
-                                >
-                                    <span className="text-white font-medium text-sm">
-                                        {pt.title}
-                                    </span>
+                                <div key={pt.id} className="flex justify-between items-center p-2 bg-gray-900 rounded border border-gray-700">
+                                    <span className="text-white font-medium text-sm">{pt.title}</span>
                                     <div className="text-right">
                                         <div className="text-cyan-400 text-xs">
                                             {pt.nextTrigger.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}
                                         </div>
-                                        <div className="text-yellow-400 text-xs">
-                                            in {formatTimeRemaining(remaining)}
-                                        </div>
+                                        <div className="text-yellow-400 text-xs">in {formatTimeRemaining(remaining)}</div>
                                     </div>
                                 </div>
                             );
@@ -542,13 +461,16 @@ const KathaMonitor = () => {
             )}
 
             <div className="grid grid-cols-1 gap-4 w-full mb-4">
-                {!loading && !error && videos.length === 0 && (
-                    <p className="text-center text-gray-600">No videos found — try a different filter or click Refresh.</p>
+                {!loading && !error && allVideos.length === 0 && (
+                    <p className="text-center text-gray-600">No videos loaded — click ↻ Refresh to fetch.</p>
                 )}
-                {videos.map((video, index) => (
+                {!loading && !error && allVideos.length > 0 && displayVideos.length === 0 && (
+                    <p className="text-center text-gray-600">No videos found for this filter.</p>
+                )}
+                {displayVideos.map((video, index) => (
                     <div
                         key={video.videoId || index}
-                        className={`katha-video-card border-[3px] ${dateFilter === "today" ? "border-green-600" : "border-red-600"}`}
+                        className={`katha-video-card border-[3px] ${cardBorderColor}`}
                     >
                         <a href={video.videoUrl} target="_blank" rel="noopener noreferrer">
                             <img src={video.thumbnailUrl} alt={video.title} className="katha-video-thumbnail" />
@@ -565,6 +487,7 @@ const KathaMonitor = () => {
                                 </p>
                                 <div className="flex flex-wrap justify-center gap-2 mt-2">
                                     <button
+                                        type="button"
                                         onClick={() => copyToClipboard(video.videoId)}
                                         className="katha-copy-btn"
                                     >
@@ -573,6 +496,7 @@ const KathaMonitor = () => {
                                     {video.manglaCharanTimestamp?.word !== "Not Found" &&
                                         !video.manglaCharanTimestamp?.word?.startsWith("Error") && (
                                             <button
+                                                type="button"
                                                 onClick={() => copyToClipboard(video.manglaCharanTimestamp.time)}
                                                 className="katha-copy-btn bg-purple-600 hover:bg-purple-700"
                                             >
@@ -605,6 +529,7 @@ const KathaMonitor = () => {
                             onChange={(e) => setRefreshSchedulerTime(e.target.value)}
                         />
                         <button
+                            type="button"
                             className={`common-btn-style btn-primary flex-1 ${refreshSchedulerEnabled ? "on-scheduler" : "off-scheduler"}`}
                             onClick={() => setRefreshSchedulerEnabled(!refreshSchedulerEnabled)}
                         >
@@ -626,6 +551,7 @@ const KathaMonitor = () => {
                             onChange={(e) => setPlayerSchedulerTime(e.target.value)}
                         />
                         <button
+                            type="button"
                             className={`common-btn-style btn-primary flex-1 ${playerSchedulerEnabled ? "on-scheduler" : "off-scheduler"}`}
                             onClick={() => setPlayerSchedulerEnabled(!playerSchedulerEnabled)}
                         >

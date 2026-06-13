@@ -13,20 +13,24 @@ const LocalPlayerCard = () => {
     const { sourceState, setSourceVisibility } = useOBS();
     const isVisible = sourceState["Local Player"];
     const isInitialized = useRef(false);
-    const dragIndex = useRef(null); // For drag-drop
+    const dragIndex = useRef(null);
 
-    // Refs to track latest state for event handlers (avoids stale closure)
     const endActionsRef = useRef([null, null, null, null, null, null, null]);
     const playlistRef = useRef([]);
     const currentIndexRef = useRef(0);
-    const isVisibleRef = useRef(false); // For handling video ended correctly
-    const sourceStateRef = useRef({}); // For checking Live Player state
+    const isVisibleRef = useRef(false);
+    const sourceStateRef = useRef({});
 
-    const [playlist, setPlaylist] = useState([]); // { path: string }
+    const [playlist, setPlaylist] = useState([]); // { path, name, startTime, endTime, enabled }
     const [currentIndex, setCurrentIndex] = useState(0);
-    const [endActions, setEndActions] = useState([null, null, null, null, null, null, null]); // 7 days
+    const [endActions, setEndActions] = useState([null, null, null, null, null, null, null]);
 
-    // Keep refs in sync with state
+    // Folder scan state
+    const [folderPath, setFolderPath] = useState('');
+    const [videosFolder, setVideosFolder] = useState('');
+    const [isScanningFolder, setIsScanningFolder] = useState(false);
+    const [isDragOverPlaylist, setIsDragOverPlaylist] = useState(false);
+
     useEffect(() => { endActionsRef.current = endActions; }, [endActions]);
     useEffect(() => { playlistRef.current = playlist; }, [playlist]);
     useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
@@ -40,95 +44,97 @@ const LocalPlayerCard = () => {
     const [videoInfo, setVideoInfo] = useState({ title: "No local video loaded" });
     const [statusText, setStatusText] = useState("Not loaded");
 
-    // Use custom hook for time updates
     const timeInfo = usePlayerTime(LOCAL_PLAYER_EVENT_KEY, 'local');
 
-    // Load state from localStorage - runs ONCE on mount
+    // Fetch default videos folder path on mount
     useEffect(() => {
-        // Load main player state
+        fetch('/api/videos/root-folder')
+            .then(r => r.json())
+            .then(d => { if (d.success) setVideosFolder(d.folder); })
+            .catch(() => {});
+    }, []);
+
+    // Load state from localStorage
+    useEffect(() => {
         const saved = localStorage.getItem('localPCPlayerState');
         if (saved) {
             try {
                 const parsed = JSON.parse(saved);
                 if (parsed.playlist && parsed.playlist.length > 0) {
-                    setPlaylist(parsed.playlist);
+                    // Migrate old items that don't have 'enabled' field
+                    const migrated = parsed.playlist.map(item => ({
+                        ...item,
+                        enabled: item.enabled !== false
+                    }));
+                    setPlaylist(migrated);
                 }
-                if (typeof parsed.currentIndex === 'number') {
-                    setCurrentIndex(parsed.currentIndex);
-                }
+                if (typeof parsed.currentIndex === 'number') setCurrentIndex(parsed.currentIndex);
                 setIsPlaying(parsed.isPlaying ?? true);
                 setIsMuted(parsed.isMuted ?? false);
                 setIsStopped(parsed.isStopped ?? false);
-                // Restore video title if playlist exists
                 if (parsed.playlist && parsed.playlist.length > 0) {
                     const current = parsed.playlist[parsed.currentIndex || 0];
-                    if (current && current.path) {
+                    if (current?.path) {
                         setVideoInfo(prev => ({ ...prev, title: current.path.split(/[\\/]/).pop() }));
                     }
                 }
             } catch (e) {
-                console.error('LocalPCPlayer LOAD: Error parsing main state:', e);
+                console.error('LocalPCPlayer LOAD error:', e);
             }
         }
 
-        // Load endActions from SEPARATE key
         const savedEndActions = localStorage.getItem('localPCPlayerEndActions');
         if (savedEndActions) {
             try {
-                const parsedEndActions = JSON.parse(savedEndActions);
-                setEndActions(parsedEndActions);
-            } catch (e) {
-                console.error('LocalPCPlayer LOAD: Error parsing endActions:', e);
-            }
+                setEndActions(JSON.parse(savedEndActions));
+            } catch (e) {}
         }
 
-        // Mark as initialized AFTER setting all state - this will trigger a re-render
-        // and only then will the save effects start working
-        // Use setTimeout to ensure this runs after React processes state updates
-        setTimeout(() => {
-            isInitialized.current = true;
-        }, 100);
+        setTimeout(() => { isInitialized.current = true; }, 100);
     }, []);
 
-    // Save main player state (excludes endActions) - only after initialization
-    useEffect(() => {
-        if (!isInitialized.current) {
-            return;
-        }
-
-        // Filter out blob URLs and empty paths from localStorage
-        const persistablePlaylist = playlist.map(item => ({
-            ...item,
-            path: item.path?.startsWith('blob:') ? '' : item.path
-        })).filter(item => item.path && item.path.trim() !== '');
-
-        const state = {
-            playlist: persistablePlaylist,
-            currentIndex,
-            isPlaying,
-            isMuted,
-            isStopped
-        };
-        localStorage.setItem('localPCPlayerState', JSON.stringify(state));
-    }, [playlist, currentIndex, isPlaying, isMuted, isStopped]);
-
-    // Save endActions to SEPARATE key - only after initialization
+    // Save main player state
     useEffect(() => {
         if (!isInitialized.current) return;
-        // Only save if we have at least one non-null value (user has set something)
-        const hasAnyValue = endActions.some(action => action !== null);
-        if (hasAnyValue) {
+        const persistablePlaylist = playlist
+            .map(item => ({ ...item, path: item.path?.startsWith('blob:') ? '' : item.path }))
+            .filter(item => item.path && item.path.trim() !== '');
+        localStorage.setItem('localPCPlayerState', JSON.stringify({
+            playlist: persistablePlaylist, currentIndex, isPlaying, isMuted, isStopped
+        }));
+    }, [playlist, currentIndex, isPlaying, isMuted, isStopped]);
+
+    // Save endActions
+    useEffect(() => {
+        if (!isInitialized.current) return;
+        if (endActions.some(a => a !== null)) {
             localStorage.setItem('localPCPlayerEndActions', JSON.stringify(endActions));
         }
     }, [endActions]);
 
-    // Resume playback when OBS visibility changes — uses refs to avoid stale closure
+    const convertToFileUrl = (path) => {
+        if (!path) return path;
+        if (path.startsWith('file:///') || path.startsWith('blob:') || path.startsWith('http://') || path.startsWith('https://')) return path;
+        if (path.startsWith('/')) return `${window.location.origin}${path}`;
+        if (/^[A-Za-z]:[\\/]/.test(path)) return `file:///${path.replace(/\\/g, '/')}`;
+        return `${window.location.origin}/${path}`;
+    };
+
+    // Find next enabled index starting from `from`, wrapping around
+    const findNextEnabledIndex = (from, pl) => {
+        if (!pl || pl.length === 0) return -1;
+        for (let i = from; i < pl.length; i++) {
+            if (pl[i].enabled !== false) return i;
+        }
+        return -1;
+    };
+
     const resumePlayback = () => {
         const pl = playlistRef.current;
         const ci = currentIndexRef.current;
         if (pl.length === 0) return;
         const currentVideo = pl[ci];
-        if (currentVideo && currentVideo.path) {
+        if (currentVideo?.path) {
             const displayName = currentVideo.name || currentVideo.path.split(/[\\/]/).pop();
             setVideoInfo({ title: displayName });
             const startSeconds = currentVideo.startTime ? timeToSeconds(currentVideo.startTime) : 0;
@@ -141,39 +147,16 @@ const LocalPlayerCard = () => {
         }
     };
 
-    // Track mount time to prevent visibility commands on initial mount
     const mountTime = useRef(Date.now());
-    // Track previous visibility value to detect actual CHANGES (not just mount)
     const prevIsVisible = useRef(undefined);
 
-    // Visibility reaction - ONLY react to actual changes, not initial mount
     useEffect(() => {
-        // Guard: Ignore any visibility effects within 500ms of mount
         const timeSinceMount = Date.now() - mountTime.current;
-        if (timeSinceMount < 500) {
-            prevIsVisible.current = isVisible;
-            return;
-        }
-
-        // prevIsVisible.current is undefined on first mount
-        // Only send commands when visibility actually CHANGES
-        if (prevIsVisible.current === undefined) {
-            // First mount - just record current value, don't send any commands
-            prevIsVisible.current = isVisible;
-            return;
-        }
-
-        // Check if visibility actually changed
-        if (prevIsVisible.current === isVisible) {
-            return;
-        }
-
-        // Visibility actually changed - now react
+        if (timeSinceMount < 500) { prevIsVisible.current = isVisible; return; }
+        if (prevIsVisible.current === undefined) { prevIsVisible.current = isVisible; return; }
+        if (prevIsVisible.current === isVisible) return;
         prevIsVisible.current = isVisible;
-
-        if (isVisible) {
-            resumePlayback();
-        } else {
+        if (isVisible) { resumePlayback(); } else {
             sendPlayerCommand('localPCPlayerCommand', 'pause');
             setIsPlaying(false);
             setIsStopped(false);
@@ -181,88 +164,60 @@ const LocalPlayerCard = () => {
         }
     }, [isVisible]);
 
-    // Listen for video ended events from LocalPCPlayer.html
     useEffect(() => {
         const handleStorageEvent = (event) => {
             if (event.key === LOCAL_PLAYER_EVENT_KEY && event.newValue) {
                 try {
                     const data = JSON.parse(event.newValue);
-                    if (data.playerType === 'local' && data.event === 'videoEnded') {
-                        handleVideoEnded();
-                    }
-                } catch (e) {
-                    console.error('Error parsing LocalPCPlayer event:', e);
-                }
+                    if (data.playerType === 'local' && data.event === 'videoEnded') handleVideoEnded();
+                } catch (e) {}
             }
         };
-
         window.addEventListener('storage', handleStorageEvent);
         return () => window.removeEventListener('storage', handleStorageEvent);
-    }, []); // Empty deps - uses refs for latest values
+    }, []);
 
-    // Handle video ended - advance to next or trigger end action
     const handleVideoEnded = () => {
-        // Use refs to get latest values (avoids stale closure)
         const currentIdx = currentIndexRef.current;
         const currentPlaylist = playlistRef.current;
         const currentEndActions = endActionsRef.current;
 
-        const nextIdx = currentIdx + 1;
+        // Find next enabled video after current
+        const nextIdx = findNextEnabledIndex(currentIdx + 1, currentPlaylist);
 
-
-        if (nextIdx < currentPlaylist.length) {
-            // More videos in playlist - play next
+        if (nextIdx !== -1) {
             setCurrentIndex(nextIdx);
             const nextVideo = currentPlaylist[nextIdx];
-            if (nextVideo && nextVideo.path) {
+            if (nextVideo?.path) {
                 const displayName = nextVideo.name || nextVideo.path.split(/[\\/]/).pop();
                 setVideoInfo(prev => ({ ...prev, title: displayName }));
-                // Get start/end times in seconds
                 const startSeconds = nextVideo.startTime ? timeToSeconds(nextVideo.startTime) : 0;
                 const endSeconds = nextVideo.endTime ? timeToSeconds(nextVideo.endTime) : null;
-                // loadVideo command auto-plays with sound
                 sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(nextVideo.path));
                 setIsPlaying(true);
                 setIsStopped(false);
                 setStatusText(`Playing ${nextIdx + 1} of ${currentPlaylist.length}`);
             }
         } else {
-            // End of playlist - trigger end action based on day
-            const currentDay = new Date().getDay(); // 0 = Sunday, 6 = Saturday
+            const currentDay = new Date().getDay();
             const targetScene = currentEndActions[currentDay];
-
-
             sendPlayerCommand('localPCPlayerCommand', 'stop');
             setIsPlaying(false);
             setIsStopped(true);
-            setCurrentIndex(0); // Reset to start
+            setCurrentIndex(0);
 
-            // Only switch if Local Player is currently visible (use ref for latest value)
             if (isVisibleRef.current) {
                 const currentSourceState = sourceStateRef.current;
                 if (targetScene && sourceNames.includes(targetScene) && targetScene !== "Local Player") {
-                    // Log the source change
                     logSourceChange(targetScene, true, 'playlist_ended', 'Local Player');
                     logVideoEnd('Local Player', null, `switch_to_${targetScene}`);
-
-                    // Match core.js: If switching to Loop Player while Live Player is active, hide Live Player first
-                    if (currentSourceState["Live Player"] && targetScene === "Loop Player") {
-                        setSourceVisibility("Live Player", false);
-                    }
-
-                    setSourceVisibility(targetScene, true);  // This will auto-hide Local Player via exclusivity
+                    if (currentSourceState["Live Player"] && targetScene === "Loop Player") setSourceVisibility("Live Player", false);
+                    setSourceVisibility(targetScene, true);
                     setStatusText(`Switched to ${targetScene}`);
                 } else {
-                    // Default: Switch to Loop Player if no valid end action configured
-                    // Log the source change
                     logSourceChange('Loop Player', true, 'playlist_ended_default', 'Local Player');
                     logVideoEnd('Local Player', null, 'switch_to_Loop Player');
-
-                    // Match core.js: If Live Player is active, hide it first
-                    if (currentSourceState["Live Player"]) {
-                        setSourceVisibility("Live Player", false);
-                    }
-
+                    if (currentSourceState["Live Player"]) setSourceVisibility("Live Player", false);
                     setSourceVisibility("Loop Player", true);
                     setStatusText("Switched to Loop Player");
                 }
@@ -270,79 +225,122 @@ const LocalPlayerCard = () => {
         }
     };
 
+    // ============================================
+    // PLAYLIST MANAGEMENT
+    // ============================================
+
     const addVideoPath = () => {
-        setPlaylist([...playlist, { path: "", startTime: "", endTime: "" }]);
+        setPlaylist(prev => [...prev, { path: "", startTime: "", endTime: "", enabled: true }]);
     };
 
     const updatePath = (index, value) => {
-        const newPlaylist = playlist.map((item, i) =>
-            i === index ? { ...item, path: value } : item
-        );
-        setPlaylist(newPlaylist);
+        // Clear name so path is shown — prevents name from overriding display when user types
+        setPlaylist(prev => prev.map((item, i) => i === index ? { ...item, path: value, name: '' } : item));
     };
 
     const updateStartTime = (index, value) => {
-        const newPlaylist = playlist.map((item, i) =>
-            i === index ? { ...item, startTime: value } : item
-        );
-        setPlaylist(newPlaylist);
+        setPlaylist(prev => prev.map((item, i) => i === index ? { ...item, startTime: value } : item));
     };
 
     const updateEndTime = (index, value) => {
-        const newPlaylist = playlist.map((item, i) =>
-            i === index ? { ...item, endTime: value } : item
-        );
-        setPlaylist(newPlaylist);
+        setPlaylist(prev => prev.map((item, i) => i === index ? { ...item, endTime: value } : item));
+    };
+
+    const toggleEnabled = (index) => {
+        setPlaylist(prev => prev.map((item, i) =>
+            i === index ? { ...item, enabled: item.enabled === false ? true : false } : item
+        ));
     };
 
     const removePath = (index) => {
         const item = playlist[index];
         if (item?.path?.startsWith('blob:')) URL.revokeObjectURL(item.path);
-        setPlaylist(playlist.filter((_, i) => i !== index));
+        setPlaylist(prev => prev.filter((_, i) => i !== index));
     };
 
-    // Convert path to appropriate URL format
-    const convertToFileUrl = (path) => {
-        if (!path) return path;
-        // If already a proper URL (file://, blob:, http://, https://), return as-is
-        if (path.startsWith('file:///') || path.startsWith('blob:') || path.startsWith('http://') || path.startsWith('https://')) {
-            return path;
+    // ============================================
+    // AUTO-SCAN VIDEOS FOLDER
+    // ============================================
+
+    const handleScanVideosFolder = async () => {
+        setIsScanningFolder(true);
+        setStatusText("Scanning videos folder...");
+        try {
+            const res = await fetch('/api/videos/scan');
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error);
+            if (data.files.length === 0) {
+                setStatusText(`No video files found in: ${data.folder}`);
+                return;
+            }
+            const newItems = data.files.map(f => ({
+                path: f.serverPath,
+                name: f.name,
+                startTime: "",
+                endTime: "",
+                enabled: true
+            }));
+            setPlaylist(newItems);
+            setCurrentIndex(0);
+            setStatusText(`Loaded ${newItems.length} video(s) from videos folder`);
+        } catch (err) {
+            setStatusText("Scan failed: " + err.message);
+        } finally {
+            setIsScanningFolder(false);
         }
-        // If path starts with /, it's a public folder path - convert to localhost URL
-        if (path.startsWith('/')) {
-            return `${window.location.origin}${path}`;
-        }
-        // Windows absolute path (like C:\ or I:\) - convert to file:// URL
-        if (/^[A-Za-z]:[\\/]/.test(path)) {
-            const normalized = path.replace(/\\/g, '/');
-            return `file:///${normalized}`;
-        }
-        // Relative path (like video.mp4) - treat as public folder
-        return `${window.location.origin}/${path}`;
     };
 
-    // File picker using modern File System Access API
+    const handleScanCustomFolder = async () => {
+        const trimmed = folderPath.trim();
+        if (!trimmed) { setStatusText("Enter a folder path first"); return; }
+        setIsScanningFolder(true);
+        setStatusText("Scanning folder...");
+        try {
+            const res = await fetch('/api/videos/scan-folder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ folderPath: trimmed })
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error);
+            if (data.files.length === 0) {
+                setStatusText(`No video files found in: ${trimmed}`);
+                return;
+            }
+            const newItems = data.files.map(f => ({
+                path: f.absolutePath,
+                name: f.name,
+                startTime: "",
+                endTime: "",
+                enabled: true
+            }));
+            setPlaylist(prev => [...prev, ...newItems]);
+            setStatusText(`Added ${newItems.length} video(s) from folder`);
+        } catch (err) {
+            setStatusText("Scan failed: " + err.message);
+        } finally {
+            setIsScanningFolder(false);
+        }
+    };
+
+    // ============================================
+    // FILE PICKER
+    // ============================================
+
     const handleFilePicker = async () => {
         try {
-            // Modern File System Access API
             if ('showOpenFilePicker' in window) {
                 const handles = await window.showOpenFilePicker({
                     multiple: true,
-                    types: [{
-                        description: 'Video Files',
-                        accept: { 'video/*': ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.wmv'] }
-                    }]
+                    types: [{ description: 'Video Files', accept: { 'video/*': ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.wmv'] } }]
                 });
-
                 for (const handle of handles) {
                     const file = await handle.getFile();
-                    // Create a blob URL for the file
                     const blobUrl = URL.createObjectURL(file);
-                    setPlaylist(prev => [...prev, { path: blobUrl, name: file.name }]);
+                    setPlaylist(prev => [...prev, { path: blobUrl, name: file.name, startTime: "", endTime: "", enabled: true }]);
                 }
                 setStatusText(`Added ${handles.length} file(s)`);
             } else {
-                // Fallback: use hidden input
                 const input = document.createElement('input');
                 input.type = 'file';
                 input.accept = 'video/*';
@@ -351,33 +349,103 @@ const LocalPlayerCard = () => {
                     const files = Array.from(e.target.files);
                     files.forEach(file => {
                         const blobUrl = URL.createObjectURL(file);
-                        setPlaylist(prev => [...prev, { path: blobUrl, name: file.name }]);
+                        setPlaylist(prev => [...prev, { path: blobUrl, name: file.name, startTime: "", endTime: "", enabled: true }]);
                     });
                     setStatusText(`Added ${files.length} file(s)`);
                 };
                 input.click();
             }
         } catch (err) {
-            if (err.name !== 'AbortError') {
-                setStatusText("File picker cancelled or failed");
-            }
+            if (err.name !== 'AbortError') setStatusText("File picker cancelled or failed");
         }
     };
 
-    const handleLoadAndPlay = () => {
-        if (playlist.length === 0) {
-            setStatusText("No videos in playlist");
-            return;
-        }
+    // ============================================
+    // DRAG-DROP FROM FILESYSTEM
+    // ============================================
 
-        const currentVideo = playlist[currentIndex];
-        if (currentVideo && currentVideo.path) {
+    const handlePlaylistDragOver = (e) => {
+        // Only show drop zone when dragging from filesystem (has files)
+        if (e.dataTransfer.types.includes('Files')) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            setIsDragOverPlaylist(true);
+        }
+    };
+
+    const handlePlaylistDragLeave = (e) => {
+        // Only clear if leaving the whole container
+        if (!e.currentTarget.contains(e.relatedTarget)) {
+            setIsDragOverPlaylist(false);
+        }
+    };
+
+    const handlePlaylistFileDrop = (e) => {
+        e.preventDefault();
+        setIsDragOverPlaylist(false);
+        const VIDEO_EXTS = ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.wmv'];
+        const files = Array.from(e.dataTransfer.files).filter(f =>
+            VIDEO_EXTS.some(ext => f.name.toLowerCase().endsWith(ext))
+        );
+        if (files.length === 0) { setStatusText("No video files in drop"); return; }
+        files.forEach(file => {
+            const blobUrl = URL.createObjectURL(file);
+            setPlaylist(prev => [...prev, { path: blobUrl, name: file.name, startTime: "", endTime: "", enabled: true }]);
+        });
+        setStatusText(`Added ${files.length} video file(s)`);
+    };
+
+    // ============================================
+    // PLAYLIST REORDER DRAG-DROP
+    // ============================================
+
+    const handleDragStart = (e, index) => {
+        dragIndex.current = index;
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData('text/plain', String(index)); // mark as row drag, not file drag
+    };
+
+    const handleItemDragOver = (e, index) => {
+        // Only handle row-to-row reorder, not filesystem drops
+        if (e.dataTransfer.types.includes('Files')) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+    };
+
+    const handleItemDrop = (e, targetIndex) => {
+        // Let parent handle filesystem drops
+        if (e.dataTransfer.types.includes('Files')) return;
+        e.preventDefault();
+        e.stopPropagation(); // prevent parent handlePlaylistFileDrop from firing
+        if (dragIndex.current === null || dragIndex.current === targetIndex) return;
+
+        const newPlaylist = [...playlist];
+        const [movedItem] = newPlaylist.splice(dragIndex.current, 1);
+        newPlaylist.splice(targetIndex, 0, movedItem);
+        setPlaylist(newPlaylist);
+
+        if (dragIndex.current === currentIndex) setCurrentIndex(targetIndex);
+        else if (dragIndex.current < currentIndex && targetIndex >= currentIndex) setCurrentIndex(currentIndex - 1);
+        else if (dragIndex.current > currentIndex && targetIndex <= currentIndex) setCurrentIndex(currentIndex + 1);
+
+        dragIndex.current = null;
+        setStatusText("Playlist reordered");
+    };
+
+    // ============================================
+    // PLAYBACK CONTROLS
+    // ============================================
+
+    const handleLoadAndPlay = () => {
+        const enabledIdx = findNextEnabledIndex(0, playlist);
+        if (enabledIdx === -1) { setStatusText("No enabled videos in playlist"); return; }
+        setCurrentIndex(enabledIdx);
+        const currentVideo = playlist[enabledIdx];
+        if (currentVideo?.path) {
             const displayName = currentVideo.name || currentVideo.path.split(/[\\/]/).pop();
             setVideoInfo(prev => ({ ...prev, title: displayName }));
-            // Get start/end times in seconds
             const startSeconds = currentVideo.startTime ? timeToSeconds(currentVideo.startTime) : 0;
             const endSeconds = currentVideo.endTime ? timeToSeconds(currentVideo.endTime) : null;
-            // loadVideo command auto-plays with sound
             sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(currentVideo.path));
             setIsPlaying(true);
             setIsStopped(false);
@@ -407,18 +475,17 @@ const LocalPlayerCard = () => {
 
     const handleNext = () => {
         if (playlist.length === 0) return;
-        let nextIdx = currentIndex + 1;
-        if (nextIdx >= playlist.length) nextIdx = 0;
-        setCurrentIndex(nextIdx);
-        const currentVideo = playlist[nextIdx];
-        if (currentVideo && currentVideo.path) {
-            const displayName = currentVideo.name || currentVideo.path.split(/[\\/]/).pop();
+        const nextIdx = findNextEnabledIndex(currentIndex + 1, playlist);
+        const targetIdx = nextIdx !== -1 ? nextIdx : findNextEnabledIndex(0, playlist);
+        if (targetIdx === -1) return;
+        setCurrentIndex(targetIdx);
+        const video = playlist[targetIdx];
+        if (video?.path) {
+            const displayName = video.name || video.path.split(/[\\/]/).pop();
             setVideoInfo(prev => ({ ...prev, title: displayName }));
-            // Get start/end times in seconds
-            const startSeconds = currentVideo.startTime ? timeToSeconds(currentVideo.startTime) : 0;
-            const endSeconds = currentVideo.endTime ? timeToSeconds(currentVideo.endTime) : null;
-            // loadVideo command auto-plays with sound
-            sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(currentVideo.path));
+            const startSeconds = video.startTime ? timeToSeconds(video.startTime) : 0;
+            const endSeconds = video.endTime ? timeToSeconds(video.endTime) : null;
+            sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(video.path));
             setIsPlaying(true);
             setIsStopped(false);
             setStatusText("Playing");
@@ -427,21 +494,44 @@ const LocalPlayerCard = () => {
 
     const handlePrev = () => {
         if (playlist.length === 0) return;
-        let prevIdx = currentIndex - 1;
-        if (prevIdx < 0) prevIdx = playlist.length - 1;
+        // Find previous enabled going backwards
+        let prevIdx = -1;
+        for (let i = currentIndex - 1; i >= 0; i--) {
+            if (playlist[i].enabled !== false) { prevIdx = i; break; }
+        }
+        if (prevIdx === -1) {
+            // Wrap to end
+            for (let i = playlist.length - 1; i > currentIndex; i--) {
+                if (playlist[i].enabled !== false) { prevIdx = i; break; }
+            }
+        }
+        if (prevIdx === -1) return;
         setCurrentIndex(prevIdx);
-        const currentVideo = playlist[prevIdx];
-        if (currentVideo && currentVideo.path) {
-            const displayName = currentVideo.name || currentVideo.path.split(/[\\/]/).pop();
+        const video = playlist[prevIdx];
+        if (video?.path) {
+            const displayName = video.name || video.path.split(/[\\/]/).pop();
             setVideoInfo(prev => ({ ...prev, title: displayName }));
-            // Get start/end times in seconds
-            const startSeconds = currentVideo.startTime ? timeToSeconds(currentVideo.startTime) : 0;
-            const endSeconds = currentVideo.endTime ? timeToSeconds(currentVideo.endTime) : null;
-            // loadVideo command auto-plays with sound
-            sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(currentVideo.path));
+            const startSeconds = video.startTime ? timeToSeconds(video.startTime) : 0;
+            const endSeconds = video.endTime ? timeToSeconds(video.endTime) : null;
+            sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(video.path));
             setIsPlaying(true);
             setIsStopped(false);
             setStatusText("Playing");
+        }
+    };
+
+    const handlePlayAt = (index) => {
+        setCurrentIndex(index);
+        const video = playlist[index];
+        if (video?.path) {
+            const displayName = video.name || video.path.split(/[\\/]/).pop();
+            setVideoInfo({ title: displayName });
+            const startSeconds = video.startTime ? timeToSeconds(video.startTime) : 0;
+            const endSeconds = video.endTime ? timeToSeconds(video.endTime) : null;
+            sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(video.path));
+            setIsPlaying(true);
+            setIsStopped(false);
+            setStatusText(`Playing: ${displayName}`);
         }
     };
 
@@ -457,50 +547,17 @@ const LocalPlayerCard = () => {
         }
     };
 
-    // Drag-drop handlers for reordering playlist
-    const handleDragStart = (e, index) => {
-        dragIndex.current = index;
-        e.dataTransfer.effectAllowed = "move";
-    };
-
-    const handleDragOver = (e, index) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-    };
-
-    const handleDrop = (e, targetIndex) => {
-        e.preventDefault();
-        if (dragIndex.current === null || dragIndex.current === targetIndex) return;
-
-        const newPlaylist = [...playlist];
-        const [movedItem] = newPlaylist.splice(dragIndex.current, 1);
-        newPlaylist.splice(targetIndex, 0, movedItem);
-        setPlaylist(newPlaylist);
-
-        // Adjust currentIndex if needed
-        if (dragIndex.current === currentIndex) {
-            setCurrentIndex(targetIndex);
-        } else if (dragIndex.current < currentIndex && targetIndex >= currentIndex) {
-            setCurrentIndex(currentIndex - 1);
-        } else if (dragIndex.current > currentIndex && targetIndex <= currentIndex) {
-            setCurrentIndex(currentIndex + 1);
-        }
-
-        dragIndex.current = null;
-        setStatusText("Playlist reordered");
-    };
-
-    // Update end action for a specific day
     const updateEndAction = (dayIndex, value) => {
         const newEndActions = [...endActions];
         newEndActions[dayIndex] = value || null;
         setEndActions(newEndActions);
     };
 
-    // Export playlist data to clipboard
     const handleExport = async () => {
         const timestamp = new Date().toLocaleString();
-        const playlistPaths = playlist.map((item, i) => `${i + 1}. ${item.path || "Empty"}`).join('\n');
+        const playlistPaths = playlist.map((item, i) =>
+            `${i + 1}. [${item.enabled !== false ? 'ON' : 'OFF'}] ${item.name || item.path || "Empty"}`
+        ).join('\n');
         const endActionsStr = endActions.map((action, i) => `${daysMap[i]}: ${action || "Do Nothing"}`).join(', ');
         const data = `Local PC Player Playlist\nTimestamp: ${timestamp}\nCurrent: ${currentIndex + 1}/${playlist.length}\n\nPlaylist:\n${playlistPaths}\n\nEnd Actions: ${endActionsStr}`;
         try {
@@ -511,59 +568,219 @@ const LocalPlayerCard = () => {
         }
     };
 
+    const enabledCount = playlist.filter(item => item.enabled !== false).length;
+
     return (
         <div className="player-control-card">
             <h3>Local PC Player</h3>
             <p className="video-title">{videoInfo.title}</p>
             <p className="video-time-display">{timeInfo.currentTime} / {timeInfo.remainingTime}</p>
-            <p className="video-info-display">{playlist.length > 0 ? `Video ${currentIndex + 1} of ${playlist.length}` : ''}</p>
+            <p className="video-info-display">
+                {playlist.length > 0 ? `Video ${currentIndex + 1} of ${playlist.length} (${enabledCount} enabled)` : ''}
+            </p>
 
-            <div className="w-full flex flex-col gap-2">
-                {playlist.map((item, index) => (
-                    <div
-                        key={index}
-                        className="flex gap-2 cursor-move"
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, index)}
-                        onDragOver={(e) => handleDragOver(e, index)}
-                        onDrop={(e) => handleDrop(e, index)}
+            {/* AUTO-SCAN VIDEOS FOLDER */}
+            <div className="w-full mt-2">
+                <div className="flex gap-2 items-center">
+                    <button
+                        className="common-btn-style btn-primary flex-1"
+                        onClick={handleScanVideosFolder}
+                        disabled={isScanningFolder}
+                        title={`Scan videos folder: ${videosFolder}`}
                     >
-                        <span className="text-gray-400 px-2 flex items-center">{index + 1}</span>
-                        <input
-                            type="text"
-                            className="input-field flex-1"
-                            placeholder="Video Path"
-                            value={item.path}
-                            onChange={(e) => updatePath(index, e.target.value)}
-                        />
-                        <input
-                            type="text"
-                            className="input-field"
-                            style={{ width: '70px' }}
-                            placeholder="Start"
-                            title="Start time (MM:SS or HH:MM:SS)"
-                            value={item.startTime || ''}
-                            onChange={(e) => updateStartTime(index, e.target.value)}
-                        />
-                        <input
-                            type="text"
-                            className="input-field"
-                            style={{ width: '70px' }}
-                            placeholder="End"
-                            title="End time (MM:SS or HH:MM:SS)"
-                            value={item.endTime || ''}
-                            onChange={(e) => updateEndTime(index, e.target.value)}
-                        />
-                        <button className="btn-danger rounded px-2" onClick={() => removePath(index)}>X</button>
-                    </div>
-                ))}
-            </div>
-            <div className="flex gap-2 mt-2 w-full">
-                <button className="common-btn-style btn-primary w-full" onClick={addVideoPath}>Add Path +</button>
+                        {isScanningFolder ? "Scanning..." : "Load Videos Folder"}
+                    </button>
+                    <button
+                        className="common-btn-style btn-neutral"
+                        onClick={handleFilePicker}
+                        title="Pick individual files"
+                    >
+                        Pick Files
+                    </button>
+                </div>
+
+                {/* Custom folder path input */}
+                <div className="flex gap-2 mt-2">
+                    <input
+                        type="text"
+                        className="input-field flex-1"
+                        placeholder={`Custom folder path (e.g. D:\\videos)`}
+                        value={folderPath}
+                        onChange={e => setFolderPath(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleScanCustomFolder()}
+                    />
+                    <button
+                        className="common-btn-style btn-neutral"
+                        onClick={handleScanCustomFolder}
+                        disabled={isScanningFolder}
+                        title="Scan the custom folder path above"
+                    >
+                        Scan
+                    </button>
+                </div>
+                {videosFolder && (
+                    <p style={{ fontSize: '10px', color: '#666', marginTop: '4px', wordBreak: 'break-all' }}>
+                        Default folder: {videosFolder}
+                    </p>
+                )}
             </div>
 
+            {/* PLAYLIST with drag-drop from filesystem */}
+            <div
+                className="w-full flex flex-col gap-2 mt-3"
+                style={{
+                    minHeight: '60px',
+                    border: isDragOverPlaylist ? '2px dashed #00adb5' : '2px dashed transparent',
+                    borderRadius: '8px',
+                    padding: isDragOverPlaylist ? '8px' : '0',
+                    transition: 'border-color 0.15s, padding 0.15s',
+                    background: isDragOverPlaylist ? 'rgba(0,173,181,0.07)' : 'transparent'
+                }}
+                onDragOver={handlePlaylistDragOver}
+                onDragLeave={handlePlaylistDragLeave}
+                onDrop={handlePlaylistFileDrop}
+            >
+                {playlist.length === 0 && (
+                    <div style={{ textAlign: 'center', color: '#555', padding: '20px 0', fontSize: '13px' }}>
+                        {isDragOverPlaylist ? "Drop video files here" : "No videos — drag files here or use Load Videos Folder"}
+                    </div>
+                )}
+                {playlist.map((item, index) => {
+                    const isCurrentPlaying = index === currentIndex;
+                    const isDisabled = item.enabled === false;
+                    return (
+                        <div
+                            key={index}
+                            style={{
+                                display: 'flex',
+                                gap: '6px',
+                                alignItems: 'center',
+                                opacity: isDisabled ? 0.45 : 1,
+                                background: isCurrentPlaying ? 'rgba(0,173,181,0.13)' : 'transparent',
+                                borderRadius: '6px',
+                                padding: '2px 4px',
+                                cursor: 'grab',
+                                border: isCurrentPlaying ? '1px solid #00adb580' : '1px solid transparent'
+                            }}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, index)}
+                            onDragOver={(e) => handleItemDragOver(e, index)}
+                            onDrop={(e) => handleItemDrop(e, index)}
+                        >
+                            {/* Drag handle + index */}
+                            <span style={{ color: '#555', fontSize: '12px', minWidth: '20px', textAlign: 'center', cursor: 'grab' }}>
+                                {isCurrentPlaying ? '▶' : index + 1}
+                            </span>
+
+                            {/* Enable/Disable toggle */}
+                            <button
+                                onClick={() => toggleEnabled(index)}
+                                title={isDisabled ? "Click to enable (currently skipped)" : "Click to disable (will skip this video)"}
+                                style={{
+                                    background: isDisabled ? '#444' : '#00adb5',
+                                    color: isDisabled ? '#666' : '#fff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '2px 7px',
+                                    fontSize: '11px',
+                                    cursor: 'pointer',
+                                    minWidth: '38px',
+                                    fontWeight: 'bold'
+                                }}
+                            >
+                                {isDisabled ? 'OFF' : 'ON'}
+                            </button>
+
+                            {/* File name / path */}
+                            <div
+                                style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+                                title={`Double-click to play: ${item.name || item.path}`}
+                                onDoubleClick={() => !isDisabled && handlePlayAt(index)}
+                            >
+                                <input
+                                    type="text"
+                                    className="input-field"
+                                    style={{
+                                        width: '100%',
+                                        fontSize: '12px',
+                                        textDecoration: isDisabled ? 'line-through' : 'none'
+                                    }}
+                                    placeholder="Video path"
+                                    value={item.name || item.path}
+                                    onChange={(e) => updatePath(index, e.target.value)}
+                                    title={item.path}
+                                />
+                            </div>
+
+                            {/* Start / End times */}
+                            <input
+                                type="text"
+                                className="input-field"
+                                style={{ width: '58px', fontSize: '11px' }}
+                                placeholder="Start"
+                                title="Start time (MM:SS)"
+                                value={item.startTime || ''}
+                                onChange={(e) => updateStartTime(index, e.target.value)}
+                            />
+                            <input
+                                type="text"
+                                className="input-field"
+                                style={{ width: '58px', fontSize: '11px' }}
+                                placeholder="End"
+                                title="End time (MM:SS)"
+                                value={item.endTime || ''}
+                                onChange={(e) => updateEndTime(index, e.target.value)}
+                            />
+
+                            {/* Play button */}
+                            <button
+                                onClick={() => handlePlayAt(index)}
+                                disabled={isDisabled}
+                                title="Play this video now"
+                                style={{
+                                    background: isCurrentPlaying ? '#00adb5' : '#333',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '2px 6px',
+                                    fontSize: '13px',
+                                    cursor: isDisabled ? 'not-allowed' : 'pointer'
+                                }}
+                            >▶</button>
+
+                            {/* Remove */}
+                            <button
+                                className="btn-danger rounded"
+                                style={{ padding: '2px 7px', fontSize: '12px' }}
+                                onClick={() => removePath(index)}
+                            >✕</button>
+                        </div>
+                    );
+                })}
+
+                {/* Drop hint when list is not empty */}
+                {playlist.length > 0 && isDragOverPlaylist && (
+                    <div style={{ textAlign: 'center', color: '#00adb5', fontSize: '12px', padding: '6px 0' }}>
+                        Drop to add more files
+                    </div>
+                )}
+            </div>
+
+            {/* ADD PATH BUTTON */}
+            <div className="flex gap-2 mt-2 w-full">
+                <button className="common-btn-style btn-neutral flex-1" onClick={addVideoPath}>+ Add Empty Row</button>
+                {playlist.length > 0 && (
+                    <button
+                        className="common-btn-style btn-danger"
+                        onClick={() => { setPlaylist([]); setStatusText("Playlist cleared"); }}
+                        title="Clear entire playlist"
+                    >Clear All</button>
+                )}
+            </div>
+
+            {/* PLAYBACK CONTROLS */}
             <div className="btn-group mt-2">
-                <PlayerControlBtn className="btn-primary" onClick={handleLoadAndPlay}>Load Playlist</PlayerControlBtn>
+                <PlayerControlBtn className="btn-primary" onClick={handleLoadAndPlay}>Load &amp; Play</PlayerControlBtn>
                 <PlayerControlBtn className={isPlaying ? "btn-success" : "btn-danger"} onClick={handlePlayPause}>
                     {isPlaying ? "Playing" : "Paused"}
                 </PlayerControlBtn>
@@ -576,10 +793,10 @@ const LocalPlayerCard = () => {
             <div className="btn-group mt-2">
                 <PlayerControlBtn className="btn-neutral" onClick={handlePrev}>Previous</PlayerControlBtn>
                 <PlayerControlBtn className="btn-neutral" onClick={handleNext}>Next</PlayerControlBtn>
-                <PlayerControlBtn className="btn-neutral" onClick={handleExport}>Export Data</PlayerControlBtn>
+                <PlayerControlBtn className="btn-neutral" onClick={handleExport}>Export</PlayerControlBtn>
             </div>
 
-            {/* End Actions - Scene to switch to when playlist ends */}
+            {/* END ACTIONS */}
             <div className="mt-3 w-full">
                 <p className="text-sm text-gray-400 mb-2">End of Playlist Actions (by day):</p>
                 <div className="flex flex-wrap gap-2 justify-center">
@@ -612,7 +829,7 @@ const LocalPlayerCard = () => {
             </div>
 
             <p className="player-status">{statusText}</p>
-        </div >
+        </div>
     );
 };
 

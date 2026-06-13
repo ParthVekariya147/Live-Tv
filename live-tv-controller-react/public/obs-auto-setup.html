@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OBS Automation Hub</title>
+    <!-- Import OBS WebSocket v5 library -->
+    <script src="https://cdn.jsdelivr.net/npm/obs-websocket-js@5.0.3/dist/obs-ws.js"></script>
+    <!-- Tailwind CSS for a premium, clean dark interface -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col items-center justify-center p-6">
+
+    <div class="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-2xl p-8 shadow-2xl space-y-6">
+        <!-- Header -->
+        <div class="text-center space-y-2">
+            <h1 class="text-2xl font-bold tracking-tight text-white">OBS Setup Automation</h1>
+            <p class="text-sm text-zinc-400">Configure multi-player layouts, encoder profiles, & RTMP targets on your current profile</p>
+        </div>
+
+        <!-- Connection Status & Inputs -->
+        <div class="space-y-4">
+            <div class="flex items-center justify-between p-4 bg-zinc-950/50 rounded-xl border border-zinc-800">
+                <span class="text-sm font-medium text-zinc-400">Connection Status:</span>
+                <span id="status" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-500">
+                    Connecting...
+                </span>
+            </div>
+
+            <!-- Custom Destination Path Input -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="space-y-1">
+                    <label for="recordingPath" class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Recording Path (Auto-Fetched)</label>
+                    <input 
+                        type="text" 
+                        id="recordingPath" 
+                        value="" 
+                        class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-indigo-500 text-zinc-300 font-mono"
+                        placeholder="Retrieving path from OBS..."
+                    />
+                </div>
+                <div class="space-y-1">
+                    <label for="playerPort" class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Player Web Port</label>
+                    <input 
+                        type="number" 
+                        id="playerPort" 
+                        value="3004" 
+                        class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-indigo-500 text-zinc-300 font-mono"
+                        placeholder="3004"
+                    />
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Button -->
+        <button 
+            id="setupBtn" 
+            disabled 
+            class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed font-medium text-sm rounded-xl transition-all shadow-lg shadow-indigo-600/10 active:scale-95"
+        >
+            Apply Config & Create 4 Sources
+        </button>
+
+        <!-- Log Area -->
+        <div class="space-y-2">
+            <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Activity Feed</span>
+            <div 
+                id="log" 
+                class="w-full h-48 bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs font-mono overflow-y-auto text-zinc-400 space-y-1"
+            >
+                <div class="text-zinc-500">&gt; Waiting for connection...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const obs = new OBSWebSocket();
+        const statusEl = document.getElementById('status');
+        const setupBtn = document.getElementById('setupBtn');
+        const logEl = document.getElementById('log');
+        const pathInput = document.getElementById('recordingPath');
+        const portInput = document.getElementById('playerPort');
+
+        function addLog(message, isError = false) {
+            const entry = document.createElement('div');
+            entry.className = isError ? 'text-rose-500 font-semibold' : 'text-zinc-400';
+            entry.innerHTML = `<span class="text-zinc-600">&gt;</span> ${message}`;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        // Auto-Connect to local OBS WebSocket instance on port 4455 (No Auth)
+        async function connectOBS() {
+            try {
+                await obs.connect('ws://localhost:4455');
+                statusEl.innerText = "Connected";
+                statusEl.className = "inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400";
+                setupBtn.disabled = false;
+                addLog("Successfully linked to OBS WebSocket server on port 4455.");
+
+                // Automatically query and set the current active recording directory from OBS
+                try {
+                    const { recordDirectory } = await obs.call('GetRecordDirectory');
+                    if (recordDirectory) {
+                        pathInput.value = recordDirectory;
+                        addLog(`Retrieved current OBS recording path: "${recordDirectory}"`);
+                    }
+                } catch (pathErr) {
+                    addLog("Could not auto-fetch recording directory from OBS. Using fallback.", true);
+                    pathInput.value = "C:/Users/YourUsername/Documents";
+                }
+            } catch (error) {
+                statusEl.innerText = "Offline";
+                statusEl.className = "inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400";
+                addLog("Failed to link with OBS. Verify OBS is running and WebSockets are enabled.", true);
+                console.error("OBS Connection Error:", error);
+            }
+        }
+
+        setupBtn.addEventListener('click', async () => {
+            setupBtn.disabled = true;
+            addLog("Executing configuration sequence on current profile...");
+
+            try {
+                const port = portInput.value || "3004";
+                const browserSources = [
+                    { name: "Loop Player", url: `http://localhost:${port}/LoopPlayer.html` },
+                    { name: "Live Player", url: `http://localhost:${port}/LivePlayer.html` },
+                    { name: "Delay Live", url: `http://localhost:${port}/DelayLive.html` },
+                    { name: "Local Player", url: `http://localhost:${port}/LocalPCPlayer.html` }
+                ];
+
+                // Fetch current active profile details
+                const { currentProfileName } = await obs.call('GetProfileList');
+                addLog(`Modifying profile directly: "${currentProfileName}"`);
+
+                // 1. Set Video Resolution & Framerate (Canvas and Scaled: 1920x1080 @ 50 FPS)
+                addLog("Applying Video Canvas parameters (1920x1080 @ 50 FPS)...");
+                await obs.call('SetVideoSettings', {
+                    fpsNumerator: 50,
+                    fpsDenominator: 1,
+                    baseWidth: 1920,
+                    baseHeight: 1080,
+                    outputWidth: 1920,
+                    outputHeight: 1080
+                });
+
+                // 2. Global Device Audios: Completely Disable Desktop and Mic Devices
+                addLog("Disabling all default global audio devices in current profile...");
+                const globalAudioSources = [
+                    'DesktopDevice1', 'DesktopDevice2',
+                    'AuxDevice1', 'AuxDevice2', 'AuxDevice3', 'AuxDevice4'
+                ];
+                for (const device of globalAudioSources) {
+                    await obs.call('SetProfileParameter', {
+                        parameterCategory: 'Audio',
+                        parameterName: device,
+                        parameterValue: 'Disabled'
+                    });
+                }
+
+                // 3. Streaming and Recording Profile Settings -> Switch Output Mode to Advanced
+                addLog("Setting Output Mode to 'Advanced'...");
+                await obs.call('SetProfileParameter', { parameterCategory: 'Output', parameterName: 'Mode', parameterValue: 'Advanced' });
+                
+                // Advanced Recording formats
+                addLog("Setting Recording Directory & file formats (Fragmented MP4)...");
+                await obs.call('SetProfileParameter', { parameterCategory: 'AdvOut', parameterName: 'RecFormat', parameterValue: 'fragmented_mp4' });
+                await obs.call('SetRecordDirectory', { recordDirectory: pathInput.value });
+
+                // 4. Multi-Layer Bitrate Configuration on Current Profile (CBR, 6000 kbps, 2s Keyframes)
+                addLog("Writing encoder bitrate settings: 6000 kbps (CBR)...");
+                const targetCategories = [
+                    'AdvOut', 'SimpleOutput', 
+                    'AdvX264', 'AdvNVIDIA', 'AdvAMD', 'AdvFFmpeg',
+                    'x264', 'jim_nvenc', 'ffmpeg_nvenc', 'amd_amf'
+                ];
+
+                for (const cat of targetCategories) {
+                    try {
+                        await obs.call('SetProfileParameter', { parameterCategory: cat, parameterName: 'bitrate', parameterValue: '6000' });
+                        await obs.call('SetProfileParameter', { parameterCategory: cat, parameterName: 'Bitrate', parameterValue: '6000' });
+                        await obs.call('SetProfileParameter', { parameterCategory: cat, parameterName: 'VBitrate', parameterValue: '6000' });
+                        
+                        await obs.call('SetProfileParameter', { parameterCategory: cat, parameterName: 'rate_control', parameterValue: 'CBR' });
+                        await obs.call('SetProfileParameter', { parameterCategory: cat, parameterName: 'RateControl', parameterValue: 'CBR' });
+                        
+                        await obs.call('SetProfileParameter', { parameterCategory: cat, parameterName: 'keyint_sec', parameterValue: '2' });
+                        await obs.call('SetProfileParameter', { parameterCategory: cat, parameterName: 'KeyframeIntervalSec', parameterValue: '2' });
+                        await obs.call('SetProfileParameter', { parameterCategory: cat, parameterName: 'keyint', parameterValue: '100' }); 
+                    } catch (e) {
+                        // Safe bypass
+                    }
+                }
+
+                // Live Active Encoder Sync (Ensures changes apply instantly to the current session)
+                try {
+                    addLog("Syncing active live encoder configurations...");
+                    const encoderSettingsRes = await obs.call('GetStreamEncoderSettings', { encoderName: 'h264_stream' });
+                    if (encoderSettingsRes && encoderSettingsRes.encoderSettings) {
+                        const originalSettings = encoderSettingsRes.encoderSettings;
+                        const targetSettings = {
+                            ...originalSettings,
+                            bitrate: 6000,
+                            rate_control: "CBR",
+                            keyint_sec: 2
+                        };
+                        await obs.call('SetStreamEncoderSettings', {
+                            encoderName: 'h264_stream',
+                            encoderSettings: targetSettings
+                        });
+                        addLog("✅ Live encoder configuration successfully synced.");
+                    }
+                } catch (encError) {
+                    console.warn("Direct encoder update bypass:", encError);
+                }
+
+                // 5. Configure custom YouTube RTMP Destination
+                addLog("Setting target server to YouTube RTMP...");
+                await obs.call('SetStreamServiceSettings', {
+                    streamServiceType: 'rtmp_custom',
+                    streamServiceSettings: {
+                        server: 'rtmp://a.rtmp.youtube.com/live2',
+                        key: '' 
+                    }
+                });
+
+                // 6. Create / Configure the 4 Browser Sources
+                addLog("Locating active program scene...");
+                const { currentProgramSceneName } = await obs.call('GetCurrentProgramScene');
+
+                const { sceneItems } = await obs.call('GetSceneItemList', { sceneName: currentProgramSceneName });
+
+                for (const item of browserSources) {
+                    const existingItem = sceneItems.find(s => s.sourceName === item.name);
+                    let targetItemId;
+
+                    if (!existingItem) {
+                        addLog(`Creating Browser Source: "${item.name}"...`);
+                        const sourceRes = await obs.call('CreateInput', {
+                            sceneName: currentProgramSceneName,
+                            inputName: item.name,
+                            inputKind: 'browser_source',
+                            inputSettings: {
+                                url: item.url,
+                                width: 1920,
+                                height: 1080,
+                                reroute_audio: true // Control audio via OBS
+                            }
+                        });
+                        targetItemId = sourceRes.sceneItemId;
+                    } else {
+                        addLog(`"${item.name}" already exists on scene. Re-using target ID.`);
+                        targetItemId = existingItem.sceneItemId;
+                    }
+
+                    // Lock Transform
+                    addLog(`Locking transform layout for "${item.name}"...`);
+                    await obs.call('SetSceneItemLocked', {
+                        sceneName: currentProgramSceneName,
+                        sceneItemId: targetItemId,
+                        sceneItemLocked: true
+                    });
+
+                    // AUDIO MONITORING POLLING RETRY LOOP FOR EACH SOURCE
+                    addLog(`Awaiting initialization of Browser Audio Node for "${item.name}"...`);
+                    let monitorSuccess = false;
+                    for (let attempt = 1; attempt <= 12; attempt++) {
+                        try {
+                            await obs.call('SetInputAudioMonitorType', {
+                                inputName: item.name,
+                                monitorType: 'OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT'
+                            });
+                            monitorSuccess = true;
+                            addLog(`✅ Audio for "${item.name}" set to: 'Monitor and Output'.`);
+                            break;
+                        } catch (audioErr) {
+                            // Source audio node is still booting up; wait and try again
+                            await new Promise(resolve => setTimeout(resolve, 250));
+                        }
+                    }
+                    if (!monitorSuccess) {
+                        addLog(`⚠️ Audio monitor settings did not apply instantly to "${item.name}". Please double check Audio settings in OBS.`, true);
+                    }
+                }
+
+                // 7. Complete System Audio Muting Guardrail
+                addLog("Running absolute mute routine for all default Desktop and Mic audio devices...");
+                try {
+                    const { inputs } = await obs.call('GetInputList');
+                    const protectedSources = browserSources.map(s => s.name);
+                    for (const input of inputs) {
+                        const inputName = input.inputName.toLowerCase();
+                        if (inputName.includes('desktop') || inputName.includes('mic') || inputName.includes('aux')) {
+                            if (!protectedSources.includes(input.inputName)) {
+                                await obs.call('SetInputMute', { inputName: input.inputName, inputMuted: true });
+                                addLog(`Muted active global input: "${input.inputName}"`);
+                            }
+                        }
+                    }
+                } catch (muteError) {
+                    console.warn(muteError);
+                }
+
+                addLog("✅ Configuration complete! All settings have been applied directly to your active profile.");
+
+            } catch (error) {
+                console.error("Configuration Error:", error);
+                addLog(`Setup failed: ${error.message || error}`, true);
+            } finally {
+                setupBtn.disabled = false;
+            }
+        });
+
+        // Initialize connection
+        connectOBS();
+    </script>
+</body>
+</html>

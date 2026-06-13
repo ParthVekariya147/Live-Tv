@@ -167,7 +167,34 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
 
                 {showOBSSetup && (
                     <div className="bg-gray-900 border border-cyan-700/50 rounded-lg p-3 mb-1 w-64 text-xs">
-                        <p className="text-cyan-400 font-semibold mb-2">OBS WebSocket</p>
+                        {/* OBS Auto-Setup launcher */}
+                        <div className="mb-3">
+                            <div className="flex items-center justify-between mb-2">
+                                <p className="text-cyan-400 font-semibold">OBS Auto-Setup</p>
+                                <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${isConnected ? 'bg-green-900/60 text-green-400' : 'bg-red-900/60 text-red-400'}`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-500'}`} />
+                                    {isConnected ? 'Connected' : 'Not Connected'}
+                                </span>
+                            </div>
+                            <p className="text-gray-500 mb-2 leading-relaxed">
+                                Auto-configure OBS sources, encoder, and RTMP settings for SMK TV.
+                            </p>
+                            <button
+                                onClick={() => window.open('/obs-auto-setup.html', '_blank', 'width=600,height=700')}
+                                className="w-full py-1.5 bg-indigo-700 hover:bg-indigo-600 text-white rounded font-medium text-xs transition-all flex items-center justify-center gap-1.5"
+                            >
+                                🚀 Open OBS Auto-Setup
+                            </button>
+                            {!isConnected && (
+                                <p className="text-yellow-600 mt-1.5 text-xs">⚠ OBS not connected — auto-setup will try to connect on its own.</p>
+                            )}
+                        </div>
+
+                        {/* Divider */}
+                        <div className="border-t border-gray-700 my-2" />
+
+                        {/* WebSocket Config */}
+                        <p className="text-gray-400 font-semibold mb-2">WS Connection</p>
                         <div className="flex flex-col gap-2">
                             <div className="flex items-center gap-2">
                                 <label className="text-gray-400 w-10 flex-shrink-0">Host</label>

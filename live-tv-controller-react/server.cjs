@@ -61,12 +61,21 @@ const getRecordingsDir = () => {
     return path.join(__dirname, 'live_recordings');
 };
 
+// Get backups directory - next to EXE or project folder
+const getBackupBaseDir = () => {
+    if (process.pkg) {
+        return path.join(path.dirname(process.execPath), 'backups');
+    }
+    return path.join(__dirname, 'backups');
+};
+
 const dataDir = getDataDir();
 const logsDir = getLogsDir();
 const videosDir = getVideosDir();
 const recordingsDir = getRecordingsDir();
+const backupBaseDir = getBackupBaseDir();
 
-// Ensure directories exist
+// Ensure directories exist (backups sub-folders created by BackupService)
 [dataDir, logsDir, videosDir, recordingsDir].forEach(dir => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
@@ -363,6 +372,61 @@ app.use('/videos', express.static(videosDir, {
 
 // Serve static files from the dist directory
 app.use(express.static(distPath));
+
+// ============================================
+// VIDEOS FOLDER SCAN API
+// ============================================
+
+// GET /api/videos/scan - List all MP4 files in the videos folder
+app.get('/api/videos/scan', (req, res) => {
+    try {
+        const VIDEO_EXTS = ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.wmv'];
+        if (!fs.existsSync(videosDir)) {
+            return res.json({ success: true, files: [], folder: videosDir });
+        }
+        const entries = fs.readdirSync(videosDir, { withFileTypes: true });
+        const files = entries
+            .filter(e => e.isFile() && VIDEO_EXTS.includes(path.extname(e.name).toLowerCase()))
+            .map(e => ({
+                name: e.name,
+                serverPath: `/videos/${e.name}`,
+                size: fs.statSync(path.join(videosDir, e.name)).size
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+        res.json({ success: true, files, folder: videosDir });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// POST /api/videos/scan-folder - Scan a custom folder path for video files
+app.post('/api/videos/scan-folder', (req, res) => {
+    try {
+        const { folderPath } = req.body;
+        if (!folderPath) return res.status(400).json({ success: false, error: 'folderPath is required' });
+        const VIDEO_EXTS = ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.wmv'];
+        if (!fs.existsSync(folderPath)) {
+            return res.status(404).json({ success: false, error: 'Folder not found: ' + folderPath });
+        }
+        const entries = fs.readdirSync(folderPath, { withFileTypes: true });
+        const files = entries
+            .filter(e => e.isFile() && VIDEO_EXTS.includes(path.extname(e.name).toLowerCase()))
+            .map(e => ({
+                name: e.name,
+                absolutePath: path.join(folderPath, e.name),
+                size: fs.statSync(path.join(folderPath, e.name)).size
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+        res.json({ success: true, files, folder: folderPath });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// GET /api/videos/root-folder - Get the path of the videos folder (for display)
+app.get('/api/videos/root-folder', (req, res) => {
+    res.json({ success: true, folder: videosDir });
+});
 
 // ============================================
 // STATE API ENDPOINTS
@@ -870,6 +934,166 @@ app.delete('/api/logs', (req, res) => {
 });
 
 // ============================================
+// BACKUP SERVICE
+// ============================================
+
+class BackupService {
+    constructor({ dataDir, backupBaseDir }) {
+        this.dataDir = dataDir;
+        this.manualDir = path.join(backupBaseDir, 'manual_backup');
+        this.autoDir   = path.join(backupBaseDir, 'auto_backup');
+        this.autoInterval = null;
+
+        // Ensure both subdirectories exist
+        [this.manualDir, this.autoDir].forEach(d => {
+            if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+        });
+    }
+
+    // Collect all JSON files from data dir into one object
+    // Excludes auto_backup_settings.json so restoring a backup doesn't reset the current backup schedule
+    _collectData() {
+        const EXCLUDE = new Set(['auto_backup_settings.json']);
+        const files = {};
+        try {
+            for (const entry of fs.readdirSync(this.dataDir)) {
+                if (!entry.endsWith('.json') || entry.endsWith('.bak')) continue;
+                if (EXCLUDE.has(entry)) continue;
+                try {
+                    files[entry] = JSON.parse(fs.readFileSync(path.join(this.dataDir, entry), 'utf8'));
+                } catch (_) { /* skip unreadable */ }
+            }
+        } catch (_) {}
+        return files;
+    }
+
+    createBackup(type = 'manual') {
+        const dir = type === 'manual' ? this.manualDir : this.autoDir;
+        const ts  = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
+        const filename = `backup_${ts}.json`;
+        const filepath = path.join(dir, filename);
+
+        const payload = {
+            backedUpAt: new Date().toISOString(),
+            type,
+            files: this._collectData(),
+        };
+        fs.writeFileSync(filepath, JSON.stringify(payload, null, 2), 'utf8');
+        console.log(`[Backup] ${type} backup saved → ${filename}`);
+
+        // Retention: manual=30 files, auto=14 files (2 weeks)
+        this._pruneOld(dir, type === 'manual' ? 30 : 14);
+
+        return { filename, backedUpAt: payload.backedUpAt, fileCount: Object.keys(payload.files).length };
+    }
+
+    listBackups(type = 'manual') {
+        const dir = type === 'manual' ? this.manualDir : this.autoDir;
+        try {
+            return fs.readdirSync(dir)
+                .filter(f => f.endsWith('.json'))
+                .map(f => {
+                    const fp  = path.join(dir, f);
+                    const st  = fs.statSync(fp);
+                    return { filename: f, size: st.size, modifiedAt: st.mtime.toISOString() };
+                })
+                .sort((a, b) => new Date(b.modifiedAt) - new Date(a.modifiedAt));
+        } catch (_) { return []; }
+    }
+
+    restoreBackup(type, filename) {
+        if (!filename || filename.includes('/') || filename.includes('\\') || filename.includes('..') || !filename.endsWith('.json')) {
+            throw new Error('Invalid backup filename');
+        }
+        const dir = type === 'manual' ? this.manualDir : this.autoDir;
+        const filepath = path.join(dir, filename);
+        if (!filepath.startsWith(dir + path.sep) && filepath !== path.join(dir, filename)) {
+            throw new Error('Path traversal detected');
+        }
+
+        const payload = JSON.parse(fs.readFileSync(filepath, 'utf8'));
+        let restored = 0;
+        for (const [fname, content] of Object.entries(payload.files || {})) {
+            // Only restore .json files that don't contain path separators
+            if (fname.includes('/') || fname.includes('\\') || !fname.endsWith('.json')) continue;
+            fs.writeFileSync(path.join(this.dataDir, fname), JSON.stringify(content, null, 2), 'utf8');
+            restored++;
+        }
+        return { restored, backedUpAt: payload.backedUpAt };
+    }
+
+    // ── Auto-backup settings ────────────────────────────────────────────
+    // Stored in data/auto_backup_settings.json
+    // Schema: { mode: 'hours'|'days'|'weekly', intervalHours, intervalDays, dayOfWeek }
+
+    getAutoSettings() {
+        try {
+            const f = path.join(this.dataDir, 'auto_backup_settings.json');
+            if (fs.existsSync(f)) return JSON.parse(fs.readFileSync(f, 'utf8'));
+        } catch (_) {}
+        return { mode: 'hours', intervalHours: 12 }; // default: every 12 hours
+    }
+
+    saveAutoSettings(settings) {
+        fs.writeFileSync(
+            path.join(this.dataDir, 'auto_backup_settings.json'),
+            JSON.stringify(settings, null, 2), 'utf8'
+        );
+    }
+
+    // Hourly checker — resilient to server restarts for all modes
+    startAutoBackup() {
+        this.stopAutoBackup();
+        const check = () => {
+            try {
+                const cfg     = this.getAutoSettings();
+                const now     = new Date();
+                const latest  = this.listBackups('auto')[0];
+                const lastMs  = latest ? new Date(latest.modifiedAt).getTime() : 0;
+                const elapsed = now.getTime() - lastMs;
+                let fire = false;
+
+                if (cfg.mode === 'hours') {
+                    fire = elapsed >= (cfg.intervalHours || 12) * 3_600_000;
+                } else if (cfg.mode === 'days') {
+                    fire = elapsed >= (cfg.intervalDays  ||  1) * 86_400_000;
+                } else if (cfg.mode === 'weekly') {
+                    const todayKey = now.toISOString().slice(0, 10);
+                    const lastKey  = latest?.modifiedAt?.slice(0, 10);
+                    fire = now.getDay() === (cfg.dayOfWeek ?? 4) && todayKey !== lastKey;
+                }
+
+                if (fire) this.createBackup('auto');
+            } catch (e) { console.error('[Backup] Auto-backup error:', e.message); }
+        };
+
+        check(); // run once on startup in case we missed an interval
+        this.autoInterval = setInterval(check, 3_600_000); // re-check every hour
+        const cfg = this.getAutoSettings();
+        const desc = cfg.mode === 'hours'  ? `every ${cfg.intervalHours}h`
+                   : cfg.mode === 'days'   ? `every ${cfg.intervalDays}d`
+                   : `every ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][cfg.dayOfWeek ?? 4]}`;
+        console.log(`[Backup] Auto-backup active (${desc}) — checks hourly`);
+    }
+
+    stopAutoBackup() {
+        if (this.autoInterval) { clearInterval(this.autoInterval); this.autoInterval = null; }
+    }
+
+    _pruneOld(dir, keep) {
+        try {
+            const files = fs.readdirSync(dir)
+                .filter(f => f.endsWith('.json'))
+                .map(f => ({ f, mt: fs.statSync(path.join(dir, f)).mtime }))
+                .sort((a, b) => b.mt - a.mt);
+            files.slice(keep).forEach(({ f }) => {
+                try { fs.unlinkSync(path.join(dir, f)); } catch (_) {}
+            });
+        } catch (_) {}
+    }
+}
+
+// ============================================
 // RECORDING SERVICE
 // ============================================
 
@@ -1088,6 +1312,94 @@ class RecordingService {
 }
 
 const recordingService = new RecordingService({ recordingsDir });
+const backupService = new BackupService({ dataDir, backupBaseDir });
+
+// ============================================
+// BACKUP API ENDPOINTS
+// ============================================
+
+// POST /api/backup/manual — save a manual backup right now
+app.post('/api/backup/manual', (req, res) => {
+    try {
+        const result = backupService.createBackup('manual');
+        res.json({ success: true, ...result });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// GET /api/backup/list?type=manual|auto — list backup files
+app.get('/api/backup/list', (req, res) => {
+    const type = req.query.type === 'auto' ? 'auto' : 'manual';
+    const backups = backupService.listBackups(type);
+    res.json({ success: true, type, backups });
+});
+
+// POST /api/backup/restore — restore from a backup file
+// body: { type: 'manual'|'auto', filename: 'backup_YYYY-MM-DDTHH-MM.json' }
+app.post('/api/backup/restore', (req, res) => {
+    const { type, filename } = req.body || {};
+    if (!filename) return res.status(400).json({ success: false, error: 'filename required' });
+    try {
+        const result = backupService.restoreBackup(type || 'manual', filename);
+        // Reload scheduler with the restored schedules
+        scheduler.loadSchedules();
+        broadcast('SCHEDULES_UPDATED', { schedules: scheduler.getAllSchedules() });
+        res.json({ success: true, ...result });
+    } catch (e) {
+        res.status(400).json({ success: false, error: e.message });
+    }
+});
+
+// GET /api/backup/status — last backup timestamps for both types
+app.get('/api/backup/status', (req, res) => {
+    const manual = backupService.listBackups('manual');
+    const auto   = backupService.listBackups('auto');
+    res.json({
+        success: true,
+        manual: { count: manual.length, latest: manual[0] || null },
+        auto:   { count: auto.length,   latest: auto[0]   || null },
+        autoSettings: backupService.getAutoSettings(),
+    });
+});
+
+// GET /api/backup/auto-settings — get current auto-backup schedule config
+app.get('/api/backup/auto-settings', (req, res) => {
+    res.json({ success: true, settings: backupService.getAutoSettings() });
+});
+
+// PUT /api/backup/auto-settings — update auto-backup schedule and restart the timer
+app.put('/api/backup/auto-settings', (req, res) => {
+    const { mode, intervalHours, intervalDays, dayOfWeek } = req.body || {};
+    const VALID_MODES = ['hours', 'days', 'weekly'];
+    if (!VALID_MODES.includes(mode)) {
+        return res.status(400).json({ success: false, error: 'mode must be hours | days | weekly' });
+    }
+    const settings = { mode };
+    if (mode === 'hours') settings.intervalHours = Math.max(1, parseInt(intervalHours) || 12);
+    if (mode === 'days')  settings.intervalDays  = Math.max(1, parseInt(intervalDays)  ||  1);
+    if (mode === 'weekly') settings.dayOfWeek    = Math.min(6, Math.max(0, parseInt(dayOfWeek) ?? 4));
+
+    backupService.saveAutoSettings(settings);
+    backupService.startAutoBackup(); // restart with new schedule
+    res.json({ success: true, settings });
+});
+
+// POST /api/backup/open-folder — open the backups folder in OS file manager
+app.post('/api/backup/open-folder', (req, res) => {
+    const { exec } = require('child_process');
+    const subFolder = req.body?.sub; // 'manual_backup' | 'auto_backup' | undefined (opens root)
+    const target = subFolder === 'manual_backup' ? backupService.manualDir
+                 : subFolder === 'auto_backup'   ? backupService.autoDir
+                 : backupBaseDir;
+    if (!fs.existsSync(target)) fs.mkdirSync(target, { recursive: true });
+    let cmd;
+    if (process.platform === 'win32') cmd = `explorer "${target}"`;
+    else if (process.platform === 'darwin') cmd = `open "${target}"`;
+    else cmd = `xdg-open "${target}"`;
+    exec(cmd, () => {});
+    res.json({ success: true, path: target });
+});
 
 // ============================================
 // RECORDING API ENDPOINTS
@@ -1233,20 +1545,25 @@ server.on('error', (err) => {
 });
 
 server.listen(PORT, () => {
+    // Start 12-hour auto-backup
+    backupService.startAutoBackup();
+
     console.log('');
     console.log('='.repeat(60));
     console.log('  Live TV Controller Server');
     console.log('='.repeat(60));
-    console.log(`  Server:      http://localhost:${PORT}/`);
-    console.log(`  WebSocket:   ws://localhost:${PORT}/ws`);
+    console.log(`  Server:         http://localhost:${PORT}/`);
+    console.log(`  WebSocket:      ws://localhost:${PORT}/ws`);
     console.log(`  Data dir:       ${dataDir}`);
     console.log(`  Logs dir:       ${logsDir}`);
     console.log(`  Videos dir:     ${videosDir}`);
     console.log(`  Recordings dir: ${recordingsDir}`);
+    console.log(`  Backups dir:    ${backupBaseDir}`);
     console.log('');
     console.log('  Scheduler:');
     console.log(`    Status:    ${scheduler.isRunning ? 'RUNNING' : 'STOPPED'}`);
     console.log(`    Schedules: ${scheduler.getAllSchedules().length}`);
+    console.log('  Backup: auto every 12h | manual via UI');
     console.log('');
     console.log('  Press Ctrl+C to stop the server');
     console.log('='.repeat(60));
@@ -1260,6 +1577,7 @@ process.on('SIGINT', () => {
         console.log('[Recording] Stopping active recording...');
         recordingService.stop();
     }
+    backupService.stopAutoBackup();
     scheduler.stop();
     server.close(() => {
         console.log('Server closed');

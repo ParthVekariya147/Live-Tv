@@ -535,15 +535,17 @@ class SchedulerService {
             if (schedule.skipUntil) {
                 const skipUntilDate = new Date(schedule.skipUntil);
                 if (now < skipUntilDate) {
-                    this.log('INFO', 'SKIP_ACTIVE', `Skipping "${schedule.title || schedule.source}" — skip active until ${skipUntilDate.toLocaleTimeString()}`, { id: schedule.id });
-                    // Mark as "triggered" so we don't keep logging this every second
-                    schedule.lastTriggered = triggerKey;
-                    this.save();
+                    // Only mark + save once per trigger-key (not every second)
+                    if (schedule.lastTriggered !== triggerKey) {
+                        this.log('INFO', 'SKIP_ACTIVE', `Skipping "${schedule.title || schedule.source}" — skip active until ${skipUntilDate.toLocaleTimeString()}`, { id: schedule.id });
+                        schedule.lastTriggered = triggerKey;
+                        this.saveSchedules();
+                    }
                     continue;
                 } else {
                     // Skip window has passed — clear it and fire normally
                     schedule.skipUntil = null;
-                    this.save();
+                    this.saveSchedules();
                 }
             }
 
@@ -723,6 +725,19 @@ class SchedulerService {
             const triggerKey = `${todayKey}-${schedule.time}`;
             if (schedule.lastTriggered === triggerKey) continue;
 
+            // Check if a "Skip 1 Day" covers this trigger — mark as skipped, don't fire
+            if (schedule.skipUntil) {
+                const skipUntilDate = new Date(schedule.skipUntil);
+                if (new Date() < skipUntilDate) {
+                    schedule.lastTriggered = triggerKey;
+                    this.saveSchedules();
+                    continue;
+                } else {
+                    schedule.skipUntil = null;
+                    this.saveSchedules();
+                }
+            }
+
             // This schedule was missed - catch up!
             this.log('WARN', 'MISSED_SCHEDULE_FOUND',
                 `Found missed schedule: "${schedule.title || schedule.source}" was scheduled for ${schedule.time}`,
@@ -807,9 +822,9 @@ class SchedulerService {
             return null;
         }
 
-        // Reset lastTriggered if time or days changed
-        if (updates.time !== this.schedules[index].time ||
-            updates.days !== this.schedules[index].days) {
+        // Reset lastTriggered if time or days changed (compare arrays by value, not reference)
+        const daysChanged = JSON.stringify(updates.days ?? null) !== JSON.stringify(this.schedules[index].days ?? null);
+        if (updates.time !== this.schedules[index].time || daysChanged) {
             updates.lastTriggered = null;
         }
 
@@ -951,7 +966,7 @@ class SchedulerService {
         // Skip 1 day = delay next trigger by 24 hours
         const skipUntil = new Date(nextTrigger.getTime() + 24 * 60 * 60 * 1000);
         schedule.skipUntil = skipUntil.toISOString();
-        this.save();
+        this.saveSchedules();
         return { skipUntil: schedule.skipUntil, nextNormalTrigger: nextTrigger.toISOString() };
     }
 
@@ -959,7 +974,7 @@ class SchedulerService {
         const schedule = this.schedules.find(s => s.id === id);
         if (!schedule) return null;
         schedule.skipUntil = null;
-        this.save();
+        this.saveSchedules();
         return true;
     }
 
