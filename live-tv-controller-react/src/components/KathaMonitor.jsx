@@ -272,8 +272,8 @@ const KathaMonitor = () => {
     }, []);
 
     // Fetch Katha channel content
-    // Returns videos filtered by the given mode
-    // mode: "today" | "yesterday" | "week" | "all"
+    // Filters by description content — NOT by title or upload date
+    // mode: "today" | "yesterday" | "all"
     const getKathaChannelContent = async (mode) => {
         const response = await fetch(`${LOCAL_API_BASE}/api/videos`, {
             signal: AbortSignal.timeout(15000),
@@ -281,7 +281,6 @@ const KathaMonitor = () => {
         if (!response.ok) throw new Error(`Local API HTTP ${response.status}`);
 
         const payload = await response.json();
-        // API already returns only Katha channel — sort newest first
         const rawVideoItems = (payload.data || [])
             .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
 
@@ -289,36 +288,23 @@ const KathaMonitor = () => {
         const todayStr = formatDateToDDMMMYYYY(now);
         const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
         const yesterdayStr = formatDateToDDMMMYYYY(yesterday);
-        const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 7);
 
-        const videoMatchesMode = (video) => {
-            if (mode === 'all') return true;
-            const publishedDate = video.publishedAt ? new Date(video.publishedAt) : null;
-            const pubStr = publishedDate && !isNaN(publishedDate) ? formatDateToDDMMMYYYY(publishedDate) : null;
-            const title = video.title || '';
+        // For date modes check recent videos only; for 'all' take top 30
+        const videosToCheck = mode === 'all' ? rawVideoItems.slice(0, 30) : rawVideoItems.slice(0, 15);
 
-            if (mode === 'today')
-                return title.includes(todayStr) || pubStr === todayStr;
-            if (mode === 'yesterday')
-                return title.includes(yesterdayStr) || pubStr === yesterdayStr;
-            if (mode === 'week')
-                return !publishedDate || publishedDate >= weekAgo;
-            return false;
-        };
-
-        const matched = rawVideoItems.filter(videoMatchesMode);
         const processedData = [];
 
-        for (const video of matched) {
+        for (const video of videosToCheck) {
             const videoId = video.videoId;
-            let manglaCharanTimestamp = { time: '00:00', word: "Fetching..." };
-
             const fullDescription = await fetchKathaVideoFullDescription(videoId);
-            if (fullDescription.startsWith("Error fetching description:")) {
-                manglaCharanTimestamp = { time: '00:00', word: 'Error' };
-            } else {
-                manglaCharanTimestamp = extractManglaCharanTimestamp(fullDescription);
-            }
+
+            if (fullDescription.startsWith("Error fetching description:")) continue;
+
+            // Date check is done via description content — fixed format "DD MMM YYYY"
+            if (mode === 'today' && !fullDescription.includes(todayStr)) continue;
+            if (mode === 'yesterday' && !fullDescription.includes(yesterdayStr)) continue;
+
+            const manglaCharanTimestamp = extractManglaCharanTimestamp(fullDescription);
 
             processedData.push({
                 title: video.title || "No Title",
@@ -339,26 +325,31 @@ const KathaMonitor = () => {
         setStatusText("Refreshing Katha content list...");
 
         try {
-            const requestedMode = modeOverride || dateFilter;
+            const requestedMode = modeOverride ?? dateFilter;
             let resolvedMode = requestedMode;
             let content = [];
 
             if (requestedMode === 'auto') {
-                // Auto: try today first, fall back to yesterday
+                // Try today first (via description), then yesterday, then show nothing
                 content = await getKathaChannelContent('today');
                 resolvedMode = 'today';
                 if (content.length === 0) {
                     content = await getKathaChannelContent('yesterday');
                     resolvedMode = 'yesterday';
                 }
+                // If both empty — show nothing, no fallback to all
             } else {
                 content = await getKathaChannelContent(requestedMode);
                 resolvedMode = requestedMode;
             }
 
             setVideos(content);
-            const label = { today: 'Today', yesterday: 'Yesterday', week: 'Last 7 days', all: 'All' }[resolvedMode] || resolvedMode;
-            setStatusText(`Showing ${content.length} video${content.length !== 1 ? 's' : ''} — ${label}`);
+            const label = { today: 'Today', yesterday: 'Yesterday', all: 'All' }[resolvedMode] || resolvedMode;
+            if (content.length === 0 && requestedMode === 'auto') {
+                setStatusText('No Katha videos found for today or yesterday.');
+            } else {
+                setStatusText(`Showing ${content.length} video${content.length !== 1 ? 's' : ''} — ${label}`);
+            }
 
             logKathaRefresh(content.length, resolvedMode, 'manual');
             for (const video of content) {
@@ -425,20 +416,25 @@ const KathaMonitor = () => {
 
             {/* Filter row */}
             <div className="flex gap-1 mb-2 w-full">
-                {['auto', 'today', 'yesterday', 'week', 'all'].map(mode => (
+                {[
+                    { mode: 'auto', label: 'Auto' },
+                    { mode: 'today', label: 'Today' },
+                    { mode: 'yesterday', label: 'Yesterday' },
+                    { mode: 'all', label: 'All' },
+                ].map(({ mode, label }) => (
                     <button
                         key={mode}
                         onClick={() => {
                             setDateFilter(mode);
                             loadKathaContent(mode);
                         }}
-                        className={`flex-1 px-1 py-1 rounded text-xs font-medium transition-all capitalize ${
+                        className={`flex-1 px-1 py-1 rounded text-xs font-medium transition-all ${
                             dateFilter === mode
                                 ? 'bg-cyan-700 text-white'
                                 : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
                         }`}
                     >
-                        {mode === 'auto' ? 'Auto' : mode === 'week' ? '7d' : mode === 'all' ? 'All' : mode.charAt(0).toUpperCase() + mode.slice(1)}
+                        {label}
                     </button>
                 ))}
             </div>
