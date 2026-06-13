@@ -154,6 +154,32 @@ export const fireSchedule = async (id) => {
 };
 
 /**
+ * Skip the next trigger for a schedule by 1 day
+ */
+export const skipScheduleDay = async (id) => {
+    try {
+        const response = await fetch(`${API_BASE}/api/schedules/${id}/skip-day`, { method: 'POST' });
+        return await response.json();
+    } catch (error) {
+        console.error('Error skipping schedule:', error);
+        return { success: false, error: error.message };
+    }
+};
+
+/**
+ * Cancel an active skip for a schedule
+ */
+export const cancelScheduleSkip = async (id) => {
+    try {
+        const response = await fetch(`${API_BASE}/api/schedules/${id}/cancel-skip`, { method: 'POST' });
+        return await response.json();
+    } catch (error) {
+        console.error('Error cancelling skip:', error);
+        return { success: false, error: error.message };
+    }
+};
+
+/**
  * Get next pending triggers
  */
 export const getNextTriggers = async (count = 5) => {

@@ -12,6 +12,8 @@ import {
     deleteSchedule as apiDeleteSchedule,
     toggleSchedule as apiToggleSchedule,
     fireSchedule as apiFireSchedule,
+    skipScheduleDay,
+    cancelScheduleSkip,
     importSchedules,
     connectWebSocket,
     disconnectWebSocket,
@@ -368,6 +370,16 @@ const Scheduler = () => {
         // The server broadcasts SCHEDULER_TRIGGER via WS — handled automatically
     };
 
+    const handleSkipDay = async (id) => {
+        await skipScheduleDay(id);
+        // Server broadcasts SCHEDULES_UPDATED via WS
+    };
+
+    const handleCancelSkip = async (id) => {
+        await cancelScheduleSkip(id);
+        // Server broadcasts SCHEDULES_UPDATED via WS
+    };
+
     const resetForm = () => {
         setTime("");
         setSource("Live Player");
@@ -706,7 +718,15 @@ const Scheduler = () => {
                                         ? 'bg-green-900/60 hover:bg-green-800/60'
                                         : 'bg-gray-900/50 hover:bg-gray-800'}`}
                                 >
-                                    <td className="px-3 py-2 text-cyan-400 font-mono">{formatTime12Hr(schedule.time)}</td>
+                                    <td className="px-3 py-2 font-mono">
+                                        <span className="text-cyan-400">{formatTime12Hr(schedule.time)}</span>
+                                        {schedule.skipUntil && new Date(schedule.skipUntil) > new Date() && (
+                                            <div className="text-orange-400 text-xs mt-0.5 flex items-center gap-1">
+                                                <span>⏭</span>
+                                                <span>until {new Date(schedule.skipUntil).toLocaleString('en-US', { weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                                            </div>
+                                        )}
+                                    </td>
                                     <td className="px-3 py-2 text-white">{schedule.source}</td>
                                     <td className="px-3 py-2">
                                         <span className={`px-2 py-0.5 rounded text-xs ${schedule.action === 'show' ? 'bg-green-600/80' : 'bg-red-600/80'
@@ -744,26 +764,45 @@ const Scheduler = () => {
                                             {schedule.enabled ? "On" : "Off"}
                                         </button>
                                     </td>
-                                    <td className="px-3 py-2 text-center space-x-1">
-                                        <button
-                                            onClick={() => handleFireNow(schedule.id)}
-                                            title="Fire this schedule right now (test)"
-                                            className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs"
-                                        >
-                                            ▶
-                                        </button>
-                                        <button
-                                            onClick={() => handleEdit(schedule)}
-                                            className="px-2 py-1 bg-yellow-600 hover:bg-yellow-700 text-white rounded text-xs"
-                                        >
-                                            Edit
-                                        </button>
-                                        <button
-                                            onClick={() => handleDelete(schedule.id)}
-                                            className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs"
-                                        >
-                                            ✕
-                                        </button>
+                                    <td className="px-3 py-2 text-center">
+                                        <div className="flex flex-wrap gap-1 justify-center">
+                                            <button
+                                                onClick={() => handleFireNow(schedule.id)}
+                                                title="Fire this schedule right now (test)"
+                                                className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs"
+                                            >
+                                                ▶
+                                            </button>
+                                            {schedule.skipUntil && new Date(schedule.skipUntil) > new Date() ? (
+                                                <button
+                                                    onClick={() => handleCancelSkip(schedule.id)}
+                                                    title="Cancel skip — resume normal schedule"
+                                                    className="px-2 py-1 bg-orange-600 hover:bg-orange-500 text-white rounded text-xs"
+                                                >
+                                                    ✕ Skip
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={() => handleSkipDay(schedule.id)}
+                                                    title="Skip next trigger by 1 day"
+                                                    className="px-2 py-1 bg-gray-600 hover:bg-orange-600 text-gray-300 hover:text-white rounded text-xs"
+                                                >
+                                                    ⏭ +1d
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => handleEdit(schedule)}
+                                                className="px-2 py-1 bg-yellow-600 hover:bg-yellow-700 text-white rounded text-xs"
+                                            >
+                                                Edit
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(schedule.id)}
+                                                className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}

@@ -9,7 +9,7 @@ echo ============================================================
 echo.
 
 :: ── STEP 1: Stop PM2 services ────────────────────────────────
-echo [1/4] Stopping PM2 services...
+echo [1/5] Stopping PM2 services...
 
 set "PM2="
 where pm2 >nul 2>&1
@@ -25,9 +25,27 @@ if not "!PM2!"=="" (
     echo     PM2 not found — skipping.
 )
 
-:: ── STEP 2: Kill all node.exe processes ──────────────────────
+:: ── STEP 2: Kill SMK TV EXE processes ────────────────────────
 echo.
-echo [2/4] Killing all node.exe processes...
+echo [2/5] Killing SMK TV EXE processes...
+
+set "FOUND=0"
+for /f "tokens=1,2" %%A in ('tasklist /FO TABLE /NH 2^>nul') do (
+    echo %%A | findstr /I "SMK" >nul 2>&1
+    if !ERRORLEVEL! EQU 0 (
+        taskkill /IM "%%A" /F >nul 2>&1
+        echo     Killed: %%A  (PID %%B)
+        set "FOUND=1"
+    )
+)
+if "!FOUND!"=="0" echo     No SMK TV EXE running.
+
+:: Also kill by image name pattern using WMIC
+wmic process where "name like 'SMK TV%%'" delete >nul 2>&1
+
+:: ── STEP 3: Kill all node.exe processes ──────────────────────
+echo.
+echo [3/5] Killing all node.exe processes...
 taskkill /IM node.exe /F >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
     echo     All node.exe processes killed.
@@ -35,12 +53,11 @@ if %ERRORLEVEL% EQU 0 (
     echo     No node.exe processes found.
 )
 
-:: ── STEP 3: Kill anything on ports 3000, 3003, 3004 ─────────
+:: ── STEP 4: Kill anything on ports 3000, 3003, 3004 ─────────
 echo.
-echo [3/4] Freeing ports 3000, 3003, 3004...
+echo [4/5] Freeing ports 3000, 3003, 3004...
 
 for %%P in (3000 3003 3004) do (
-    set "PIDS="
     for /f "tokens=5" %%A in ('netstat -aon 2^>nul ^| findstr ":%%P "') do (
         set "PID=%%A"
         if not "!PID!"=="0" if not "!PID!"=="" (
@@ -50,9 +67,9 @@ for %%P in (3000 3003 3004) do (
     )
 )
 
-:: ── STEP 4: Kill yt-dlp if running (recording) ───────────────
+:: ── STEP 5: Kill yt-dlp if running (recording) ───────────────
 echo.
-echo [4/4] Killing yt-dlp.exe if running...
+echo [5/5] Killing yt-dlp.exe if running...
 taskkill /IM yt-dlp.exe /F >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
     echo     yt-dlp.exe killed.

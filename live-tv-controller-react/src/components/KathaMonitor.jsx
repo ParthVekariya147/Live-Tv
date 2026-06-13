@@ -70,7 +70,8 @@ const KathaMonitor = () => {
     const [loadingToPlayer, setLoadingToPlayer] = useState(false);
     const [error, setError] = useState(null);
     const [statusText, setStatusText] = useState("Katha Monitor Ready");
-    const [dateFilter, setDateFilter] = useState("auto"); // auto | today | yesterday | week | all
+    const [dateFilter, setDateFilter] = useState(() => localStorage.getItem('kathaLastFilter') || 'auto');
+    const resultsCache = useRef({}); // { mode: { data, fetchedAt (ms timestamp) } }
 
     // Katha Schedulers
     const [refreshSchedulerEnabled, setRefreshSchedulerEnabled] = useState(false);
@@ -186,7 +187,8 @@ const KathaMonitor = () => {
         };
 
         loadSchedulesFromServer();
-        loadKathaContent();
+        const savedFilter = localStorage.getItem('kathaLastFilter') || 'auto';
+        loadKathaContent(savedFilter);
     }, []);
 
     // Save scheduler state to server when changed
@@ -272,8 +274,10 @@ const KathaMonitor = () => {
     }, []);
 
     // Fetch Katha channel content
-    // Filters by description content — NOT by title or upload date
-    // mode: "today" | "yesterday" | "all"
+    // mode: "today" | "yesterday" | "week" | "all"
+    // Title format is always "DD MMM YYYY" (e.g. "13 Jun 2026") — use that for date matching.
+    // Never use publishedAt for filtering: old videos get re-uploaded with today's date, making
+    // publishedAt unreliable. Title is the only trustworthy date source.
     const getKathaChannelContent = async (mode) => {
         const response = await fetch(`${LOCAL_API_BASE}/api/videos`, {
             signal: AbortSignal.timeout(15000),
@@ -281,30 +285,39 @@ const KathaMonitor = () => {
         if (!response.ok) throw new Error(`Local API HTTP ${response.status}`);
 
         const payload = await response.json();
-        const rawVideoItems = (payload.data || [])
+        const allVideos = (payload.data || [])
             .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
 
         const now = new Date();
         const todayStr = formatDateToDDMMMYYYY(now);
         const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
         const yesterdayStr = formatDateToDDMMMYYYY(yesterday);
+        const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 7);
 
-        // For date modes check recent videos only; for 'all' take top 30
-        const videosToCheck = mode === 'all' ? rawVideoItems.slice(0, 30) : rawVideoItems.slice(0, 15);
+        // Step 1: filter by title (fast — no API call)
+        const titleFiltered = allVideos.filter(video => {
+            const title = video.title || '';
+            if (mode === 'today')     return title.includes(todayStr);
+            if (mode === 'yesterday') return title.includes(yesterdayStr);
+            if (mode === 'week') {
+                // show if title contains a date from the last 7 days
+                for (let d = 0; d <= 7; d++) {
+                    const day = new Date(now); day.setDate(now.getDate() - d);
+                    if (title.includes(formatDateToDDMMMYYYY(day))) return true;
+                }
+                return false;
+            }
+            return true; // 'all' — no title filter
+        });
 
+        // Step 2: fetch description ONLY for matched videos to get ManglaCharan timestamp
         const processedData = [];
-
-        for (const video of videosToCheck) {
+        for (const video of titleFiltered) {
             const videoId = video.videoId;
             const fullDescription = await fetchKathaVideoFullDescription(videoId);
-
-            if (fullDescription.startsWith("Error fetching description:")) continue;
-
-            // Date check is done via description content — fixed format "DD MMM YYYY"
-            if (mode === 'today' && !fullDescription.includes(todayStr)) continue;
-            if (mode === 'yesterday' && !fullDescription.includes(yesterdayStr)) continue;
-
-            const manglaCharanTimestamp = extractManglaCharanTimestamp(fullDescription);
+            const manglaCharanTimestamp = fullDescription.startsWith("Error fetching description:")
+                ? { time: '00:00', word: 'Error' }
+                : extractManglaCharanTimestamp(fullDescription);
 
             processedData.push({
                 title: video.title || "No Title",
@@ -319,32 +332,46 @@ const KathaMonitor = () => {
         return processedData;
     };
 
-    const loadKathaContent = async (modeOverride) => {
+    const FILTER_LABELS = { today: 'Today', yesterday: 'Yesterday', week: 'Last 7 Days', all: 'All', auto: 'Auto' };
+
+    const loadKathaContent = async (modeOverride, forceRefresh = false) => {
+        const requestedMode = modeOverride ?? dateFilter;
+
+        // Serve from cache if available and not forcing refresh (skip for 'auto' — always resolve live)
+        if (!forceRefresh && requestedMode !== 'auto' && resultsCache.current[requestedMode]) {
+            const cached = resultsCache.current[requestedMode];
+            setVideos(cached.data);
+            const minsAgo = Math.round((Date.now() - cached.fetchedAt) / 60000);
+            const timeAgoStr = minsAgo === 0 ? 'just now' : `${minsAgo}m ago`;
+            setStatusText(`${cached.data.length} video${cached.data.length !== 1 ? 's' : ''} — ${FILTER_LABELS[requestedMode] || requestedMode} (fetched ${timeAgoStr})`);
+            return;
+        }
+
         setLoading(true);
         setError(null);
-        setStatusText("Refreshing Katha content list...");
+        setStatusText("Refreshing Katha content...");
 
         try {
-            const requestedMode = modeOverride ?? dateFilter;
             let resolvedMode = requestedMode;
             let content = [];
 
             if (requestedMode === 'auto') {
-                // Try today first (via description), then yesterday, then show nothing
                 content = await getKathaChannelContent('today');
                 resolvedMode = 'today';
                 if (content.length === 0) {
                     content = await getKathaChannelContent('yesterday');
                     resolvedMode = 'yesterday';
                 }
-                // If both empty — show nothing, no fallback to all
             } else {
                 content = await getKathaChannelContent(requestedMode);
                 resolvedMode = requestedMode;
             }
 
+            // Store in cache (keyed by resolved mode)
+            resultsCache.current[resolvedMode] = { data: content, fetchedAt: Date.now() };
+
             setVideos(content);
-            const label = { today: 'Today', yesterday: 'Yesterday', all: 'All' }[resolvedMode] || resolvedMode;
+            const label = FILTER_LABELS[resolvedMode] || resolvedMode;
             if (content.length === 0 && requestedMode === 'auto') {
                 setStatusText('No Katha videos found for today or yesterday.');
             } else {
@@ -420,21 +447,27 @@ const KathaMonitor = () => {
                     { mode: 'auto', label: 'Auto' },
                     { mode: 'today', label: 'Today' },
                     { mode: 'yesterday', label: 'Yesterday' },
+                    { mode: 'week', label: '7d' },
                     { mode: 'all', label: 'All' },
                 ].map(({ mode, label }) => (
                     <button
                         key={mode}
                         onClick={() => {
                             setDateFilter(mode);
+                            localStorage.setItem('kathaLastFilter', mode);
                             loadKathaContent(mode);
                         }}
                         className={`flex-1 px-1 py-1 rounded text-xs font-medium transition-all ${
                             dateFilter === mode
                                 ? 'bg-cyan-700 text-white'
-                                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                                : resultsCache.current[mode]
+                                    ? 'bg-gray-700 text-cyan-300 hover:bg-gray-600'
+                                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
                         }`}
+                        title={resultsCache.current[mode] ? `Cached — click to use, or Refresh to re-fetch` : ''}
                     >
                         {label}
+                        {resultsCache.current[mode] && dateFilter !== mode && <span className="ml-1 text-xs opacity-60">●</span>}
                     </button>
                 ))}
             </div>
@@ -442,10 +475,10 @@ const KathaMonitor = () => {
             <div className="flex justify-center space-x-2 mb-2 w-full">
                 <button
                     className="common-btn-style btn-secondary flex-1"
-                    onClick={() => loadKathaContent()}
+                    onClick={() => loadKathaContent(dateFilter, true)}
                     disabled={loading}
                 >
-                    {loading ? "Loading..." : "Refresh"}
+                    {loading ? "Loading..." : "↻ Refresh"}
                 </button>
                 <button
                     className={`common-btn-style btn-primary flex-1${loadingToPlayer ? ' btn-loading' : ''}`}

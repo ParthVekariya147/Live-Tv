@@ -531,6 +531,22 @@ class SchedulerService {
             const triggerKey = `${todayKey}-${schedule.time}`;
             if (schedule.lastTriggered === triggerKey) continue;
 
+            // Check if "Skip 1 Day" is active
+            if (schedule.skipUntil) {
+                const skipUntilDate = new Date(schedule.skipUntil);
+                if (now < skipUntilDate) {
+                    this.log('INFO', 'SKIP_ACTIVE', `Skipping "${schedule.title || schedule.source}" — skip active until ${skipUntilDate.toLocaleTimeString()}`, { id: schedule.id });
+                    // Mark as "triggered" so we don't keep logging this every second
+                    schedule.lastTriggered = triggerKey;
+                    this.save();
+                    continue;
+                } else {
+                    // Skip window has passed — clear it and fire normally
+                    schedule.skipUntil = null;
+                    this.save();
+                }
+            }
+
             // TRIGGER!
             this.executeSchedule(schedule, triggerKey, 'scheduled');
         }
@@ -902,24 +918,49 @@ class SchedulerService {
         }
 
         // Find the next valid day based on recurrence
-        if (schedule.recurrence === 'daily') {
-            return nextTrigger;
-        } else if (schedule.recurrence === 'weekly') {
+        if (schedule.recurrence === 'weekly') {
             const targetDay = schedule.scheduledDay;
             while (nextTrigger.getDay() !== targetDay) {
                 nextTrigger.setDate(nextTrigger.getDate() + 1);
             }
-            return nextTrigger;
         } else if (schedule.recurrence === 'days' && schedule.days?.length > 0) {
             for (let i = 0; i < 7; i++) {
-                if (schedule.days.includes(nextTrigger.getDay())) {
-                    return nextTrigger;
-                }
+                if (schedule.days.includes(nextTrigger.getDay())) break;
                 nextTrigger.setDate(nextTrigger.getDate() + 1);
             }
         }
 
-        return null;
+        // If "Skip 1 Day" is active, return the skip-until time as the effective next trigger
+        if (schedule.skipUntil) {
+            const skipUntilDate = new Date(schedule.skipUntil);
+            if (skipUntilDate > now && nextTrigger < skipUntilDate) {
+                return skipUntilDate;
+            }
+        }
+
+        return nextTrigger;
+    }
+
+    skipOneDay(id) {
+        const schedule = this.schedules.find(s => s.id === id);
+        if (!schedule) return null;
+
+        const nextTrigger = this.calculateNextTriggerTime(schedule);
+        if (!nextTrigger) return null;
+
+        // Skip 1 day = delay next trigger by 24 hours
+        const skipUntil = new Date(nextTrigger.getTime() + 24 * 60 * 60 * 1000);
+        schedule.skipUntil = skipUntil.toISOString();
+        this.save();
+        return { skipUntil: schedule.skipUntil, nextNormalTrigger: nextTrigger.toISOString() };
+    }
+
+    cancelSkip(id) {
+        const schedule = this.schedules.find(s => s.id === id);
+        if (!schedule) return null;
+        schedule.skipUntil = null;
+        this.save();
+        return true;
     }
 
     getStatus() {

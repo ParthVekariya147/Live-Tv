@@ -696,6 +696,24 @@ app.post('/api/schedules/:id/fire', (req, res) => {
     res.json({ success: true, fired: triggerData });
 });
 
+// POST /api/schedules/:id/skip-day - Skip next trigger by 1 day
+app.post('/api/schedules/:id/skip-day', (req, res) => {
+    const id = parseInt(req.params.id) || req.params.id;
+    const result = scheduler.skipOneDay(id);
+    if (!result) return res.status(404).json({ success: false, error: 'Schedule not found or no next trigger' });
+    broadcast('SCHEDULES_UPDATED', { schedules: scheduler.getAllSchedules() });
+    res.json({ success: true, ...result });
+});
+
+// POST /api/schedules/:id/cancel-skip - Cancel an active skip
+app.post('/api/schedules/:id/cancel-skip', (req, res) => {
+    const id = parseInt(req.params.id) || req.params.id;
+    const result = scheduler.cancelSkip(id);
+    if (!result) return res.status(404).json({ success: false, error: 'Schedule not found' });
+    broadcast('SCHEDULES_UPDATED', { schedules: scheduler.getAllSchedules() });
+    res.json({ success: true });
+});
+
 // PUT /api/schedules - Replace all schedules (for import / drag-and-drop reorder)
 app.put('/api/schedules', (req, res) => {
     try {
@@ -707,10 +725,12 @@ app.put('/api/schedules', (req, res) => {
         const existingMap = new Map(scheduler.getAllSchedules().map(s => [String(s.id), s]));
         const merged = Array.isArray(incoming) ? incoming.map(s => {
             const existing = existingMap.get(String(s.id));
-            if (existing && existing.lastTriggered && !s.lastTriggered) {
-                return { ...s, lastTriggered: existing.lastTriggered };
-            }
-            return s;
+            if (!existing) return s;
+            const patch = {};
+            // Preserve server-side tracking fields that React state doesn't hold
+            if (existing.lastTriggered && !s.lastTriggered) patch.lastTriggered = existing.lastTriggered;
+            if (existing.skipUntil && !s.skipUntil) patch.skipUntil = existing.skipUntil;
+            return Object.keys(patch).length ? { ...s, ...patch } : s;
         }) : incoming;
         const schedules = scheduler.setAllSchedules(merged);
         broadcast('SCHEDULES_UPDATED', { schedules });
@@ -911,7 +931,12 @@ class RecordingService {
                         modifiedAt: stat.mtime.toISOString(),
                     };
                 })
-                .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                .sort((a, b) => {
+                    // Use birthtime when valid, fall back to mtime (Linux ext3/ext4 may report epoch for birthtime)
+                    const aTime = a.createdAt > '1970-01-02' ? a.createdAt : a.modifiedAt;
+                    const bTime = b.createdAt > '1970-01-02' ? b.createdAt : b.modifiedAt;
+                    return new Date(bTime) - new Date(aTime);
+                });
         } catch (e) {
             return [];
         }
