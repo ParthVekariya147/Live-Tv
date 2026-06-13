@@ -29,6 +29,8 @@ const LocalPlayerCard = () => {
     const handleLoadAndPlayRef = useRef(null);
     const handleStopRef = useRef(null);
     const handleNextRef = useRef(null);
+    // Core advance-to-next ref — used by videoEnded AND videoError storage events
+    const advanceToNextRef = useRef(null);
     const wsRef = useRef(null);
     const wsReconnectRef = useRef(null);
     const wsReconnectDelayRef = useRef(WS_INITIAL_RECONNECT_DELAY);
@@ -236,39 +238,61 @@ const LocalPlayerCard = () => {
 
     useEffect(() => {
         const handleStorageEvent = (event) => {
-            if (event.key === LOCAL_PLAYER_EVENT_KEY && event.newValue) {
-                try {
-                    const data = JSON.parse(event.newValue);
-                    if (data.playerType === 'local' && data.event === 'videoEnded') handleVideoEnded();
-                } catch (e) {}
-            }
+            if (event.key !== LOCAL_PLAYER_EVENT_KEY || !event.newValue) return;
+            try {
+                const data = JSON.parse(event.newValue);
+                if (data.playerType !== 'local') return;
+                if (data.event === 'videoEnded') {
+                    advanceToNextRef.current?.();
+                } else if (data.event === 'videoError') {
+                    // Load failed — show error then skip to next enabled video
+                    setStatusText(`Load failed: ${data.message || 'unknown error'} — skipping...`);
+                    advanceToNextRef.current?.();
+                }
+            } catch (e) {}
         };
         window.addEventListener('storage', handleStorageEvent);
         return () => window.removeEventListener('storage', handleStorageEvent);
     }, []);
 
-    const handleVideoEnded = () => {
+    // Core advance logic — shared by videoEnded and videoError.
+    // Uses a while-loop to skip past any videos that became disabled since we last checked.
+    // All state is read from refs so stale closures are impossible.
+    const advanceToNext = () => {
         const currentIdx = currentIndexRef.current;
         const currentPlaylist = playlistRef.current;
         const currentEndActions = endActionsRef.current;
 
-        // Find next enabled video after current
-        const nextIdx = findNextEnabledIndex(currentIdx + 1, currentPlaylist);
-
-        if (nextIdx !== -1) {
-            setCurrentIndex(nextIdx);
-            const nextVideo = currentPlaylist[nextIdx];
-            if (nextVideo?.path) {
-                const displayName = nextVideo.name || nextVideo.path.split(/[\\/]/).pop();
-                setVideoInfo(prev => ({ ...prev, title: displayName }));
-                const startSeconds = nextVideo.startTime ? timeHMToSeconds(nextVideo.startTime) : 0;
-                const endSeconds = nextVideo.endTime ? timeHMToSeconds(nextVideo.endTime) : null;
-                sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(nextVideo.path));
-                setIsPlaying(true);
-                setIsStopped(false);
-                setStatusText(`Playing ${nextIdx + 1} of ${currentPlaylist.length}`);
+        // Walk forward from currentIdx+1, skipping any that have no path or are disabled
+        let searchFrom = currentIdx + 1;
+        let nextIdx = -1;
+        let nextVideo = null;
+        while (searchFrom < currentPlaylist.length) {
+            const candidateIdx = findNextEnabledIndex(searchFrom, currentPlaylist);
+            if (candidateIdx === -1) break;
+            const candidate = currentPlaylist[candidateIdx];
+            if (candidate?.path && candidate.enabled !== false) {
+                nextIdx = candidateIdx;
+                nextVideo = candidate;
+                break;
             }
+            // Video became disabled between check and load — keep searching past it
+            searchFrom = candidateIdx + 1;
+        }
+
+        if (nextIdx !== -1 && nextVideo) {
+            setCurrentIndex(nextIdx);
+            const displayName = nextVideo.name || nextVideo.path.split(/[\\/]/).pop();
+            setVideoInfo(prev => ({ ...prev, title: displayName }));
+            const startSeconds = nextVideo.startTime ? timeHMToSeconds(nextVideo.startTime) : 0;
+            const endSeconds = nextVideo.endTime ? timeHMToSeconds(nextVideo.endTime) : null;
+            sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(nextVideo.path));
+            hasExplicitlyStarted.current = true;
+            setIsPlaying(true);
+            setIsStopped(false);
+            setStatusText(`Playing ${nextIdx + 1} of ${currentPlaylist.length}`);
         } else {
+            // End of playlist — fire day-based end action
             const currentDay = new Date().getDay();
             const targetScene = currentEndActions[currentDay];
             sendPlayerCommand('localPCPlayerCommand', 'stop');
@@ -295,6 +319,12 @@ const LocalPlayerCard = () => {
             }
         }
     };
+
+    // Keep ref current — storage listener uses advanceToNextRef so it never has stale closures
+    useEffect(() => { advanceToNextRef.current = advanceToNext; });
+
+    // handleVideoEnded kept as an alias so any other callers still work
+    const handleVideoEnded = () => advanceToNext();
 
     // ============================================
     // PLAYLIST MANAGEMENT
