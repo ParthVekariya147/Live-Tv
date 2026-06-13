@@ -14,6 +14,8 @@ const LocalPlayerCard = () => {
     const isVisible = sourceState["Local Player"];
     const isInitialized = useRef(false);
     const dragIndex = useRef(null);
+    const isPlayingRef = useRef(false);
+    const isStoppedRef = useRef(false);
 
     const endActionsRef = useRef([null, null, null, null, null, null, null]);
     const playlistRef = useRef([]);
@@ -41,10 +43,52 @@ const LocalPlayerCard = () => {
     const [isMuted, setIsMuted] = useState(false);
     const [isStopped, setIsStopped] = useState(false);
 
+    // Keep playing/stopped refs in sync — declared after useState so no TDZ issue
+    useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+    useEffect(() => { isStoppedRef.current = isStopped; }, [isStopped]);
+
     const [videoInfo, setVideoInfo] = useState({ title: "No local video loaded" });
     const [statusText, setStatusText] = useState("Not loaded");
 
     const timeInfo = usePlayerTime(LOCAL_PLAYER_EVENT_KEY, 'local');
+
+    // PROACTIVE SKIP: whenever playlist or currentIndex changes, check if current video is
+    // disabled. If yes and player is in playing mode → immediately advance to next enabled.
+    // This is the "human thinking" logic: you don't wait for a disabled video to "end" —
+    // you just skip past it the moment you notice it's OFF.
+    useEffect(() => {
+        if (!isInitialized.current) return;
+        if (playlist.length === 0) return;
+        // Only auto-skip when actively in playing mode (not stopped by user)
+        if (isStoppedRef.current || !isPlayingRef.current) return;
+
+        const current = playlist[currentIndex];
+        if (!current || current.enabled !== false) return; // current is ON — nothing to do
+
+        // Current video is OFF — skip immediately
+        const nextIdx = findNextEnabledIndex(currentIndex + 1, playlist);
+        if (nextIdx !== -1) {
+            setCurrentIndex(nextIdx);
+            const nextVideo = playlist[nextIdx];
+            if (nextVideo?.path) {
+                const displayName = nextVideo.name || nextVideo.path.split(/[\\/]/).pop();
+                setVideoInfo({ title: displayName });
+                const startSec = nextVideo.startTime ? timeToSeconds(nextVideo.startTime) : 0;
+                const endSec = nextVideo.endTime ? timeToSeconds(nextVideo.endTime) : null;
+                sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSec, endSec, convertToFileUrl(nextVideo.path));
+                setIsPlaying(true);
+                setIsStopped(false);
+                setStatusText(`Skipped OFF → Playing: ${displayName}`);
+            }
+        } else {
+            // No enabled videos left after current — stop
+            sendPlayerCommand('localPCPlayerCommand', 'stop');
+            setIsPlaying(false);
+            setIsStopped(true);
+            setCurrentIndex(0);
+            setStatusText("No enabled videos — stopped");
+        }
+    }, [playlist, currentIndex]); // triggers when user toggles ON/OFF or reorders
 
     // Fetch default videos folder path on mount
     useEffect(() => {
@@ -131,8 +175,17 @@ const LocalPlayerCard = () => {
 
     const resumePlayback = () => {
         const pl = playlistRef.current;
-        const ci = currentIndexRef.current;
+        let ci = currentIndexRef.current;
         if (pl.length === 0) return;
+
+        // Skip disabled videos starting from saved position
+        if (pl[ci]?.enabled === false) {
+            const nextEnabled = findNextEnabledIndex(ci + 1, pl);
+            if (nextEnabled === -1) return; // all remaining disabled — do nothing
+            ci = nextEnabled;
+            setCurrentIndex(ci);
+        }
+
         const currentVideo = pl[ci];
         if (currentVideo?.path) {
             const displayName = currentVideo.name || currentVideo.path.split(/[\\/]/).pop();
