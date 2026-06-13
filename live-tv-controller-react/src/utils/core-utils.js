@@ -46,6 +46,46 @@ export function secondsToHMS(totalSeconds) {
     }
 }
 
+// Format seconds as HH:MM (no seconds) — used for Local Player display
+export function secondsToHM(totalSeconds) {
+    if (totalSeconds === null || isNaN(totalSeconds) || totalSeconds < 0) {
+        return "00:00";
+    }
+    const pad = (n) => String(n).padStart(2, "0");
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    return `${pad(h)}:${pad(m)}`;
+}
+
+// Parse H:MM or H:MM:SS format — 2-part means hours:minutes (not minutes:seconds)
+// Used for Local Player start/end time fields.
+// Returns null only if the string is truly empty/invalid — never returns null for
+// partial input that could silently set endTime=0 and stop playback immediately.
+export function timeHMToSeconds(timeString) {
+    if (!timeString || typeof timeString !== "string") return null;
+    const trimmed = timeString.trim();
+    if (!trimmed) return null;
+    const parts = trimmed.split(":").map(Number);
+    if (parts.some(isNaN)) return null;
+    if (parts.length === 1) {
+        // Single number: treat as hours (e.g. "2" = 2 hours = 7200s)
+        return parts[0] * 3600;
+    }
+    if (parts.length === 2) {
+        // H:MM — validate range
+        const [h, m] = parts;
+        if (m < 0 || m > 59) return null;
+        return h * 3600 + m * 60;
+    }
+    if (parts.length === 3) {
+        // H:MM:SS — validate range
+        const [h, m, s] = parts;
+        if (m < 0 || m > 59 || s < 0 || s > 59) return null;
+        return h * 3600 + m * 60 + s;
+    }
+    return null;
+}
+
 export function getCurrentDateTimeFormatted() {
     const now = new Date();
     const month = (now.getMonth() + 1).toString();
