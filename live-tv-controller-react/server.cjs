@@ -420,11 +420,16 @@ app.post('/api/videos/scan-folder', (req, res) => {
         const entries = fs.readdirSync(folderPath, { withFileTypes: true });
         const files = entries
             .filter(e => e.isFile() && VIDEO_EXTS.includes(path.extname(e.name).toLowerCase()))
-            .map(e => ({
-                name: e.name,
-                absolutePath: path.join(folderPath, e.name),
-                size: fs.statSync(path.join(folderPath, e.name)).size
-            }))
+            .map(e => {
+                const absolutePath = path.join(folderPath, e.name);
+                return {
+                    name: e.name,
+                    absolutePath,
+                    // serverPath is safe to use from any browser origin — no file:// issues
+                    serverPath: `/api/videos/serve?path=${encodeURIComponent(absolutePath)}`,
+                    size: fs.statSync(absolutePath).size
+                };
+            })
             .sort((a, b) => a.name.localeCompare(b.name));
         res.json({ success: true, files, folder: folderPath });
     } catch (err) {
@@ -435,6 +440,57 @@ app.post('/api/videos/scan-folder', (req, res) => {
 // GET /api/videos/root-folder - Get the path of the videos folder (for display)
 app.get('/api/videos/root-folder', (req, res) => {
     res.json({ success: true, folder: videosDir });
+});
+
+// GET /api/videos/serve - Stream any local video file through the server (with range support)
+// Allows the browser to play videos from any local path without file:// CORS restrictions.
+app.get('/api/videos/serve', (req, res) => {
+    const filePath = req.query.path;
+    if (!filePath) return res.status(400).json({ success: false, error: 'path query parameter is required' });
+    if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: 'File not found' });
+
+    const VIDEO_EXTS = ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.wmv'];
+    const ext = path.extname(filePath).toLowerCase();
+    if (!VIDEO_EXTS.includes(ext)) return res.status(400).json({ success: false, error: 'Unsupported file type' });
+
+    const mimeMap = {
+        '.mp4': 'video/mp4', '.mkv': 'video/x-matroska', '.avi': 'video/x-msvideo',
+        '.mov': 'video/quicktime', '.webm': 'video/webm', '.wmv': 'video/x-ms-wmv'
+    };
+    const contentType = mimeMap[ext] || 'video/mp4';
+
+    try {
+        const stat = fs.statSync(filePath);
+        const fileSize = stat.size;
+        const range = req.headers.range;
+
+        if (range) {
+            const parts = range.replace(/bytes=/, '').split('-');
+            const start = parseInt(parts[0], 10);
+            const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+            if (start >= fileSize || end >= fileSize || start > end) {
+                res.status(416).setHeader('Content-Range', `bytes */${fileSize}`).end();
+                return;
+            }
+            const chunkSize = end - start + 1;
+            res.writeHead(206, {
+                'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+                'Accept-Ranges': 'bytes',
+                'Content-Length': chunkSize,
+                'Content-Type': contentType,
+            });
+            fs.createReadStream(filePath, { start, end }).pipe(res);
+        } else {
+            res.writeHead(200, {
+                'Content-Length': fileSize,
+                'Content-Type': contentType,
+                'Accept-Ranges': 'bytes',
+            });
+            fs.createReadStream(filePath).pipe(res);
+        }
+    } catch (err) {
+        if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 // ============================================

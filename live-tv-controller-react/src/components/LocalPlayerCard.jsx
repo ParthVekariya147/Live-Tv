@@ -179,12 +179,21 @@ const LocalPlayerCard = () => {
         }
     }, [endActions]);
 
-    const convertToFileUrl = (path) => {
-        if (!path) return path;
-        if (path.startsWith('file:///') || path.startsWith('blob:') || path.startsWith('http://') || path.startsWith('https://')) return path;
-        if (path.startsWith('/')) return `${window.location.origin}${path}`;
-        if (/^[A-Za-z]:[\\/]/.test(path)) return `file:///${path.replace(/\\/g, '/')}`;
-        return `${window.location.origin}/${path}`;
+    const convertToFileUrl = (p) => {
+        if (!p) return p;
+        if (p.startsWith('blob:') || p.startsWith('http://') || p.startsWith('https://')) return p;
+        if (p.startsWith('/')) return `${window.location.origin}${p}`;
+        // Windows absolute path — route through server proxy so browser can load it
+        // (browsers block file:// URLs when the page is served over http://)
+        if (/^[A-Za-z]:[\\/]/.test(p)) {
+            return `${window.location.origin}/api/videos/serve?path=${encodeURIComponent(p)}`;
+        }
+        if (p.startsWith('file:///')) {
+            // Legacy file:// path — convert to server proxy path (forward slashes work on Windows too)
+            const decoded = decodeURIComponent(p.replace(/^file:\/\/\//, ''));
+            return `${window.location.origin}/api/videos/serve?path=${encodeURIComponent(decoded)}`;
+        }
+        return `${window.location.origin}/${p}`;
     };
 
     // Find next enabled index starting from `from`, wrapping around
@@ -416,7 +425,7 @@ const LocalPlayerCard = () => {
                 return;
             }
             const newItems = data.files.map(f => ({
-                path: f.absolutePath,
+                path: f.serverPath,  // served via /api/videos/serve — works in dev and EXE
                 name: f.name,
                 startTime: "",
                 endTime: "",

@@ -8,11 +8,10 @@ export default defineConfig({
   server: {
     port: 3003,
     proxy: {
-      // Proxy API requests to Express server during development
-      '/api': {
-        target: 'http://localhost:3004',
-        changeOrigin: true,
-      },
+      // Proxy API + static video files + WebSocket to Express during development
+      '/api': { target: 'http://localhost:3004', changeOrigin: true },
+      '/videos': { target: 'http://localhost:3004', changeOrigin: true },
+      '/ws': { target: 'ws://localhost:3004', ws: true, changeOrigin: true },
     },
   },
 })

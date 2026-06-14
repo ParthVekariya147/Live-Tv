@@ -1,5 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { copyToClipboard, formatDateToDDMMMYYYY } from '../utils/core-utils';
+import TimePickerAMPM from './common/TimePickerAMPM';
+
+function to12hr(t) {
+    if (!t) return '--';
+    const [h, m] = t.split(':').map(Number);
+    const ampm = h < 12 ? 'AM' : 'PM';
+    const h12 = h % 12 || 12;
+    return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
 import { logKathaRefresh, logKathaVideoFound, logKathaLoadPlayer } from '../utils/logger';
 
 const LOCAL_API_BASE = "http://localhost:3000";
@@ -517,17 +526,9 @@ const KathaMonitor = () => {
                 </h4>
 
                 <div className="scheduler-item">
-                    <label htmlFor="refreshScheduleTime" className="scheduler-label">
-                        Refresh Content List:
-                    </label>
+                    <label className="scheduler-label">Refresh Content List:</label>
                     <div className="scheduler-controls">
-                        <input
-                            type="time"
-                            id="refreshScheduleTime"
-                            className="input-field scheduler-time-input"
-                            value={refreshSchedulerTime}
-                            onChange={(e) => setRefreshSchedulerTime(e.target.value)}
-                        />
+                        <TimePickerAMPM value={refreshSchedulerTime} onChange={setRefreshSchedulerTime} />
                         <button
                             type="button"
                             className={`common-btn-style btn-primary flex-1 ${refreshSchedulerEnabled ? "on-scheduler" : "off-scheduler"}`}
@@ -539,17 +540,9 @@ const KathaMonitor = () => {
                 </div>
 
                 <div className="scheduler-item">
-                    <label htmlFor="playerScheduleTime" className="scheduler-label">
-                        Load to Delay Player:
-                    </label>
+                    <label className="scheduler-label">Load to Delay Player:</label>
                     <div className="scheduler-controls">
-                        <input
-                            type="time"
-                            id="playerScheduleTime"
-                            className="input-field scheduler-time-input"
-                            value={playerSchedulerTime}
-                            onChange={(e) => setPlayerSchedulerTime(e.target.value)}
-                        />
+                        <TimePickerAMPM value={playerSchedulerTime} onChange={setPlayerSchedulerTime} />
                         <button
                             type="button"
                             className={`common-btn-style btn-primary flex-1 ${playerSchedulerEnabled ? "on-scheduler" : "off-scheduler"}`}

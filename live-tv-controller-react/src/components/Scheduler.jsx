@@ -1,8 +1,9 @@
 
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import TimePickerAMPM from './common/TimePickerAMPM';
 import { useOBS } from '../context/OBSContext';
-import { logSchedulerTrigger, logInfo, logWarn, LogCategory } from '../utils/logger';
+import { logSchedulerTrigger, logSchedulerSkip, logInfo, logWarn, LogCategory } from '../utils/logger';
 import {
     startScheduler,
     stopScheduler,
@@ -59,7 +60,7 @@ const Scheduler = () => {
     useEffect(() => { sourceIdsRef.current = sourceIds; }, [sourceIds]);
 
     // Form State
-    const [time, setTime] = useState("");
+    const [scheduleTime, setScheduleTime] = useState('07:30');
     const [source, setSource] = useState("Live Player");
     const [action, setAction] = useState("show");
     const [recurrence, setRecurrence] = useState("daily");
@@ -159,6 +160,22 @@ const Scheduler = () => {
 
     // Handle trigger from server - execute OBS action (or queue if OBS is disconnected)
     const handleServerTrigger = useCallback((triggerData) => {
+        // Skip all OBS triggers when Live Player is active/visible
+        if (sourceStateRef.current["Live Player"] === true) {
+            logWarn('SCHEDULER_TRIGGER_SKIPPED', LogCategory.SCHEDULER,
+                { ...triggerData, reason: 'Live Player is active/visible', skippedAt: new Date().toISOString() },
+                `[FRONTEND] Skipped: ${triggerData.action} ${triggerData.source} - Live Player is active/visible`);
+            logSchedulerSkip(
+                triggerData.id,
+                triggerData.time,
+                triggerData.action,
+                triggerData.source,
+                triggerData.title,
+                'Live Player is active/visible'
+            );
+            return;
+        }
+
         // Katha actions are handled by KathaMonitor's own WS listener — skip OBS dispatch for them
         const isObsAction = triggerData.action === 'show' || triggerData.action === 'hide';
         if (!isObsAction) {
@@ -204,7 +221,9 @@ const Scheduler = () => {
                 `[FRONTEND] OBS reconnected — executing ${fresh.length} queued trigger(s)`);
 
             fresh.forEach(triggerData => {
-                executeOBSTrigger(triggerData);
+                if (sourceStateRef.current["Live Player"] !== true) {
+                    executeOBSTrigger(triggerData);
+                }
             });
         }, 2000); // wait 2s for OBS to populate source IDs after connect
 
@@ -309,27 +328,12 @@ const Scheduler = () => {
     // SCHEDULE CRUD HANDLERS
     // ============================================
 
-    // Normalize time string to HH:MM — returns null if invalid
-    const normalizeTime = (raw) => {
-        if (!raw || !raw.includes(':')) return null;
-        const [hStr, mStr] = raw.split(':');
-        const h = parseInt(hStr, 10);
-        const m = parseInt(mStr, 10);
-        if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
-        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    };
-
     const handleAddSchedule = async () => {
-        const normalizedTime = normalizeTime(time);
-        if (!normalizedTime || !source || !action) {
-            alert(!normalizedTime
-                ? "Invalid time — enter HH:MM (e.g. 14:30 for 2:30 PM)"
-                : "Please fill in all required fields.");
+        const time = scheduleTime;
+        if (!source || !action) {
+            alert("Please fill in all required fields.");
             return;
         }
-
-        // Keep displayed value normalized so formatTime12Hr doesn't get garbage input
-        if (normalizedTime !== time) setTime(normalizedTime);
 
         let scheduledDay = null;
         if (recurrence === "weekly") {
@@ -345,7 +349,7 @@ const Scheduler = () => {
         }
 
         const scheduleData = {
-            time: normalizedTime,
+            time,
             source,
             action,
             recurrence,
@@ -367,7 +371,7 @@ const Scheduler = () => {
     };
 
     const handleEdit = (schedule) => {
-        setTime(schedule.time);
+        setScheduleTime(schedule.time);
         setSource(schedule.source);
         setAction(schedule.action);
         setRecurrence(schedule.recurrence);
@@ -406,7 +410,7 @@ const Scheduler = () => {
     };
 
     const resetForm = () => {
-        setTime("");
+        setScheduleTime('07:30');
         setSource("Live Player");
         setAction("show");
         setRecurrence("daily");
@@ -613,22 +617,7 @@ const Scheduler = () => {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
                     {/* Time */}
                     <div>
-                        <label className="text-xs text-gray-400 block mb-1">Time</label>
-                        <input
-                            type="text"
-                            value={time}
-                            onChange={(e) => {
-                                let v = e.target.value.replace(/[^\d:]/g, '');
-                                // Auto-insert colon after 2 digits
-                                if (v.length === 2 && !v.includes(':') && e.nativeEvent.inputType !== 'deleteContentBackward') {
-                                    v = v + ':';
-                                }
-                                if (v.length <= 5) setTime(v);
-                            }}
-                            placeholder="HH:MM"
-                            maxLength={5}
-                            className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white text-sm focus:border-cyan-500 focus:outline-none"
-                        />
+                        <TimePickerAMPM value={scheduleTime} onChange={setScheduleTime} label="Time" />
                     </div>
 
                     {/* Source */}
