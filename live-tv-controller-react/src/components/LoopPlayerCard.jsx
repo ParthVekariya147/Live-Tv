@@ -5,6 +5,7 @@ import { sendPlayerCommand, PLAYER_EVENT_KEY } from '../utils/core-utils';
 import { usePlayerTime } from '../utils/usePlayerHooks';
 import { useVideoInfo } from '../hooks/useVideoInfo';
 import { logVideoLoad, logVideoPlay, logPlaylistAction } from '../utils/logger';
+import { setStateValue } from '../utils/state-api';
 import PlayerControlBtn from './common/PlayerControlBtn';
 import ThumbnailLoader from './common/ThumbnailLoader';
 
@@ -55,9 +56,12 @@ const LoopPlayerCard = () => {
                 console.error("Error loading loop saved state", e);
             }
         }
-        // Use setTimeout to mark initialized after React state settles
+        // Mark initialized after React state settles, then sync loaded state to server
         setTimeout(() => {
             isInitialized.current = true;
+            // Push whatever was just loaded from localStorage to the server so
+            // the server's app-state.json reflects the real video IDs on startup.
+            flushStateRef.current?.();
         }, 50);
     }, []);
 
@@ -80,6 +84,7 @@ const LoopPlayerCard = () => {
             videoId: playlist[currentIndex] || ""
         };
         localStorage.setItem('loopPlayerState', JSON.stringify(state));
+        setStateValue('player.loop', state);
     }, [playlist, currentIndex, isPlaying, isMuted, isStopped]);
 
     // Always-current ref to flush current state on demand (pre-backup / pre-export)
@@ -97,6 +102,7 @@ const LoopPlayerCard = () => {
                 videoId: playlist[currentIndex] || ""
             };
             localStorage.setItem('loopPlayerState', JSON.stringify(state));
+            setStateValue('player.loop', state);
         };
     });
 

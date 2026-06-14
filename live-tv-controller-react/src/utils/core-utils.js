@@ -57,10 +57,12 @@ export function secondsToHM(totalSeconds) {
     return `${pad(h)}:${pad(m)}`;
 }
 
-// Parse H:MM or H:MM:SS format — 2-part means hours:minutes (not minutes:seconds)
-// Used for Local Player start/end time fields.
-// Returns null only if the string is truly empty/invalid — never returns null for
-// partial input that could silently set endTime=0 and stop playback immediately.
+// Parse video timestamp strings for Local Player start/end time fields.
+// Supported formats:
+//   "90"       → 90 seconds (single number = raw seconds)
+//   "1:30"     → MM:SS = 90 seconds
+//   "1:30:00"  → H:MM:SS = 5400 seconds
+// Returns null for empty/invalid input so callers can distinguish "not set" from "0".
 export function timeHMToSeconds(timeString) {
     if (!timeString || typeof timeString !== "string") return null;
     const trimmed = timeString.trim();
@@ -68,17 +70,17 @@ export function timeHMToSeconds(timeString) {
     const parts = trimmed.split(":").map(Number);
     if (parts.some(isNaN)) return null;
     if (parts.length === 1) {
-        // Single number: treat as hours (e.g. "2" = 2 hours = 7200s)
-        return parts[0] * 3600;
+        // Raw seconds (e.g. "90" = 90s)
+        return parts[0];
     }
     if (parts.length === 2) {
-        // H:MM — validate range
-        const [h, m] = parts;
-        if (m < 0 || m > 59) return null;
-        return h * 3600 + m * 60;
+        // MM:SS — matches natural video player convention
+        const [m, s] = parts;
+        if (s < 0 || s > 59) return null;
+        return m * 60 + s;
     }
     if (parts.length === 3) {
-        // H:MM:SS — validate range
+        // H:MM:SS
         const [h, m, s] = parts;
         if (m < 0 || m > 59 || s < 0 || s > 59) return null;
         return h * 3600 + m * 60 + s;

@@ -336,6 +336,10 @@ export default function SettingsBackup() {
     async function handleManualBackup() {
         setSavingBackup(true);
         try {
+            // Flush player state to server before snapshotting
+            window.dispatchEvent(new CustomEvent('flushPlayerState'));
+            await new Promise(r => setTimeout(r, 400));
+
             const res = await fetch('/api/backup/manual', { method: 'POST' });
             const data = await res.json();
             if (data.success) {

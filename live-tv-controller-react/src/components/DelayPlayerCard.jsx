@@ -5,6 +5,7 @@ import { sendPlayerCommand, timeToSeconds, DELAY_PLAYER_EVENT_KEY } from '../uti
 import { usePlayerTime } from '../utils/usePlayerHooks';
 import { useVideoInfo } from '../hooks/useVideoInfo';
 import { logVideoLoad, logVideoPlay } from '../utils/logger';
+import { setStateValue } from '../utils/state-api';
 import PlayerControlBtn from './common/PlayerControlBtn';
 import ThumbnailLoader from './common/ThumbnailLoader';
 
@@ -52,9 +53,10 @@ const DelayPlayerCard = () => {
                 }
             } catch (e) { }
         }
-        // Use setTimeout to mark initialized after React state settles
+        // Mark initialized after React state settles, then sync loaded state to server
         setTimeout(() => {
             isInitialized.current = true;
+            flushStateRef.current?.();
         }, 50);
     }, []);
 
@@ -91,6 +93,7 @@ const DelayPlayerCard = () => {
 
         const state = { videoId, startTime, endTime, isPlaying, isMuted, isStopped };
         localStorage.setItem('delayPlayerState', JSON.stringify(state));
+        setStateValue('player.delay', state);
     }, [videoId, startTime, endTime, isPlaying, isMuted, isStopped]);
 
     // Always-current ref to flush current state on demand (pre-backup / pre-export)
@@ -101,6 +104,7 @@ const DelayPlayerCard = () => {
             if (!hasUserData.current && !videoId) return;
             const state = { videoId, startTime, endTime, isPlaying, isMuted, isStopped };
             localStorage.setItem('delayPlayerState', JSON.stringify(state));
+            setStateValue('player.delay', state);
         };
     });
 

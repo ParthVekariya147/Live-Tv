@@ -4,6 +4,7 @@ import { useOBS } from '../context/OBSContext';
 import { sendPlayerCommand, LOCAL_PLAYER_EVENT_KEY, timeHMToSeconds } from '../utils/core-utils';
 import { usePlayerTime } from '../utils/usePlayerHooks';
 import { logSourceChange, logVideoEnd } from '../utils/logger';
+import { setStateValue } from '../utils/state-api';
 import PlayerControlBtn from './common/PlayerControlBtn';
 
 const daysMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -31,6 +32,9 @@ const LocalPlayerCard = () => {
     const handleNextRef = useRef(null);
     // Core advance-to-next ref — used by videoEnded AND videoError storage events
     const advanceToNextRef = useRef(null);
+    // Track last video path sent to localPCPlayerCommand so handleLoadAndPlay can
+    // skip a no-op reload (Bug 4 — avoid reloading already-playing unchanged data).
+    const lastLoadedVideoRef = useRef('');
     const wsRef = useRef(null);
     const wsReconnectRef = useRef(null);
     const wsReconnectDelayRef = useRef(WS_INITIAL_RECONNECT_DELAY);
@@ -94,6 +98,7 @@ const LocalPlayerCard = () => {
                 const startSec = nextVideo.startTime ? timeHMToSeconds(nextVideo.startTime) : 0;
                 const endSec = nextVideo.endTime ? timeHMToSeconds(nextVideo.endTime) : null;
                 sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSec, endSec, convertToFileUrl(nextVideo.path));
+                lastLoadedVideoRef.current = nextVideo.path;
                 setIsPlaying(true);
                 setIsStopped(false);
                 setStatusText(`Skipped OFF → Playing: ${displayName}`);
@@ -155,7 +160,10 @@ const LocalPlayerCard = () => {
         const savedFolderPath = localStorage.getItem('localPCPlayerFolderPath');
         if (savedFolderPath) setFolderPath(savedFolderPath);
 
-        const t = setTimeout(() => { isInitialized.current = true; }, 100);
+        const t = setTimeout(() => {
+            isInitialized.current = true;
+            flushStateRef.current?.();
+        }, 100);
         return () => clearTimeout(t);
     }, []);
 
@@ -165,13 +173,13 @@ const LocalPlayerCard = () => {
         const persistablePlaylist = playlist
             .map(item => ({ ...item, path: item.path?.startsWith('blob:') ? '' : item.path }))
             .filter(item => item.path && item.path.trim() !== '');
+        const state = { playlist: persistablePlaylist, currentIndex, isPlaying, isMuted, isStopped };
         try {
-            localStorage.setItem('localPCPlayerState', JSON.stringify({
-                playlist: persistablePlaylist, currentIndex, isPlaying, isMuted, isStopped
-            }));
+            localStorage.setItem('localPCPlayerState', JSON.stringify(state));
         } catch (e) {
             console.warn('LocalPCPlayer: localStorage save failed (quota?):', e.message);
         }
+        setStateValue('player.local', state);
     }, [playlist, currentIndex, isPlaying, isMuted, isStopped]);
 
     // Save endActions
@@ -198,13 +206,13 @@ const LocalPlayerCard = () => {
             const persistablePlaylist = playlist
                 .map(item => ({ ...item, path: item.path?.startsWith('blob:') ? '' : item.path }))
                 .filter(item => item.path && item.path.trim() !== '');
+            const state = { playlist: persistablePlaylist, currentIndex, isPlaying, isMuted, isStopped };
             try {
-                localStorage.setItem('localPCPlayerState', JSON.stringify({
-                    playlist: persistablePlaylist, currentIndex, isPlaying, isMuted, isStopped
-                }));
+                localStorage.setItem('localPCPlayerState', JSON.stringify(state));
             } catch (e) {
                 console.warn('LocalPCPlayer flush: localStorage save failed:', e.message);
             }
+            setStateValue('player.local', state);
             if (endActions.some(a => a !== null)) {
                 localStorage.setItem('localPCPlayerEndActions', JSON.stringify(endActions));
             }
@@ -266,6 +274,7 @@ const LocalPlayerCard = () => {
             const startSeconds = currentVideo.startTime ? timeHMToSeconds(currentVideo.startTime) : 0;
             const endSeconds = currentVideo.endTime ? timeHMToSeconds(currentVideo.endTime) : null;
             sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(currentVideo.path));
+            lastLoadedVideoRef.current = currentVideo.path;
             hasExplicitlyStarted.current = true;
             setIsPlaying(true);
             setIsStopped(false);
@@ -342,6 +351,7 @@ const LocalPlayerCard = () => {
             const startSeconds = nextVideo.startTime ? timeHMToSeconds(nextVideo.startTime) : 0;
             const endSeconds = nextVideo.endTime ? timeHMToSeconds(nextVideo.endTime) : null;
             sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(nextVideo.path));
+            lastLoadedVideoRef.current = nextVideo.path;
             hasExplicitlyStarted.current = true;
             setIsPlaying(true);
             setIsStopped(false);
@@ -602,14 +612,28 @@ const LocalPlayerCard = () => {
     const handleLoadAndPlay = () => {
         const enabledIdx = findNextEnabledIndex(0, playlist);
         if (enabledIdx === -1) { setStatusText("No enabled videos in playlist"); return; }
-        setCurrentIndex(enabledIdx);
         const currentVideo = playlist[enabledIdx];
+
+        // Bug 4: skip reload when already playing the exact same video from position 0
+        if (
+            !isStopped &&
+            isPlaying &&
+            currentIndex === enabledIdx &&
+            currentVideo?.path &&
+            currentVideo.path === lastLoadedVideoRef.current
+        ) {
+            setStatusText(`Already playing: ${currentVideo.name || currentVideo.path.split(/[\\/]/).pop()}`);
+            return;
+        }
+
+        setCurrentIndex(enabledIdx);
         if (currentVideo?.path) {
             const displayName = currentVideo.name || currentVideo.path.split(/[\\/]/).pop();
             setVideoInfo(prev => ({ ...prev, title: displayName }));
             const startSeconds = currentVideo.startTime ? timeHMToSeconds(currentVideo.startTime) : 0;
             const endSeconds = currentVideo.endTime ? timeHMToSeconds(currentVideo.endTime) : null;
             sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(currentVideo.path));
+            lastLoadedVideoRef.current = currentVideo.path;
             hasExplicitlyStarted.current = true;
             setIsPlaying(true);
             setIsStopped(false);
@@ -623,6 +647,9 @@ const LocalPlayerCard = () => {
             sendPlayerCommand('localPCPlayerCommand', 'pause');
             setIsPlaying(false);
             setStatusText("Paused");
+        } else if (isStopped) {
+            // Playlist ended or was stopped — restart from first enabled video (Bug 3)
+            handleLoadAndPlay();
         } else {
             sendPlayerCommand('localPCPlayerCommand', 'play');
             setIsPlaying(true);
@@ -651,6 +678,7 @@ const LocalPlayerCard = () => {
             const startSeconds = video.startTime ? timeHMToSeconds(video.startTime) : 0;
             const endSeconds = video.endTime ? timeHMToSeconds(video.endTime) : null;
             sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(video.path));
+            lastLoadedVideoRef.current = video.path;
             hasExplicitlyStarted.current = true;
             setIsPlaying(true);
             setIsStopped(false);
@@ -680,6 +708,7 @@ const LocalPlayerCard = () => {
             const startSeconds = video.startTime ? timeHMToSeconds(video.startTime) : 0;
             const endSeconds = video.endTime ? timeHMToSeconds(video.endTime) : null;
             sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(video.path));
+            lastLoadedVideoRef.current = video.path;
             hasExplicitlyStarted.current = true;
             setIsPlaying(true);
             setIsStopped(false);
@@ -696,6 +725,7 @@ const LocalPlayerCard = () => {
             const startSeconds = video.startTime ? timeHMToSeconds(video.startTime) : 0;
             const endSeconds = video.endTime ? timeHMToSeconds(video.endTime) : null;
             sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(video.path));
+            lastLoadedVideoRef.current = video.path;
             hasExplicitlyStarted.current = true;
             setIsPlaying(true);
             setIsStopped(false);
@@ -929,13 +959,13 @@ const LocalPlayerCard = () => {
                                 />
                             </div>
 
-                            {/* Start / End times — format: H:MM (e.g. 1:30 = 1 hr 30 min) */}
+                            {/* Start / End times — format: MM:SS (e.g. 1:30 = 1 min 30 sec) */}
                             <input
                                 type="text"
                                 className="input-field"
                                 style={{ width: '58px', fontSize: '11px' }}
-                                placeholder="H:MM"
-                                title="Start time — H:MM (e.g. 1:30 = 1 hour 30 min)"
+                                placeholder="MM:SS"
+                                title="Start time — MM:SS (e.g. 1:30 = 1 min 30 sec, or H:MM:SS for hours)"
                                 value={item.startTime || ''}
                                 onChange={(e) => updateStartTime(index, e.target.value)}
                             />
@@ -943,8 +973,8 @@ const LocalPlayerCard = () => {
                                 type="text"
                                 className="input-field"
                                 style={{ width: '58px', fontSize: '11px' }}
-                                placeholder="H:MM"
-                                title="End time — H:MM (e.g. 2:00 = 2 hours)"
+                                placeholder="MM:SS"
+                                title="End time — MM:SS (e.g. 8:00 = 8 min, or H:MM:SS for hours)"
                                 value={item.endTime || ''}
                                 onChange={(e) => updateEndTime(index, e.target.value)}
                             />

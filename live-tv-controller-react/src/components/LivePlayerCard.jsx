@@ -5,6 +5,7 @@ import { sendPlayerCommand, LIVE_PLAYER_EVENT_KEY, secondsToHMS } from '../utils
 import { usePlayerTime } from '../utils/usePlayerHooks';
 import { useVideoInfo } from '../hooks/useVideoInfo';
 import { logVideoLoad, logVideoPlay } from '../utils/logger';
+import { setStateValue } from '../utils/state-api';
 import PlayerControlBtn from './common/PlayerControlBtn';
 import ThumbnailLoader from './common/ThumbnailLoader';
 
@@ -81,11 +82,12 @@ const LivePlayerCard = () => {
         isInitialized.current = true;
     }, []);
 
-    // Save state to localStorage
+    // Save state to localStorage and server
     useEffect(() => {
         if (!isInitialized.current) return;
         const state = { videoId, priority, isPlaying, isMuted, isStopped };
         localStorage.setItem('livePlayerState', JSON.stringify(state));
+        setStateValue('player.live', state);
     }, [videoId, priority, isPlaying, isMuted, isStopped]);
 
     // Always-current ref to flush current state on demand (pre-backup / pre-export)
@@ -95,6 +97,7 @@ const LivePlayerCard = () => {
             if (!isInitialized.current) return;
             const state = { videoId, priority, isPlaying, isMuted, isStopped };
             localStorage.setItem('livePlayerState', JSON.stringify(state));
+            setStateValue('player.live', state);
         };
     });
 
