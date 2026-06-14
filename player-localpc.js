@@ -375,7 +375,6 @@ async function handleLocalPCVideoEnded() {
       "Paused"
     );
     updateStopButtonAppearance(stopLocalPCVideoBtn, isLocalPCStopped);
-    savePlayerState("localPC");
 
     const currentDay = new Date().getDay();
     const targetScene = localPCDayEndActions[currentDay];
@@ -398,6 +397,7 @@ async function handleLocalPCVideoEnded() {
       );
     }
     currentLocalPCIndex = 0;
+    savePlayerState("localPC");
     renderLocalPCPlaylist();
   }
 }
@@ -550,12 +550,19 @@ if (togglePlayPauseLocalPCBtn)
       sendPlayerCommand("localPCPlayerCommand", "pause");
       localPCPlayerStatus.textContent = "Paused";
       isLocalPCStopped = false;
+      isLocalPCPlaying = false;
     } else {
-      sendPlayerCommand("localPCPlayerCommand", "play");
-      localPCPlayerStatus.textContent = "Playing.";
-      isLocalPCStopped = false;
+      if (isLocalPCStopped) {
+        currentLocalPCIndex = 0;
+        loadAndPlayLocalPCVideoByIndex(currentLocalPCIndex);
+        return;
+      } else {
+        sendPlayerCommand("localPCPlayerCommand", "play");
+        localPCPlayerStatus.textContent = "Playing.";
+        isLocalPCStopped = false;
+        isLocalPCPlaying = true;
+      }
     }
-    isLocalPCPlaying = !isLocalPCPlaying;
     updateButtonAppearance(
       togglePlayPauseLocalPCBtn,
       isLocalPCPlaying,

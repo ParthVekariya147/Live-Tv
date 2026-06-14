@@ -293,10 +293,12 @@ const LocalPlayerCard = () => {
         if (prevIsVisible.current === isVisible) return;
         prevIsVisible.current = isVisible;
         if (isVisible) { resumePlayback(); } else {
-            sendPlayerCommand('localPCPlayerCommand', 'pause');
-            setIsPlaying(false);
-            setIsStopped(false);
-            setStatusText("Local Player Paused");
+            if (!isStoppedRef.current) {
+                sendPlayerCommand('localPCPlayerCommand', 'pause');
+                setIsPlaying(false);
+                setIsStopped(false);
+                setStatusText("Local Player Paused");
+            }
         }
     }, [isVisible]);
 
@@ -363,7 +365,15 @@ const LocalPlayerCard = () => {
             sendPlayerCommand('localPCPlayerCommand', 'stop');
             setIsPlaying(false);
             setIsStopped(true);
-            setCurrentIndex(0);
+            const firstEnabled = findNextEnabledIndex(0, currentPlaylist);
+            const resetIdx = firstEnabled !== -1 ? firstEnabled : 0;
+            setCurrentIndex(resetIdx);
+            const resetVideo = currentPlaylist[resetIdx];
+            if (resetVideo) {
+                setVideoInfo({ title: resetVideo.name || resetVideo.path.split(/[\\/]/).pop() || "No local video loaded" });
+            } else {
+                setVideoInfo({ title: "No local video loaded" });
+            }
 
             if (isVisibleRef.current) {
                 const currentSourceState = sourceStateRef.current;

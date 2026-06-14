@@ -407,18 +407,20 @@ async function setSourceVisibility(sourceName, visible) {
       loadLocalPCVideoBtn.click();
       localPCPlayerStatus.textContent = "Local Player Active";
     } else {
-      sendPlayerCommand("localPCPlayerCommand", "pause");
-      localPCPlayerStatus.textContent = "Local Player Paused";
-      isLocalPCPlaying = false;
-      isLocalPCStopped = false;
-      updateButtonAppearance(
-        togglePlayPauseLocalPCBtn,
-        isLocalPCPlaying,
-        "Playing",
-        "Paused"
-      );
-      updateStopButtonAppearance(stopLocalPCVideoBtn, isLocalPCStopped);
-      savePlayerState("localPC");
+      if (!isLocalPCStopped) {
+        sendPlayerCommand("localPCPlayerCommand", "pause");
+        localPCPlayerStatus.textContent = "Local Player Paused";
+        isLocalPCPlaying = false;
+        isLocalPCStopped = false;
+        updateButtonAppearance(
+          togglePlayPauseLocalPCBtn,
+          isLocalPCPlaying,
+          "Playing",
+          "Paused"
+        );
+        updateStopButtonAppearance(stopLocalPCVideoBtn, isLocalPCStopped);
+        savePlayerState("localPC");
+      }
     }
   }
 }
