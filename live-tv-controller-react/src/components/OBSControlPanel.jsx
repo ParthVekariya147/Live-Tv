@@ -138,10 +138,16 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
                     activeClass="bg-purple-600"
                 />
                 <ToggleBtn
-                    active={sourceState["OrdaChesta"]}
-                    onClick={() => setSourceVisibility("OrdaChesta", !sourceState["OrdaChesta"])}
-                    label={`Orda ${sourceState["OrdaChesta"] ? '●' : '○'}`}
-                    activeClass="bg-orange-600"
+                    active={sourceState["Live Player"]}
+                    onClick={() => setSourceVisibility("Live Player", !sourceState["Live Player"])}
+                    label={`Live ${sourceState["Live Player"] ? '●' : '○'}`}
+                    activeClass="bg-green-600"
+                />
+                <ToggleBtn
+                    active={sourceState["Loop Player"]}
+                    onClick={() => setSourceVisibility("Loop Player", !sourceState["Loop Player"])}
+                    label={`Loop ${sourceState["Loop Player"] ? '●' : '○'}`}
+                    activeClass="bg-blue-600"
                 />
                 <ToggleBtn
                     active={sourceState["Local Player"]}
