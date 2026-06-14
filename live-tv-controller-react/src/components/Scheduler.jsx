@@ -48,6 +48,8 @@ const Scheduler = () => {
     const [triggerLog, setTriggerLog] = useState([]); // last few trigger results shown to user
     const [triggerHistory, setTriggerHistory] = useState([]); // persisted fire history from server
     const [historyExpanded, setHistoryExpanded] = useState(false);
+    const [pendingExpanded, setPendingExpanded] = useState(false);
+    const [schedulesExpanded, setSchedulesExpanded] = useState(false);
 
     // Refs for latest values inside WS callbacks (avoid stale closures)
     const sourceStateRef = useRef(sourceState);
@@ -62,7 +64,10 @@ const Scheduler = () => {
     useEffect(() => { sourceIdsRef.current = sourceIds; }, [sourceIds]);
 
     // Form State
-    const [scheduleTime, setScheduleTime] = useState('07:30');
+    const [scheduleTime, setScheduleTime] = useState(() => {
+        const n = new Date();
+        return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
+    });
     const [source, setSource] = useState("Live Player");
     const [action, setAction] = useState("show");
     const [recurrence, setRecurrence] = useState("daily");
@@ -175,6 +180,16 @@ const Scheduler = () => {
                 triggerData.title,
                 'Live Player is active/visible'
             );
+            // Record the suppressed trigger in history so operators can see it was reached
+            setTriggerHistory(prev => [{
+                id: `skip-${Date.now()}`,
+                title: triggerData.title,
+                source: triggerData.source,
+                action: triggerData.action,
+                firedAt: new Date().toISOString(),
+                status: 'skipped',
+                skipReason: 'Live Player Active'
+            }, ...prev].slice(0, 20));
             return;
         }
 
@@ -282,15 +297,16 @@ const Scheduler = () => {
                     setLastFiredId(data.data.id);
                     setTimeout(() => setLastFiredId(null), 5000);
                 }
-                // Prepend to persisted history state (keep 10)
+                // Prepend to persisted history state (keep 20)
                 if (data.data) {
                     setTriggerHistory(prev => [{
                         id: data.data.id ?? Date.now(),
                         title: data.data.title,
                         source: data.data.source,
                         action: data.data.action,
-                        firedAt: new Date().toISOString()
-                    }, ...prev].slice(0, 10));
+                        firedAt: new Date().toISOString(),
+                        status: 'fired'
+                    }, ...prev].slice(0, 20));
                 }
                 // Handle the trigger - execute OBS action
                 handleServerTrigger(data.data);
@@ -428,7 +444,8 @@ const Scheduler = () => {
     };
 
     const resetForm = () => {
-        setScheduleTime('07:30');
+        const n = new Date();
+        setScheduleTime(`${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`);
         setSource("Live Player");
         setAction("show");
         setRecurrence("daily");
@@ -501,15 +518,75 @@ const Scheduler = () => {
     };
 
     const onDrop = async (e, index) => {
-        const newSchedules = [...schedules];
-        const draggedItemContent = newSchedules.splice(draggedItem.current, 1)[0];
-        newSchedules.splice(index, 0, draggedItemContent);
+        const base = [...sortedSchedulesRef.current];
+        const draggedItemContent = base.splice(draggedItem.current, 1)[0];
+        base.splice(index, 0, draggedItemContent);
         draggedItem.current = null;
 
         // Update server with new order
-        await importSchedules(newSchedules);
+        await importSchedules(base);
         loadSchedules();
     };
+
+    // ============================================
+    // SORT SCHEDULES BY NEXT OCCURRENCE
+    // ============================================
+
+    // Compute the next Date when a schedule will fire, relative to now.
+    const nextOccurrence = (schedule) => {
+        const now = new Date();
+        const [h, m] = (schedule.time || '00:00').split(':').map(Number);
+
+        const atTime = (base) => {
+            const d = new Date(base);
+            d.setHours(h, m, 0, 0);
+            return d;
+        };
+
+        if (schedule.recurrence === 'daily') {
+            const today = atTime(now);
+            if (today > now) return today;
+            const tomorrow = atTime(now);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            return tomorrow;
+        }
+
+        if (schedule.recurrence === 'weekly') {
+            const target = schedule.scheduledDay ?? now.getDay();
+            let diff = (target - now.getDay() + 7) % 7;
+            const next = atTime(now);
+            next.setDate(now.getDate() + diff);
+            if (next <= now) next.setDate(next.getDate() + 7);
+            return next;
+        }
+
+        if (schedule.recurrence === 'days' && schedule.days?.length > 0) {
+            for (let i = 0; i < 8; i++) {
+                const d = new Date(now);
+                d.setDate(now.getDate() + i);
+                d.setHours(h, m, 0, 0);
+                if (schedule.days.includes(d.getDay()) && d > now) return d;
+            }
+        }
+
+        // Fallback: treat as daily
+        const today = atTime(now);
+        if (today > now) return today;
+        const tomorrow = atTime(now);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        return tomorrow;
+    };
+
+    // Sort for display: next-to-fire first. Disabled schedules go to the end.
+    const sortedSchedules = [...schedules].sort((a, b) => {
+        if (!a.enabled && b.enabled) return 1;
+        if (a.enabled && !b.enabled) return -1;
+        return nextOccurrence(a) - nextOccurrence(b);
+    });
+
+    // Keep a ref so onDrop can read the sorted list without a stale closure
+    const sortedSchedulesRef = useRef(sortedSchedules);
+    sortedSchedulesRef.current = sortedSchedules;
 
     // ============================================
     // RENDER
@@ -566,7 +643,7 @@ const Scheduler = () => {
                         <span className="text-xs text-green-400 ml-auto">Server-Side</span>
                     </h3>
                     <div className="grid gap-1">
-                        {pendingTimeouts.slice(0, 3).map((pt) => {
+                        {(pendingExpanded ? pendingTimeouts : pendingTimeouts.slice(0, 5)).map((pt) => {
                             const now = new Date();
                             const remaining = pt.nextTrigger.getTime() - now.getTime();
                             return (
@@ -591,10 +668,15 @@ const Scheduler = () => {
                                 </div>
                             );
                         })}
-                        {pendingTimeouts.length > 3 && (
-                            <div className="text-xs text-gray-500 text-center">+{pendingTimeouts.length - 3} more...</div>
-                        )}
                     </div>
+                    {pendingTimeouts.length > 5 && (
+                        <button
+                            onClick={() => setPendingExpanded(e => !e)}
+                            className="mt-2 text-xs text-cyan-500 hover:text-cyan-300 transition-colors"
+                        >
+                            {pendingExpanded ? 'Show Less' : `View More (${pendingTimeouts.length - 5} more)`}
+                        </button>
+                    )}
                 </div>
             )}
 
@@ -608,26 +690,47 @@ const Scheduler = () => {
                         <thead>
                             <tr className="text-gray-500 border-b border-gray-700">
                                 <th className="text-left py-1 pr-3 font-medium">Time</th>
-                                <th className="text-left py-1 pr-3 font-medium">Title</th>
                                 <th className="text-left py-1 pr-3 font-medium">Source</th>
-                                <th className="text-left py-1 font-medium">Action</th>
+                                <th className="text-left py-1 pr-3 font-medium">Action</th>
+                                <th className="text-left py-1 font-medium">Status</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {(historyExpanded ? triggerHistory : triggerHistory.slice(0, 5)).map((entry) => (
-                                <tr key={entry.id} className="border-b border-gray-800/60 last:border-0">
-                                    <td className="py-1 pr-3 text-gray-400 font-mono whitespace-nowrap">
-                                        {new Date(entry.firedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
-                                    </td>
-                                    <td className="py-1 pr-3 text-gray-300">{entry.title || <span className="text-gray-600">—</span>}</td>
-                                    <td className="py-1 pr-3 text-cyan-400">{entry.source}</td>
-                                    <td className="py-1">
-                                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${entry.action === 'show' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}>
-                                            {entry.action}
-                                        </span>
-                                    </td>
-                                </tr>
-                            ))}
+                            {(historyExpanded ? triggerHistory : triggerHistory.slice(0, 5)).map((entry) => {
+                                const isSkipped = entry.status === 'skipped';
+                                return (
+                                    <tr key={entry.id} className={`border-b border-gray-800/60 last:border-0 ${isSkipped ? 'opacity-70' : ''}`}>
+                                        <td className="py-1 pr-3 text-gray-400 font-mono whitespace-nowrap">
+                                            {new Date(entry.firedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                        </td>
+                                        <td className="py-1 pr-3">
+                                            <span className="text-cyan-400">{entry.source}</span>
+                                            {entry.title && <span className="text-gray-500 ml-1">· {entry.title}</span>}
+                                        </td>
+                                        <td className="py-1 pr-3">
+                                            <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${entry.action === 'show' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}>
+                                                {entry.action}
+                                            </span>
+                                        </td>
+                                        <td className="py-1">
+                                            {isSkipped ? (
+                                                <div>
+                                                    <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-orange-900/60 text-orange-400">
+                                                        SKIPPED
+                                                    </span>
+                                                    {entry.skipReason && (
+                                                        <div className="text-gray-500 text-xs mt-0.5">{entry.skipReason}</div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-green-900/40 text-green-400">
+                                                    FIRED
+                                                </span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                     {triggerHistory.length > 5 && (
@@ -794,7 +897,7 @@ const Scheduler = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-700">
-                            {schedules.map((schedule, index) => (
+                            {(schedulesExpanded ? sortedSchedules : sortedSchedules.slice(0, 5)).map((schedule, index) => (
                                 <tr
                                     key={schedule.id}
                                     draggable
@@ -895,6 +998,16 @@ const Scheduler = () => {
                             ))}
                         </tbody>
                     </table>
+                    {sortedSchedules.length > 5 && (
+                        <div className="px-3 py-2 border-t border-gray-700 bg-gray-900/30">
+                            <button
+                                onClick={() => setSchedulesExpanded(e => !e)}
+                                className="text-xs text-cyan-500 hover:text-cyan-300 transition-colors"
+                            >
+                                {schedulesExpanded ? 'Show Less' : `View More (${sortedSchedules.length - 5} more)`}
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
 
