@@ -255,6 +255,17 @@ scheduler.onTrigger = (triggerData) => {
     // Broadcast to all WebSocket clients
     broadcast('SCHEDULER_TRIGGER', triggerData);
 
+    // Persist trigger history (newest first, max 10)
+    const history = stateService.get('schedulerTriggerHistory') || [];
+    history.unshift({
+        id: Date.now(),
+        title: triggerData.title,
+        source: triggerData.source,
+        action: triggerData.action,
+        firedAt: new Date().toISOString()
+    });
+    stateService.set('schedulerTriggerHistory', history.slice(0, 10));
+
     // Also write to the main logs
     writeLog({
         level: 'info',

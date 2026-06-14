@@ -54,6 +54,28 @@
       }, 100);
     }
 
+    // Returns true if dur is a usable duration value
+    function isValidDuration(dur) {
+      return typeof dur === 'number' && isFinite(dur) && !isNaN(dur) && dur > 0;
+    }
+
+    // Emit a timeUpdate event with the current playback position and duration.
+    // ctOverride lets callers supply a known currentTime (e.g. right after a seek
+    // where videoPlayer.currentTime may not yet reflect the new position).
+    function emitTimeUpdate(ctOverride) {
+      const dur = videoPlayer.duration;
+      if (!isValidDuration(dur)) return;
+      const ct = (ctOverride !== undefined) ? ctOverride : videoPlayer.currentTime;
+      const effectiveEnd = endTime !== null ? endTime : dur;
+      reportEvent("timeUpdate", {
+        currentTime: ct,
+        duration: dur,
+        remainingTime: Math.max(0, effectiveEnd - ct),
+        startTime,
+        endTime,
+      });
+    }
+
     function checkAndHandleEndTime() {
       if (endTime !== null && videoPlayer.currentTime >= endTime) {
         videoPlayer.pause();
@@ -92,6 +114,11 @@
         endTime: endTime,
       });
 
+      // Immediately push a timeUpdate so the UI shows duration/position before
+      // the first 1-second tick fires. Use startTime as the effective current
+      // position because the seek above may not have committed synchronously yet.
+      emitTimeUpdate(startTime || 0);
+
       // Play after seek is applied — avoids brief play from 0 before jumping to startTime
       if (needsPlay) {
         needsPlay = false;
@@ -103,18 +130,23 @@
       console.log("LocalPCPlayer: Video playing, unmuted:", !videoPlayer.muted);
       isPausedByCommand = false;
       startTimeChecking();
+      emitTimeUpdate();
     });
 
     // FIXED: Only report videoEnded on actual natural video end, NOT on pause
     videoPlayer.addEventListener("pause", () => {
       console.log("LocalPCPlayer: Video paused, isPausedByCommand:", isPausedByCommand);
       stopTimeChecking();
-      // Do NOT report videoEnded on pause - only report on actual end or stop
+      // Push an immediate update so the display freezes at the correct time,
+      // not the last 1-second-tick value.
+      emitTimeUpdate();
     });
 
     videoPlayer.addEventListener("seeked", () => {
       console.log("LocalPCPlayer: Video seeked to:", videoPlayer.currentTime);
       checkAndHandleEndTime();
+      // Emit so the UI updates to the new position instantly after seek.
+      emitTimeUpdate();
     });
 
     // FIXED: Only report videoEnded here - when video actually finishes
@@ -225,6 +257,14 @@
               startTime = 0;
               endTime = null;
               videoPlayer.load();
+              // Reset the display to 00:00 / 00:00 immediately
+              reportEvent("timeUpdate", {
+                currentTime: 0,
+                duration: 0,
+                remainingTime: 0,
+                startTime: 0,
+                endTime: null,
+              });
               break;
 
             case "mute":
@@ -258,11 +298,7 @@
               break;
 
             case "getCurrentTime":
-              reportEvent("timeUpdate", {
-                currentTime: videoPlayer.currentTime,
-                startTime: startTime,
-                endTime: endTime,
-              });
+              emitTimeUpdate();
               break;
           }
         } catch (e) {
@@ -271,17 +307,14 @@
       }
     });
 
-    // Regular time updates
+    // Regular time updates — fires every second regardless of play/pause state so
+    // the React UI always has fresh position data. Guards against invalid duration
+    // (NaN / Infinity) which occurs before metadata loads or after src is cleared.
     setInterval(() => {
-      if (!videoPlayer.paused && videoPlayer.src) {
-        const remainingTime = (endTime ?? videoPlayer.duration) - videoPlayer.currentTime;
-        reportEvent("timeUpdate", {
-          currentTime: videoPlayer.currentTime,
-          remainingTime,
-          startTime,
-          endTime,
-        });
-      }
+      if (!videoPlayer.src) return;
+      const dur = videoPlayer.duration;
+      if (!isValidDuration(dur)) return;
+      emitTimeUpdate();
     }, 1000);
 
     // Initial setup - start unmuted

@@ -46,6 +46,8 @@ const Scheduler = () => {
     const [loading, setLoading] = useState(true);
     const [lastFiredId, setLastFiredId] = useState(null);
     const [triggerLog, setTriggerLog] = useState([]); // last few trigger results shown to user
+    const [triggerHistory, setTriggerHistory] = useState([]); // persisted fire history from server
+    const [historyExpanded, setHistoryExpanded] = useState(false);
 
     // Refs for latest values inside WS callbacks (avoid stale closures)
     const sourceStateRef = useRef(sourceState);
@@ -280,6 +282,16 @@ const Scheduler = () => {
                     setLastFiredId(data.data.id);
                     setTimeout(() => setLastFiredId(null), 5000);
                 }
+                // Prepend to persisted history state (keep 10)
+                if (data.data) {
+                    setTriggerHistory(prev => [{
+                        id: data.data.id ?? Date.now(),
+                        title: data.data.title,
+                        source: data.data.source,
+                        action: data.data.action,
+                        firedAt: new Date().toISOString()
+                    }, ...prev].slice(0, 10));
+                }
                 // Handle the trigger - execute OBS action
                 handleServerTrigger(data.data);
                 break;
@@ -295,6 +307,12 @@ const Scheduler = () => {
         // Connect to WebSocket
         connectWebSocket();
         const removeListener = addWsListener(handleWsMessage);
+
+        // Load persisted trigger history from state service
+        fetch('/api/state/schedulerTriggerHistory')
+            .then(r => r.json())
+            .then(data => { setTriggerHistory(data?.value || []); })
+            .catch(() => {});
 
         // Initial data load (only schedules - pending triggers come via WebSocket)
         loadSchedules().then(() => {
@@ -577,6 +595,49 @@ const Scheduler = () => {
                             <div className="text-xs text-gray-500 text-center">+{pendingTimeouts.length - 3} more...</div>
                         )}
                     </div>
+                </div>
+            )}
+
+            {/* Trigger History — persisted fire log from server */}
+            {triggerHistory.length > 0 && (
+                <div className="mb-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
+                    <h3 className="text-sm font-semibold text-gray-300 mb-2 flex items-center gap-2">
+                        <span>🕐</span> Trigger History
+                    </h3>
+                    <table className="w-full text-xs">
+                        <thead>
+                            <tr className="text-gray-500 border-b border-gray-700">
+                                <th className="text-left py-1 pr-3 font-medium">Time</th>
+                                <th className="text-left py-1 pr-3 font-medium">Title</th>
+                                <th className="text-left py-1 pr-3 font-medium">Source</th>
+                                <th className="text-left py-1 font-medium">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {(historyExpanded ? triggerHistory : triggerHistory.slice(0, 5)).map((entry) => (
+                                <tr key={entry.id} className="border-b border-gray-800/60 last:border-0">
+                                    <td className="py-1 pr-3 text-gray-400 font-mono whitespace-nowrap">
+                                        {new Date(entry.firedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                    </td>
+                                    <td className="py-1 pr-3 text-gray-300">{entry.title || <span className="text-gray-600">—</span>}</td>
+                                    <td className="py-1 pr-3 text-cyan-400">{entry.source}</td>
+                                    <td className="py-1">
+                                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${entry.action === 'show' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}>
+                                            {entry.action}
+                                        </span>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    {triggerHistory.length > 5 && (
+                        <button
+                            onClick={() => setHistoryExpanded(e => !e)}
+                            className="mt-2 text-xs text-cyan-500 hover:text-cyan-300 transition-colors"
+                        >
+                            {historyExpanded ? 'Show Less' : `View More (${triggerHistory.length - 5} more)`}
+                        </button>
+                    )}
                 </div>
             )}
 

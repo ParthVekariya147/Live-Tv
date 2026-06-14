@@ -737,7 +737,7 @@ const LocalPlayerCard = () => {
         <div className="player-control-card">
             <h3>Local PC Player</h3>
             <p className="video-title">{videoInfo.title}</p>
-            <p className="video-time-display">{secondsToHM(timeInfo.currentSeconds)} / {secondsToHM(timeInfo.remainingSeconds)}</p>
+            <p className="video-time-display">{secondsToHM(timeInfo.currentSeconds)} / {secondsToHM(timeInfo.durationSeconds)}</p>
             <p className="video-info-display">
                 {playlist.length > 0 ? `Video ${currentIndex + 1} of ${playlist.length} (${enabledCount} enabled)` : ''}
             </p>
