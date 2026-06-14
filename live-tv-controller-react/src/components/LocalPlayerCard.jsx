@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useOBS } from '../context/OBSContext';
-import { sendPlayerCommand, LOCAL_PLAYER_EVENT_KEY, secondsToHM, timeHMToSeconds } from '../utils/core-utils';
+import { sendPlayerCommand, LOCAL_PLAYER_EVENT_KEY, timeHMToSeconds } from '../utils/core-utils';
 import { usePlayerTime } from '../utils/usePlayerHooks';
 import { logSourceChange, logVideoEnd } from '../utils/logger';
 import PlayerControlBtn from './common/PlayerControlBtn';
@@ -733,11 +733,24 @@ const LocalPlayerCard = () => {
 
     const enabledCount = playlist.filter(item => item.enabled !== false).length;
 
+    // Format seconds as MM:SS (duration < 1 hr) or HH:MM:SS (duration >= 1 hr).
+    // Format is determined by total duration so both values use the same layout.
+    const formatVideoTime = (sec, totalDuration) => {
+        const pad = n => String(n).padStart(2, '0');
+        const s = Math.floor(Math.max(0, sec || 0));
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const secs = s % 60;
+        return (totalDuration || 0) >= 3600
+            ? `${pad(h)}:${pad(m)}:${pad(secs)}`
+            : `${pad(m)}:${pad(secs)}`;
+    };
+
     return (
         <div className="player-control-card">
             <h3>Local PC Player</h3>
             <p className="video-title">{videoInfo.title}</p>
-            <p className="video-time-display">{secondsToHM(timeInfo.currentSeconds)} / {secondsToHM(timeInfo.durationSeconds)}</p>
+            <p className="video-time-display">{formatVideoTime(timeInfo.currentSeconds, timeInfo.durationSeconds)} / {formatVideoTime(timeInfo.durationSeconds, timeInfo.durationSeconds)}</p>
             <p className="video-info-display">
                 {playlist.length > 0 ? `Video ${currentIndex + 1} of ${playlist.length} (${enabledCount} enabled)` : ''}
             </p>

@@ -114,8 +114,16 @@
         endTime: endTime,
       });
 
+      // Immediately notify the UI of the new video's duration so it can reset
+      // the display before the first timeUpdate tick arrives.
+      if (isValidDuration(videoPlayer.duration)) {
+        reportEvent("durationUpdate", {
+          duration: videoPlayer.duration,
+        });
+      }
+
       // Immediately push a timeUpdate so the UI shows duration/position before
-      // the first 1-second tick fires. Use startTime as the effective current
+      // the first timeupdate tick fires. Use startTime as the effective current
       // position because the seek above may not have committed synchronously yet.
       emitTimeUpdate(startTime || 0);
 
@@ -139,6 +147,10 @@
       stopTimeChecking();
       // Push an immediate update so the display freezes at the correct time,
       // not the last 1-second-tick value.
+      emitTimeUpdate();
+    });
+
+    videoPlayer.addEventListener("timeupdate", () => {
       emitTimeUpdate();
     });
 
@@ -306,16 +318,6 @@
         }
       }
     });
-
-    // Regular time updates — fires every second regardless of play/pause state so
-    // the React UI always has fresh position data. Guards against invalid duration
-    // (NaN / Infinity) which occurs before metadata loads or after src is cleared.
-    setInterval(() => {
-      if (!videoPlayer.src) return;
-      const dur = videoPlayer.duration;
-      if (!isValidDuration(dur)) return;
-      emitTimeUpdate();
-    }, 1000);
 
     // Initial setup - start unmuted
     console.log("LocalPCPlayer: Initialized and ready");

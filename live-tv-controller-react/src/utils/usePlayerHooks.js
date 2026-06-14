@@ -28,9 +28,26 @@ export function usePlayerTime(playerEventKey, playerType) {
             try {
                 const data = JSON.parse(event.newValue);
 
-                // Only process timeUpdate events for our player type
-                if (data.event !== 'timeUpdate') return;
                 if (playerType && data.playerType && data.playerType !== playerType) return;
+
+                if (data.event === 'durationUpdate') {
+                    const dur = typeof data.duration === 'number' && isFinite(data.duration) && data.duration > 0
+                        ? data.duration
+                        : 0;
+                    setTimeInfo(prev => ({
+                        ...prev,
+                        duration: secondsToHMS(dur),
+                        durationSeconds: dur,
+                        currentSeconds: 0,
+                        currentTime: '00:00',
+                        remainingTime: secondsToHMS(dur),
+                        remainingSeconds: dur,
+                    }));
+                    return;
+                }
+
+                // Only process timeUpdate events beyond this point
+                if (data.event !== 'timeUpdate') return;
 
                 hasReceivedUpdate.current = true;
 
