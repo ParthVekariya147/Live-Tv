@@ -9,6 +9,7 @@ import MonitorManager from './components/MonitorManager';
 import KathaMonitor from './components/KathaMonitor';
 import Scheduler from './components/Scheduler';
 import LogViewer from './components/LogViewer';
+import BuildFooter from './components/BuildFooter';
 
 function App() {
   const { isConnected, SCENE_NAME, sourceState, setSourceVisibility } = useOBS();
@@ -142,6 +143,8 @@ function App() {
         Ensure OBS WebSocket is running and configured.<br />
         OBS WebSocket connection status: <span style={{ color: isConnected ? '#00adb5' : '#999' }}>{isConnected ? "Connected" : "Disconnected"}</span>
       </div>
+
+      <BuildFooter />
     </div>
   );
 }

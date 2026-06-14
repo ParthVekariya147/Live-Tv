@@ -974,6 +974,35 @@ body {
   text-align: center;
 }
 
+/* Build Identity Footer */
+.build-footer {
+  width: 100%;
+  padding: 5px 12px 8px;
+  text-align: center;
+  font-size: 11px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  color: #555;
+  letter-spacing: 0.03em;
+  user-select: none;
+}
+
+.build-footer-name {
+  color: #666;
+  font-weight: 600;
+}
+
+.build-footer-sep {
+  color: #3a3a3a;
+}
+
+.build-footer-prod {
+  color: #d97706;
+}
+
+.build-footer-dev {
+  color: #3b82f6;
+}
+
 /* Custom Modal Styles */
 .modal-overlay {
   position: fixed;

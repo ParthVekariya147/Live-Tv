@@ -1,7 +1,7 @@
 {
   "name": "live-tv-controller-react",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.8.4",
   "type": "module",
   "main": "server.cjs",
   "bin": "server.cjs",
