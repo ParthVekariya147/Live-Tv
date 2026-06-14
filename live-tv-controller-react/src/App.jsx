@@ -33,6 +33,21 @@ function App() {
     if (stored2 !== null) setMonitor2Enabled(stored2 === "true");
   }, []);
 
+  // WebSocket listener for server-initiated flush (pre-auto-backup)
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === 'FLUSH_STATE_FOR_BACKUP') {
+          window.dispatchEvent(new CustomEvent('flushPlayerState'));
+        }
+      } catch {}
+    };
+    return () => ws.close();
+  }, []);
+
   // Global storage event listener for video ended events — uses ref so this never re-registers
   useEffect(() => {
     const handleStorageEvent = (event) => {

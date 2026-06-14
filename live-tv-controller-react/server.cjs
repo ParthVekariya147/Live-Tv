@@ -1126,7 +1126,7 @@ class BackupService {
     // Hourly checker — resilient to server restarts for all modes
     startAutoBackup() {
         this.stopAutoBackup();
-        const check = () => {
+        const check = async () => {
             try {
                 const cfg     = this.getAutoSettings();
                 const now     = new Date();
@@ -1145,7 +1145,11 @@ class BackupService {
                     fire = now.getDay() === (cfg.dayOfWeek ?? 4) && todayKey !== lastKey;
                 }
 
-                if (fire) this.createBackup('auto');
+                if (fire) {
+                    broadcast('FLUSH_STATE_FOR_BACKUP', {});
+                    await new Promise(r => setTimeout(r, 600));
+                    this.createBackup('auto');
+                }
             } catch (e) { console.error('[Backup] Auto-backup error:', e.message); }
         };
 

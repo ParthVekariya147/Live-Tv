@@ -88,6 +88,22 @@ const LivePlayerCard = () => {
         localStorage.setItem('livePlayerState', JSON.stringify(state));
     }, [videoId, priority, isPlaying, isMuted, isStopped]);
 
+    // Always-current ref to flush current state on demand (pre-backup / pre-export)
+    const flushStateRef = useRef(null);
+    useEffect(() => {
+        flushStateRef.current = () => {
+            if (!isInitialized.current) return;
+            const state = { videoId, priority, isPlaying, isMuted, isStopped };
+            localStorage.setItem('livePlayerState', JSON.stringify(state));
+        };
+    });
+
+    useEffect(() => {
+        const handler = () => flushStateRef.current?.();
+        window.addEventListener('flushPlayerState', handler);
+        return () => window.removeEventListener('flushPlayerState', handler);
+    }, []);
+
     // Load recording settings from server
     useEffect(() => {
         fetch(`${API_BASE}/api/recording/settings`)

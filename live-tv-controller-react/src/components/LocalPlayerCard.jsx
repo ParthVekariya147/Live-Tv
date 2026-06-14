@@ -152,6 +152,9 @@ const LocalPlayerCard = () => {
             } catch (e) {}
         }
 
+        const savedFolderPath = localStorage.getItem('localPCPlayerFolderPath');
+        if (savedFolderPath) setFolderPath(savedFolderPath);
+
         const t = setTimeout(() => { isInitialized.current = true; }, 100);
         return () => clearTimeout(t);
     }, []);
@@ -178,6 +181,44 @@ const LocalPlayerCard = () => {
             localStorage.setItem('localPCPlayerEndActions', JSON.stringify(endActions));
         }
     }, [endActions]);
+
+    // Save custom folder path
+    useEffect(() => {
+        if (!isInitialized.current) return;
+        if (folderPath) {
+            localStorage.setItem('localPCPlayerFolderPath', folderPath);
+        }
+    }, [folderPath]);
+
+    // Always-current ref to flush current state on demand (pre-backup / pre-export)
+    const flushStateRef = useRef(null);
+    useEffect(() => {
+        flushStateRef.current = () => {
+            if (!isInitialized.current) return;
+            const persistablePlaylist = playlist
+                .map(item => ({ ...item, path: item.path?.startsWith('blob:') ? '' : item.path }))
+                .filter(item => item.path && item.path.trim() !== '');
+            try {
+                localStorage.setItem('localPCPlayerState', JSON.stringify({
+                    playlist: persistablePlaylist, currentIndex, isPlaying, isMuted, isStopped
+                }));
+            } catch (e) {
+                console.warn('LocalPCPlayer flush: localStorage save failed:', e.message);
+            }
+            if (endActions.some(a => a !== null)) {
+                localStorage.setItem('localPCPlayerEndActions', JSON.stringify(endActions));
+            }
+            if (folderPath) {
+                localStorage.setItem('localPCPlayerFolderPath', folderPath);
+            }
+        };
+    });
+
+    useEffect(() => {
+        const handler = () => flushStateRef.current?.();
+        window.addEventListener('flushPlayerState', handler);
+        return () => window.removeEventListener('flushPlayerState', handler);
+    }, []);
 
     const convertToFileUrl = (p) => {
         if (!p) return p;

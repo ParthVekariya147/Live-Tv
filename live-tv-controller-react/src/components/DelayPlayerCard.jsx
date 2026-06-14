@@ -93,6 +93,23 @@ const DelayPlayerCard = () => {
         localStorage.setItem('delayPlayerState', JSON.stringify(state));
     }, [videoId, startTime, endTime, isPlaying, isMuted, isStopped]);
 
+    // Always-current ref to flush current state on demand (pre-backup / pre-export)
+    const flushStateRef = useRef(null);
+    useEffect(() => {
+        flushStateRef.current = () => {
+            if (!isInitialized.current) return;
+            if (!hasUserData.current && !videoId) return;
+            const state = { videoId, startTime, endTime, isPlaying, isMuted, isStopped };
+            localStorage.setItem('delayPlayerState', JSON.stringify(state));
+        };
+    });
+
+    useEffect(() => {
+        const handler = () => flushStateRef.current?.();
+        window.addEventListener('flushPlayerState', handler);
+        return () => window.removeEventListener('flushPlayerState', handler);
+    }, []);
+
     // Track mount time to prevent visibility commands on initial mount
     const mountTime = useRef(Date.now());
     const prevIsVisible = useRef(undefined);

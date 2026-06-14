@@ -82,6 +82,30 @@ const LoopPlayerCard = () => {
         localStorage.setItem('loopPlayerState', JSON.stringify(state));
     }, [playlist, currentIndex, isPlaying, isMuted, isStopped]);
 
+    // Always-current ref to flush current state on demand (pre-backup / pre-export)
+    const flushStateRef = useRef(null);
+    useEffect(() => {
+        flushStateRef.current = () => {
+            if (!isInitialized.current) return;
+            if (!hasUserData.current && playlist.length === 0) return;
+            const state = {
+                playlist,
+                currentIndex,
+                isPlaying,
+                isMuted,
+                isStopped,
+                videoId: playlist[currentIndex] || ""
+            };
+            localStorage.setItem('loopPlayerState', JSON.stringify(state));
+        };
+    });
+
+    useEffect(() => {
+        const handler = () => flushStateRef.current?.();
+        window.addEventListener('flushPlayerState', handler);
+        return () => window.removeEventListener('flushPlayerState', handler);
+    }, []);
+
     // Track mount time to prevent visibility commands on initial mount
     const mountTime = useRef(Date.now());
     const prevIsVisible = useRef(undefined);

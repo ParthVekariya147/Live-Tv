@@ -7,6 +7,8 @@ const LS_KEYS = [
     'delayPlayerState',
     'localPCPlayerState',
     'localPCPlayerEndActions',
+    'localPCPlayerFolderPath',
+    'liveAutoRecord',
     'savedSearchTitles1',
     'savedSearchTitles2',
     'liveMonitorEnabled1',
@@ -28,6 +30,202 @@ function restoreLocalStorage(data) {
     for (const key of LS_KEYS) {
         if (key in data) localStorage.setItem(key, data[key]);
     }
+}
+
+// Validate all player states in a localStorage snapshot — returns array of warning strings
+function validatePlayerStates(lsData) {
+    const warnings = [];
+
+    // Loop Player
+    try {
+        const loop = JSON.parse(lsData.loopPlayerState || 'null');
+        if (loop) {
+            if (!Array.isArray(loop.playlist)) {
+                warnings.push('Loop Player: playlist is not an array');
+            } else {
+                const nullEntries = loop.playlist.filter(id => !id || id === 'null').length;
+                if (nullEntries > 0) warnings.push(`Loop Player: ${nullEntries} null/empty playlist entries`);
+                if (typeof loop.currentIndex !== 'number') warnings.push('Loop Player: missing currentIndex');
+                else if (loop.currentIndex >= loop.playlist.length && loop.playlist.length > 0) warnings.push('Loop Player: currentIndex out of bounds');
+                if (!loop.videoId && loop.playlist.length > 0) warnings.push('Loop Player: videoId is null/empty');
+            }
+        }
+    } catch (_) { warnings.push('Loop Player: state JSON is corrupted'); }
+
+    // Live Player
+    try {
+        const live = JSON.parse(lsData.livePlayerState || 'null');
+        if (live && !live.videoId) warnings.push('Live Player: videoId is null/empty');
+    } catch (_) { warnings.push('Live Player: state JSON is corrupted'); }
+
+    // Delay Player
+    try {
+        const delay = JSON.parse(lsData.delayPlayerState || 'null');
+        if (delay && !delay.videoId) warnings.push('Delay Player: videoId is null/empty');
+    } catch (_) { warnings.push('Delay Player: state JSON is corrupted'); }
+
+    // Local PC Player
+    try {
+        const local = JSON.parse(lsData.localPCPlayerState || 'null');
+        if (local) {
+            if (!Array.isArray(local.playlist)) {
+                warnings.push('Local PC Player: playlist is not an array');
+            } else {
+                const emptyPaths = local.playlist.filter(item => !item?.path).length;
+                if (emptyPaths > 0) warnings.push(`Local PC Player: ${emptyPaths} playlist entries have no path`);
+                if (typeof local.currentIndex !== 'number') warnings.push('Local PC Player: missing currentIndex');
+                else if (local.playlist.length > 0 && local.currentIndex >= local.playlist.length) warnings.push('Local PC Player: currentIndex out of bounds');
+            }
+        }
+    } catch (_) { warnings.push('Local PC Player: state JSON is corrupted'); }
+
+    // End actions
+    try {
+        const actions = JSON.parse(lsData.localPCPlayerEndActions || 'null');
+        if (actions !== null && (!Array.isArray(actions) || actions.length !== 7)) {
+            warnings.push('Local PC Player: end actions array is malformed');
+        }
+    } catch (_) { warnings.push('Local PC Player: end actions JSON is corrupted'); }
+
+    return warnings;
+}
+
+// Validate and repair an imported localStorage snapshot — returns { repaired, warnings }
+function validateAndRepairImportData(lsData) {
+    const warnings = [];
+    const repaired = { ...lsData };
+
+    // ── Loop Player ──────────────────────────────────────────────────────────
+    if (repaired.loopPlayerState !== undefined) {
+        try {
+            const loop = typeof repaired.loopPlayerState === 'string'
+                ? JSON.parse(repaired.loopPlayerState)
+                : repaired.loopPlayerState;
+            let changed = false;
+
+            if (!Array.isArray(loop.playlist)) {
+                loop.playlist = [];
+                loop.currentIndex = 0;
+                loop.videoId = '';
+                warnings.push('Loop Player: playlist missing — defaulted to empty');
+                changed = true;
+            } else {
+                const before = loop.playlist.length;
+                loop.playlist = loop.playlist.filter(id => id && id !== 'null' && typeof id === 'string');
+                if (loop.playlist.length < before) {
+                    warnings.push(`Loop Player: removed ${before - loop.playlist.length} null/empty playlist entries`);
+                    changed = true;
+                }
+                if (typeof loop.currentIndex !== 'number' || loop.currentIndex < 0 || (loop.playlist.length > 0 && loop.currentIndex >= loop.playlist.length)) {
+                    loop.currentIndex = 0;
+                    warnings.push('Loop Player: currentIndex invalid — reset to 0');
+                    changed = true;
+                }
+                if (!loop.videoId && loop.playlist.length > 0) {
+                    loop.videoId = loop.playlist[loop.currentIndex] || '';
+                    warnings.push('Loop Player: videoId was null — rebuilt from playlist');
+                    changed = true;
+                }
+            }
+            if (loop.isPlaying === undefined) { loop.isPlaying = true; changed = true; }
+            if (loop.isMuted === undefined) { loop.isMuted = false; changed = true; }
+            if (loop.isStopped === undefined) { loop.isStopped = false; changed = true; }
+            if (changed) repaired.loopPlayerState = JSON.stringify(loop);
+        } catch (e) {
+            warnings.push('Loop Player: state unparseable — skipping (' + e.message + ')');
+            delete repaired.loopPlayerState;
+        }
+    }
+
+    // ── Live Player ──────────────────────────────────────────────────────────
+    if (repaired.livePlayerState !== undefined) {
+        try {
+            const live = typeof repaired.livePlayerState === 'string'
+                ? JSON.parse(repaired.livePlayerState)
+                : repaired.livePlayerState;
+            let changed = false;
+            if (!live.priority) { live.priority = 'matchSearchTerms'; changed = true; }
+            if (live.isPlaying === undefined) { live.isPlaying = true; changed = true; }
+            if (live.isMuted === undefined) { live.isMuted = false; changed = true; }
+            if (live.isStopped === undefined) { live.isStopped = false; changed = true; }
+            if (changed) repaired.livePlayerState = JSON.stringify(live);
+        } catch (e) {
+            warnings.push('Live Player: state unparseable — skipping (' + e.message + ')');
+            delete repaired.livePlayerState;
+        }
+    }
+
+    // ── Delay Player ─────────────────────────────────────────────────────────
+    if (repaired.delayPlayerState !== undefined) {
+        try {
+            const delay = typeof repaired.delayPlayerState === 'string'
+                ? JSON.parse(repaired.delayPlayerState)
+                : repaired.delayPlayerState;
+            let changed = false;
+            if (delay.isPlaying === undefined) { delay.isPlaying = true; changed = true; }
+            if (delay.isMuted === undefined) { delay.isMuted = false; changed = true; }
+            if (delay.isStopped === undefined) { delay.isStopped = false; changed = true; }
+            if (delay.startTime === undefined) { delay.startTime = ''; changed = true; }
+            if (delay.endTime === undefined) { delay.endTime = ''; changed = true; }
+            if (changed) repaired.delayPlayerState = JSON.stringify(delay);
+        } catch (e) {
+            warnings.push('Delay Player: state unparseable — skipping (' + e.message + ')');
+            delete repaired.delayPlayerState;
+        }
+    }
+
+    // ── Local PC Player ──────────────────────────────────────────────────────
+    if (repaired.localPCPlayerState !== undefined) {
+        try {
+            const local = typeof repaired.localPCPlayerState === 'string'
+                ? JSON.parse(repaired.localPCPlayerState)
+                : repaired.localPCPlayerState;
+            let changed = false;
+
+            if (!Array.isArray(local.playlist)) {
+                local.playlist = [];
+                local.currentIndex = 0;
+                warnings.push('Local PC Player: playlist missing — defaulted to empty');
+                changed = true;
+            } else {
+                // Ensure all items have the enabled field (forward-compatibility migration)
+                local.playlist = local.playlist.map(item => ({ ...item, enabled: item.enabled !== false }));
+                changed = true;
+                if (typeof local.currentIndex !== 'number' || local.currentIndex < 0) {
+                    local.currentIndex = 0;
+                    warnings.push('Local PC Player: currentIndex invalid — reset to 0');
+                } else if (local.playlist.length > 0 && local.currentIndex >= local.playlist.length) {
+                    local.currentIndex = 0;
+                    warnings.push('Local PC Player: currentIndex out of bounds — reset to 0');
+                }
+            }
+            if (local.isPlaying === undefined) { local.isPlaying = true; changed = true; }
+            if (local.isMuted === undefined) { local.isMuted = false; changed = true; }
+            if (local.isStopped === undefined) { local.isStopped = false; changed = true; }
+            if (changed) repaired.localPCPlayerState = JSON.stringify(local);
+        } catch (e) {
+            warnings.push('Local PC Player: state unparseable — skipping (' + e.message + ')');
+            delete repaired.localPCPlayerState;
+        }
+    }
+
+    // ── End Actions ──────────────────────────────────────────────────────────
+    if (repaired.localPCPlayerEndActions !== undefined) {
+        try {
+            const actions = typeof repaired.localPCPlayerEndActions === 'string'
+                ? JSON.parse(repaired.localPCPlayerEndActions)
+                : repaired.localPCPlayerEndActions;
+            if (!Array.isArray(actions) || actions.length !== 7) {
+                repaired.localPCPlayerEndActions = JSON.stringify([null, null, null, null, null, null, null]);
+                warnings.push('Local PC Player: end actions array malformed — defaulted to empty');
+            }
+        } catch (e) {
+            warnings.push('Local PC Player: end actions unparseable — skipping (' + e.message + ')');
+            delete repaired.localPCPlayerEndActions;
+        }
+    }
+
+    return { repaired, warnings };
 }
 
 function fmtDate(iso) {
@@ -179,10 +377,18 @@ export default function SettingsBackup() {
 
     async function handleExport() {
         try {
+            window.dispatchEvent(new CustomEvent('flushPlayerState'));
+            await new Promise(r => setTimeout(r, 400));
+
             const res = await fetch('/api/settings/export');
             if (!res.ok) throw new Error(`Server error ${res.status}`);
             const serverData = await res.json();
             const localStorageData = readLocalStorage();
+
+            const validationWarnings = validatePlayerStates(localStorageData);
+            if (validationWarnings.length > 0) {
+                console.warn('[Export] Validation warnings:', validationWarnings);
+            }
 
             const fullExport = {
                 exportedAt: new Date().toISOString(),
@@ -190,6 +396,10 @@ export default function SettingsBackup() {
                 serverState: serverData.state,
                 schedules: serverData.schedules,
                 localStorage: localStorageData,
+                validation: {
+                    warnings: validationWarnings,
+                    playerKeys: Object.keys(localStorageData),
+                },
             };
 
             const filename = `live-tv-settings-${new Date().toISOString().slice(0, 10)}.json`;
@@ -202,11 +412,14 @@ export default function SettingsBackup() {
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
 
             const schedCount = (fullExport.schedules || []).length;
             const lsCount = Object.keys(localStorageData).length;
-            flash('success', `Exported ${lsCount} player settings + ${schedCount} schedules`);
+            const warnSuffix = validationWarnings.length > 0
+                ? ` — ${validationWarnings.length} warning${validationWarnings.length > 1 ? 's' : ''} (see console)`
+                : '';
+            flash(validationWarnings.length > 0 ? 'warn' : 'success', `Exported ${lsCount} settings + ${schedCount} schedules${warnSuffix}`);
         } catch (e) {
             flash('error', e.message);
         }
@@ -224,9 +437,12 @@ export default function SettingsBackup() {
 
             const serverState = json.serverState || json.state || {};
             const schedules = json.schedules || [];
-            const lsData = json.localStorage || {};
+            const rawLsData = json.localStorage || {};
 
-            restoreLocalStorage(lsData);
+            const { repaired: lsData, warnings: repairWarnings } = validateAndRepairImportData(rawLsData);
+            if (repairWarnings.length > 0) {
+                console.warn('[Import] Repair warnings:', repairWarnings);
+            }
 
             const res = await fetch('/api/settings/import', {
                 method: 'POST',
@@ -236,8 +452,17 @@ export default function SettingsBackup() {
             const data = await res.json();
             if (!data.success) throw new Error(data.error || 'Server import failed');
 
+            if (lsData && Object.keys(lsData).length > 0) {
+                Object.entries(lsData).forEach(([key, value]) => {
+                    localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+                });
+            }
+
             const lsCount = Object.keys(lsData).length;
-            flash('success', `Imported ${lsCount} player settings + ${data.schedulesCount} schedules. Reloading...`);
+            const warnSuffix = repairWarnings.length > 0
+                ? ` — ${repairWarnings.length} field${repairWarnings.length > 1 ? 's' : ''} repaired`
+                : '';
+            flash('success', `Imported ${lsCount} settings + ${data.schedulesCount} schedules${warnSuffix}. Reloading...`);
             setTimeout(() => window.location.reload(), 1500);
         } catch (e) {
             flash('error', e.message);
@@ -419,8 +644,8 @@ export default function SettingsBackup() {
             )}
 
             {status && (
-                <span className={`text-xs px-2 py-0.5 rounded font-medium ${status.type === 'success' ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}`}>
-                    {status.type === 'success' ? '✓' : '✗'} {status.msg}
+                <span className={`text-xs px-2 py-0.5 rounded font-medium ${status.type === 'success' ? 'bg-green-900 text-green-300' : status.type === 'warn' ? 'bg-yellow-900 text-yellow-300' : 'bg-red-900 text-red-300'}`}>
+                    {status.type === 'success' ? '✓' : status.type === 'warn' ? '⚠' : '✗'} {status.msg}
                 </span>
             )}
         </div>
