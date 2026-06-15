@@ -333,24 +333,151 @@ export default function SettingsBackup() {
         }
     }
 
+    async function performExport() {
+        window.dispatchEvent(new CustomEvent('flushPlayerState'));
+        await new Promise(r => setTimeout(r, 400));
+
+        const res = await fetch('/api/settings/export');
+        if (!res.ok) throw new Error(`Server error ${res.status}`);
+        const serverData = await res.json();
+        const localStorageData = readLocalStorage();
+
+        const validationWarnings = validatePlayerStates(localStorageData);
+        if (validationWarnings.length > 0) {
+            console.warn('[Export] Validation warnings:', validationWarnings);
+        }
+
+        const fullExport = {
+            exportedAt: new Date().toISOString(),
+            version: '2.0',
+            serverState: serverData.state,
+            schedules: serverData.schedules,
+            localStorage: localStorageData,
+            validation: {
+                warnings: validationWarnings,
+                playerKeys: Object.keys(localStorageData),
+            },
+        };
+        return { fullExport, localStorageData, validationWarnings };
+    }
+
+    async function performImport(json) {
+        if (!json || typeof json !== 'object') {
+            throw new Error('Invalid JSON format');
+        }
+
+        let serverState = json.serverState || json.state || {};
+        let schedules = json.schedules || [];
+        let rawLsData = json.localStorage || {};
+
+        // Backwards compatibility: handle old backup format with .files mapping
+        if (json.files) {
+            if (json.files['app-state.json'] && json.files['app-state.json'].state) {
+                serverState = json.files['app-state.json'].state;
+            }
+            if (json.files['schedules.json'] && json.files['schedules.json'].schedules) {
+                schedules = json.files['schedules.json'].schedules;
+            }
+            // For old backups without localStorage, map server state keys to localStorage keys
+            const mapping = {
+                'player.loop': 'loopPlayerState',
+                'player.live': 'livePlayerState',
+                'player.delay': 'delayPlayerState',
+                'player.local': 'localPCPlayerState',
+                'player.local.endActions': 'localPCPlayerEndActions',
+                'monitor.1.enabled': 'liveMonitorEnabled1',
+                'monitor.2.enabled': 'liveMonitorEnabled2',
+                'monitor.1.searchTerms': 'savedSearchTitles1',
+                'monitor.2.searchTerms': 'savedSearchTitles2'
+            };
+            for (const [serverKey, lsKey] of Object.entries(mapping)) {
+                if (serverState[serverKey] !== undefined) {
+                    const val = serverState[serverKey];
+                    rawLsData[lsKey] = typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val);
+                }
+            }
+        }
+
+        const { repaired: lsData, warnings: repairWarnings } = validateAndRepairImportData(rawLsData);
+        if (repairWarnings.length > 0) {
+            console.warn('[Import] Repair warnings:', repairWarnings);
+        }
+
+        const res = await fetch('/api/settings/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ state: serverState, schedules }),
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Server import failed');
+
+        if (lsData && Object.keys(lsData).length > 0) {
+            restoreLocalStorage(lsData);
+        }
+
+        return {
+            lsCount: Object.keys(lsData).length,
+            schedulesCount: data.schedulesCount,
+            repairWarnings
+        };
+    }
+
     async function handleManualBackup() {
         setSavingBackup(true);
         try {
-            // Flush player state to server before snapshotting
-            window.dispatchEvent(new CustomEvent('flushPlayerState'));
-            await new Promise(r => setTimeout(r, 400));
+            const { fullExport } = await performExport();
+            const jsonText = JSON.stringify(fullExport, null, 2);
 
-            const res = await fetch('/api/backup/manual', { method: 'POST' });
-            const data = await res.json();
-            if (data.success) {
-                flash('success', `Saved: ${data.filename}`);
-                await loadBackupStatus();
-                if (showBackups) await loadBackupList();
+            let clipboardSuccess = false;
+            let serverSaveSuccess = false;
+            let serverFilename = '';
+            let errorDetails = [];
+
+            // 1. Copy JSON to clipboard
+            try {
+                await navigator.clipboard.writeText(jsonText);
+                clipboardSuccess = true;
+            } catch (err) {
+                console.error('[Backup] Clipboard copy failed:', err);
+                errorDetails.push('Clipboard copy failed');
+            }
+
+            // 2. Save JSON to server manual backup folder
+            try {
+                const saveRes = await fetch('/api/backup/manual', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ backupData: fullExport, prefix: 'backup' })
+                });
+                const saveData = await saveRes.json();
+                if (saveData.success) {
+                    serverSaveSuccess = true;
+                    serverFilename = saveData.filename;
+                } else {
+                    errorDetails.push(`Server save failed: ${saveData.error || 'unknown error'}`);
+                }
+            } catch (err) {
+                console.error('[Backup] Server backup save failed:', err);
+                errorDetails.push(`Server save failed: ${err.message}`);
+            }
+
+            // Reload manual backup list
+            await loadBackupStatus();
+            if (showBackups) await loadBackupList();
+
+            // Formulate user feedback
+            const steps = [];
+            if (clipboardSuccess) steps.push('✓ JSON copied to clipboard');
+            if (serverSaveSuccess) steps.push(`✓ Backup saved to folder (${serverFilename})`);
+
+            if (errorDetails.length > 0) {
+                const errorMsg = `Completed with warnings: ${errorDetails.join(', ')}`;
+                flash('warn', `${steps.join('\n')} | ${errorMsg}`);
             } else {
-                flash('error', data.error || 'Backup failed');
+                flash('success', steps.join(' | '));
             }
         } catch (e) {
-            flash('error', e.message);
+            flash('error', `Backup failed: ${e.message}`);
         } finally {
             setSavingBackup(false);
         }
@@ -360,20 +487,21 @@ export default function SettingsBackup() {
         if (!window.confirm(`Restore from "${filename}"?\n\nThis will overwrite current schedules and settings. The page will reload.`)) return;
         setRestoring(filename);
         try {
-            const res = await fetch('/api/backup/restore', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: 'manual', filename }),
-            });
-            const data = await res.json();
-            if (data.success) {
-                flash('success', `Restored ${data.restored} files from ${filename}. Reloading...`);
-                setTimeout(() => window.location.reload(), 1500);
-            } else {
-                flash('error', data.error || 'Restore failed');
-            }
+            // Fetch backup content from server
+            const getRes = await fetch(`/api/backup/download?type=manual&filename=${encodeURIComponent(filename)}`);
+            if (!getRes.ok) throw new Error(`Failed to load backup file from server`);
+            const backupJson = await getRes.json();
+
+            // Perform the exact same import logic
+            const { lsCount, schedulesCount, repairWarnings } = await performImport(backupJson);
+
+            const warnSuffix = repairWarnings.length > 0
+                ? ` — ${repairWarnings.length} field${repairWarnings.length > 1 ? 's' : ''} repaired`
+                : '';
+            flash('success', `Restored ${lsCount} settings + ${schedulesCount} schedules${warnSuffix} from ${filename}. Reloading...`);
+            setTimeout(() => window.location.reload(), 1500);
         } catch (e) {
-            flash('error', e.message);
+            flash('error', `Restore failed: ${e.message}`);
         } finally {
             setRestoring(null);
         }
@@ -381,51 +509,84 @@ export default function SettingsBackup() {
 
     async function handleExport() {
         try {
-            window.dispatchEvent(new CustomEvent('flushPlayerState'));
-            await new Promise(r => setTimeout(r, 400));
+            const { fullExport, validationWarnings } = await performExport();
+            const jsonText = JSON.stringify(fullExport, null, 2);
 
-            const res = await fetch('/api/settings/export');
-            if (!res.ok) throw new Error(`Server error ${res.status}`);
-            const serverData = await res.json();
-            const localStorageData = readLocalStorage();
+            let clipboardSuccess = false;
+            let downloadSuccess = false;
+            let serverSaveSuccess = false;
+            let serverFilename = '';
+            let errorDetails = [];
 
-            const validationWarnings = validatePlayerStates(localStorageData);
-            if (validationWarnings.length > 0) {
-                console.warn('[Export] Validation warnings:', validationWarnings);
+            // 1. Copy JSON to clipboard
+            try {
+                await navigator.clipboard.writeText(jsonText);
+                clipboardSuccess = true;
+            } catch (err) {
+                console.error('[Export] Clipboard copy failed:', err);
+                errorDetails.push('Clipboard copy failed');
             }
 
-            const fullExport = {
-                exportedAt: new Date().toISOString(),
-                version: '2.0',
-                serverState: serverData.state,
-                schedules: serverData.schedules,
-                localStorage: localStorageData,
-                validation: {
-                    warnings: validationWarnings,
-                    playerKeys: Object.keys(localStorageData),
-                },
-            };
+            // 2. Save JSON to server manual backup folder
+            try {
+                const saveRes = await fetch('/api/backup/manual', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ backupData: fullExport, prefix: 'export' })
+                });
+                const saveData = await saveRes.json();
+                if (saveData.success) {
+                    serverSaveSuccess = true;
+                    serverFilename = saveData.filename;
+                } else {
+                    errorDetails.push(`Server save failed: ${saveData.error || 'unknown error'}`);
+                }
+            } catch (err) {
+                console.error('[Export] Server backup save failed:', err);
+                errorDetails.push(`Server save failed: ${err.message}`);
+            }
 
-            const filename = `live-tv-settings-${new Date().toISOString().slice(0, 10)}.json`;
-            const blob = new Blob([JSON.stringify(fullExport, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.style.display = 'none';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(url), 5000);
+            // 3. Attempt browser download
+            try {
+                const filename = `live-tv-settings-${new Date().toISOString().slice(0, 10)}.json`;
+                const blob = new Blob([jsonText], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 5000);
+                downloadSuccess = true;
+            } catch (err) {
+                console.error('[Export] Browser download failed:', err);
+                errorDetails.push('Browser file download failed');
+            }
 
-            const schedCount = (fullExport.schedules || []).length;
-            const lsCount = Object.keys(localStorageData).length;
-            const warnSuffix = validationWarnings.length > 0
-                ? ` — ${validationWarnings.length} warning${validationWarnings.length > 1 ? 's' : ''} (see console)`
-                : '';
-            flash(validationWarnings.length > 0 ? 'warn' : 'success', `Exported ${lsCount} settings + ${schedCount} schedules${warnSuffix}`);
+            // Reload manual backup list so new export appears in History panel immediately
+            await loadBackupStatus();
+            if (showBackups) await loadBackupList();
+
+            // Formulate user feedback message
+            const steps = [];
+            if (clipboardSuccess) steps.push('✓ JSON copied to clipboard');
+            if (downloadSuccess) steps.push('✓ Export file downloaded');
+            if (serverSaveSuccess) steps.push(`✓ Backup saved to folder (${serverFilename})`);
+
+            if (validationWarnings.length > 0) {
+                steps.push(`⚠ ${validationWarnings.length} validation warnings (see console)`);
+            }
+
+            if (errorDetails.length > 0) {
+                const errorMsg = `Completed with warnings: ${errorDetails.join(', ')}`;
+                flash('warn', `${steps.join('\n')} | ${errorMsg}`);
+            } else {
+                flash('success', steps.join(' | '));
+            }
         } catch (e) {
-            flash('error', e.message);
+            flash('error', `Export failed: ${e.message}`);
         }
     }
 
@@ -439,37 +600,15 @@ export default function SettingsBackup() {
             const text = await file.text();
             const json = JSON.parse(text);
 
-            const serverState = json.serverState || json.state || {};
-            const schedules = json.schedules || [];
-            const rawLsData = json.localStorage || {};
+            const { lsCount, schedulesCount, repairWarnings } = await performImport(json);
 
-            const { repaired: lsData, warnings: repairWarnings } = validateAndRepairImportData(rawLsData);
-            if (repairWarnings.length > 0) {
-                console.warn('[Import] Repair warnings:', repairWarnings);
-            }
-
-            const res = await fetch('/api/settings/import', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ state: serverState, schedules }),
-            });
-            const data = await res.json();
-            if (!data.success) throw new Error(data.error || 'Server import failed');
-
-            if (lsData && Object.keys(lsData).length > 0) {
-                Object.entries(lsData).forEach(([key, value]) => {
-                    localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
-                });
-            }
-
-            const lsCount = Object.keys(lsData).length;
             const warnSuffix = repairWarnings.length > 0
                 ? ` — ${repairWarnings.length} field${repairWarnings.length > 1 ? 's' : ''} repaired`
                 : '';
-            flash('success', `Imported ${lsCount} settings + ${data.schedulesCount} schedules${warnSuffix}. Reloading...`);
+            flash('success', `Imported ${lsCount} settings + ${schedulesCount} schedules${warnSuffix}. Reloading...`);
             setTimeout(() => window.location.reload(), 1500);
         } catch (e) {
-            flash('error', e.message);
+            flash('error', `Import failed: ${e.message}`);
         } finally {
             setImporting(false);
         }

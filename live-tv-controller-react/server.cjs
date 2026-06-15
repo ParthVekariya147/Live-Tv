@@ -1043,17 +1043,57 @@ class BackupService {
         return files;
     }
 
-    createBackup(type = 'manual') {
+    createBackup(type = 'manual', clientPayload = null, prefix = 'backup') {
         const dir = type === 'manual' ? this.manualDir : this.autoDir;
-        const ts  = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
-        const filename = `backup_${ts}.json`;
+        const ts  = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const filename = `${prefix}_${ts}.json`;
         const filepath = path.join(dir, filename);
 
-        const payload = {
-            backedUpAt: new Date().toISOString(),
-            type,
-            files: this._collectData(),
-        };
+        let payload;
+        if (clientPayload) {
+            payload = clientPayload;
+            if (!payload.exportedAt) {
+                payload.exportedAt = new Date().toISOString();
+            }
+        } else {
+            // Reconstruct the exact same format as Export/Backup version 2.0
+            const serverState = stateService.getAll();
+            const schedules = scheduler.getAllSchedules();
+            
+            // Map server state keys back to localStorage keys
+            const localStorageData = {};
+            const mapping = {
+                'player.loop': 'loopPlayerState',
+                'player.live': 'livePlayerState',
+                'player.delay': 'delayPlayerState',
+                'player.local': 'localPCPlayerState',
+                'player.local.endActions': 'localPCPlayerEndActions',
+                'monitor.1.enabled': 'liveMonitorEnabled1',
+                'monitor.2.enabled': 'liveMonitorEnabled2',
+                'monitor.1.searchTerms': 'savedSearchTitles1',
+                'monitor.2.searchTerms': 'savedSearchTitles2'
+            };
+            
+            for (const [serverKey, lsKey] of Object.entries(mapping)) {
+                if (serverState[serverKey] !== undefined) {
+                    const val = serverState[serverKey];
+                    localStorageData[lsKey] = typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val);
+                }
+            }
+
+            payload = {
+                exportedAt: new Date().toISOString(),
+                version: '2.0',
+                serverState: serverState,
+                schedules: schedules,
+                localStorage: localStorageData,
+                validation: {
+                    warnings: [],
+                    playerKeys: Object.keys(localStorageData)
+                }
+            };
+        }
+
         fs.writeFileSync(filepath, JSON.stringify(payload, null, 2), 'utf8');
 
         // Verify the file was actually written to disk
@@ -1061,12 +1101,28 @@ class BackupService {
             throw new Error(`Backup write failed — file not found after write: ${filepath}`);
         }
 
-        console.log(`[Backup] ${type} backup saved → ${filepath}`);
+        console.log(`[Backup] ${type} backup saved as ${prefix} → ${filepath}`);
 
         // Retention: manual=30 files, auto=14 files (2 weeks)
         this._pruneOld(dir, type === 'manual' ? 30 : 14);
 
-        return { filename, savedDir: dir, backedUpAt: payload.backedUpAt, fileCount: Object.keys(payload.files).length };
+        const countVal = payload.localStorage ? Object.keys(payload.localStorage).length : 0;
+        return { filename, savedDir: dir, backedUpAt: payload.exportedAt || payload.backedUpAt || new Date().toISOString(), fileCount: countVal };
+    }
+
+    getBackupContent(type, filename) {
+        if (!filename || filename.includes('/') || filename.includes('\\') || filename.includes('..') || !filename.endsWith('.json')) {
+            throw new Error('Invalid backup filename');
+        }
+        const dir = type === 'manual' ? this.manualDir : this.autoDir;
+        const filepath = path.join(dir, filename);
+        if (!filepath.startsWith(dir + path.sep)) {
+            throw new Error('Path traversal detected');
+        }
+        if (!fs.existsSync(filepath)) {
+            throw new Error('Backup file not found');
+        }
+        return JSON.parse(fs.readFileSync(filepath, 'utf8'));
     }
 
     listBackups(type = 'manual') {
@@ -1094,14 +1150,32 @@ class BackupService {
         }
 
         const payload = JSON.parse(fs.readFileSync(filepath, 'utf8'));
-        let restored = 0;
-        for (const [fname, content] of Object.entries(payload.files || {})) {
-            // Only restore .json files that don't contain path separators
-            if (fname.includes('/') || fname.includes('\\') || !fname.endsWith('.json')) continue;
-            fs.writeFileSync(path.join(this.dataDir, fname), JSON.stringify(content, null, 2), 'utf8');
-            restored++;
+        
+        // Support both old format (with .files mapping) and new unified format
+        if (payload.files) {
+            let restored = 0;
+            for (const [fname, content] of Object.entries(payload.files || {})) {
+                if (fname.includes('/') || fname.includes('\\') || !fname.endsWith('.json')) continue;
+                fs.writeFileSync(path.join(this.dataDir, fname), JSON.stringify(content, null, 2), 'utf8');
+                restored++;
+            }
+            return { restored, backedUpAt: payload.backedUpAt };
+        } else {
+            // New unified format: payload is the client-compatible JSON structure
+            const serverState = payload.serverState || payload.state || {};
+            const schedules = payload.schedules || [];
+            
+            if (serverState && typeof serverState === 'object') {
+                const skip = new Set(['obs.connected']);
+                Object.entries(serverState).forEach(([k, v]) => {
+                    if (!skip.has(k)) stateService.set(k, v);
+                });
+            }
+            if (Array.isArray(schedules)) {
+                scheduler.setAllSchedules(schedules);
+            }
+            return { restored: 2, backedUpAt: payload.exportedAt || payload.backedUpAt };
         }
-        return { restored, backedUpAt: payload.backedUpAt };
     }
 
     // ── Auto-backup settings ────────────────────────────────────────────
@@ -1407,10 +1481,25 @@ const backupService = new BackupService({ dataDir, backupBaseDir });
 // POST /api/backup/manual — save a manual backup right now
 app.post('/api/backup/manual', (req, res) => {
     try {
-        const result = backupService.createBackup('manual');
+        const clientPayload = req.body?.backupData || null;
+        const prefix = req.body?.prefix || 'backup';
+        const result = backupService.createBackup('manual', clientPayload, prefix);
         res.json({ success: true, ...result });
     } catch (e) {
         res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// GET /api/backup/download — get raw backup file contents
+app.get('/api/backup/download', (req, res) => {
+    const type = req.query.type === 'auto' ? 'auto' : 'manual';
+    const filename = req.query.filename;
+    if (!filename) return res.status(400).json({ success: false, error: 'filename is required' });
+    try {
+        const content = backupService.getBackupContent(type, filename);
+        res.json(content);
+    } catch (e) {
+        res.status(400).json({ success: false, error: e.message });
     }
 });
 

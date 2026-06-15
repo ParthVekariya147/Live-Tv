@@ -92,7 +92,6 @@
       videoPlayer.addEventListener("pause", () => {
         console.log("Video paused, stopping time checks");
         stopTimeChecking();
-        reportEvent("videoEnded");
       });
 
       videoPlayer.addEventListener("seeked", () => {

@@ -256,16 +256,12 @@ const LocalPlayerCard = () => {
 
     const resumePlayback = () => {
         const pl = playlistRef.current;
-        let ci = currentIndexRef.current;
         if (pl.length === 0) return;
 
-        // Skip disabled videos starting from saved position
-        if (pl[ci]?.enabled === false) {
-            const nextEnabled = findNextEnabledIndex(ci + 1, pl);
-            if (nextEnabled === -1) return; // all remaining disabled — do nothing
-            ci = nextEnabled;
-            setCurrentIndex(ci);
-        }
+        const firstEnabled = findNextEnabledIndex(0, pl);
+        if (firstEnabled === -1) return; // all remaining disabled — do nothing
+        const ci = firstEnabled;
+        setCurrentIndex(ci);
 
         const currentVideo = pl[ci];
         if (currentVideo?.path) {
@@ -623,18 +619,6 @@ const LocalPlayerCard = () => {
         const enabledIdx = findNextEnabledIndex(0, playlist);
         if (enabledIdx === -1) { setStatusText("No enabled videos in playlist"); return; }
         const currentVideo = playlist[enabledIdx];
-
-        // Bug 4: skip reload when already playing the exact same video from position 0
-        if (
-            !isStopped &&
-            isPlaying &&
-            currentIndex === enabledIdx &&
-            currentVideo?.path &&
-            currentVideo.path === lastLoadedVideoRef.current
-        ) {
-            setStatusText(`Already playing: ${currentVideo.name || currentVideo.path.split(/[\\/]/).pop()}`);
-            return;
-        }
 
         setCurrentIndex(enabledIdx);
         if (currentVideo?.path) {
