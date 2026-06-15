@@ -131,23 +131,23 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
                 >
                     {getLiveLoopText()}
                 </button> */}
+                    <ToggleBtn
+                        active={sourceState["Live Player"]}
+                        onClick={() => setSourceVisibility("Live Player", !sourceState["Live Player"])}
+                        label={`Live ${sourceState["Live Player"] ? '●' : '○'}`}
+                        activeClass="bg-green-600"
+                    />
+                    <ToggleBtn
+                        active={sourceState["Loop Player"]}
+                        onClick={() => setSourceVisibility("Loop Player", !sourceState["Loop Player"])}
+                        label={`Loop ${sourceState["Loop Player"] ? '●' : '○'}`}
+                        activeClass="bg-blue-600"
+                    />
                 <ToggleBtn
                     active={sourceState["Delay Live"]}
                     onClick={() => setSourceVisibility("Delay Live", !sourceState["Delay Live"])}
                     label={`Delay ${sourceState["Delay Live"] ? '●' : '○'}`}
                     activeClass="bg-purple-600"
-                />
-                <ToggleBtn
-                    active={sourceState["Live Player"]}
-                    onClick={() => setSourceVisibility("Live Player", !sourceState["Live Player"])}
-                    label={`Live ${sourceState["Live Player"] ? '●' : '○'}`}
-                    activeClass="bg-green-600"
-                />
-                <ToggleBtn
-                    active={sourceState["Loop Player"]}
-                    onClick={() => setSourceVisibility("Loop Player", !sourceState["Loop Player"])}
-                    label={`Loop ${sourceState["Loop Player"] ? '●' : '○'}`}
-                    activeClass="bg-blue-600"
                 />
                 <ToggleBtn
                     active={sourceState["Local Player"]}

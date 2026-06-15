@@ -795,7 +795,7 @@ const Scheduler = () => {
                             <option value="Live Player">Live Player</option>
                             <option value="Loop Player">Loop Player</option>
                             <option value="Delay Live">Delay Live</option>
-                            <option value="OrdaChesta">OrdaChesta</option>
+                            {/* <option value="OrdaChesta">OrdaChesta</option> */}
                             <option value="Local Player">Local Player</option>
                         </select>
                     </div>

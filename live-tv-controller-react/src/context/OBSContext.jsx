@@ -7,11 +7,11 @@ export const useOBS = () => useContext(OBSContext);
 
 const SCENE_NAME = "Scene";
 const SOURCE_NAMES = [
-    "Loop Player",
     "Live Player",
+    "Loop Player",
     "Delay Live",
-    "OrdaChesta",
     "Local Player",
+    // "OrdaChesta",
 ];
 const POLL_INTERVAL_MS = 1000;
 const ACTIVE_SOURCE_KEY = "obsActiveSource";
