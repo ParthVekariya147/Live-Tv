@@ -125,12 +125,12 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
 
             {/* Source Toggles - Compact Row */}
             <div className="flex flex-wrap gap-1.5 justify-center">
-                <button
+                {/* <button
                     onClick={toggleLiveLoop}
                     className={`px-3 py-1.5 rounded text-xs font-medium transition-all toggle-btn ${getLiveLoopClass()}`}
                 >
                     {getLiveLoopText()}
-                </button>
+                </button> */}
                 <ToggleBtn
                     active={sourceState["Delay Live"]}
                     onClick={() => setSourceVisibility("Delay Live", !sourceState["Delay Live"])}
