@@ -537,7 +537,7 @@ class SchedulerService {
                 if (now < skipUntilDate) {
                     // Only mark + save once per trigger-key (not every second)
                     if (schedule.lastTriggered !== triggerKey) {
-                        this.log('INFO', 'SKIP_ACTIVE', `Skipping "${schedule.title || schedule.source}" — skip active until ${skipUntilDate.toLocaleTimeString()}`, { id: schedule.id });
+                        this.log('INFO', 'SKIP_ACTIVE', `Skipping "${schedule.title || schedule.source}" — skip active until ${skipUntilDate.toLocaleString()}`, { id: schedule.id });
                         schedule.lastTriggered = triggerKey;
                         this.saveSchedules();
                     }
@@ -545,6 +545,7 @@ class SchedulerService {
                 } else {
                     // Skip window has passed — clear it and fire normally
                     schedule.skipUntil = null;
+                    schedule.nextFireAfterSkip = null;
                     this.saveSchedules();
                 }
             }
@@ -734,6 +735,7 @@ class SchedulerService {
                     continue;
                 } else {
                     schedule.skipUntil = null;
+                    schedule.nextFireAfterSkip = null;
                     this.saveSchedules();
                 }
             }
@@ -945,35 +947,86 @@ class SchedulerService {
             }
         }
 
-        // If "Skip 1 Day" is active, return the skip-until time as the effective next trigger
+        // If "Skip 1 Day" is active, return the actual next fire time (not just skip expiry)
         if (schedule.skipUntil) {
             const skipUntilDate = new Date(schedule.skipUntil);
             if (skipUntilDate > now && nextTrigger < skipUntilDate) {
-                return skipUntilDate;
+                // Use stored nextFireAfterSkip if valid
+                if (schedule.nextFireAfterSkip) {
+                    const nf = new Date(schedule.nextFireAfterSkip);
+                    if (nf > now) return nf;
+                }
+                // Fallback: compute from skipUntilDate
+                return this._findNextOccurrenceFrom(schedule, skipUntilDate);
             }
         }
 
         return nextTrigger;
     }
 
+    // Find the next valid occurrence of a schedule starting FROM a given date
+    _findNextOccurrenceFrom(schedule, fromDate) {
+        if (!schedule.time) return null;
+        const [h, m] = schedule.time.split(':').map(Number);
+        let d = new Date(fromDate);
+        d.setHours(h, m, 0, 0);
+        // If scheduled time on fromDate has already passed, move to next day
+        if (d <= fromDate) d.setDate(d.getDate() + 1);
+
+        if (schedule.recurrence === 'weekly') {
+            for (let i = 0; i < 8; i++) {
+                if (d.getDay() === schedule.scheduledDay) break;
+                d.setDate(d.getDate() + 1);
+            }
+        } else if (schedule.recurrence === 'days' && schedule.days?.length > 0) {
+            for (let i = 0; i < 8; i++) {
+                if (schedule.days.includes(d.getDay())) break;
+                d.setDate(d.getDate() + 1);
+            }
+        }
+        return d;
+    }
+
     skipOneDay(id) {
         const schedule = this.schedules.find(s => s.id === id);
         if (!schedule) return null;
 
+        // Temporarily clear skipUntil so calculateNextTriggerTime returns the TRUE next trigger,
+        // not a previously-stored skip-until date
+        const savedSkipUntil = schedule.skipUntil;
+        schedule.skipUntil = null;
         const nextTrigger = this.calculateNextTriggerTime(schedule);
-        if (!nextTrigger) return null;
 
-        // Skip 1 day = delay next trigger by 24 hours
-        const skipUntil = new Date(nextTrigger.getTime() + 24 * 60 * 60 * 1000);
-        schedule.skipUntil = skipUntil.toISOString();
+        if (!nextTrigger) {
+            schedule.skipUntil = savedSkipUntil; // restore
+            return null;
+        }
+
+        // DST-safe skip: set skipUntil to 00:00:01 on the day AFTER nextTrigger.
+        // This avoids the +24h ms approach which can land at wrong local time during DST changes.
+        // Any trigger with local-time HH:MM will always be after midnight 00:00:01 on its day.
+        const skipUntilDate = new Date(nextTrigger);
+        skipUntilDate.setDate(skipUntilDate.getDate() + 1);
+        skipUntilDate.setHours(0, 0, 1, 0);
+        schedule.skipUntil = skipUntilDate.toISOString();
+
+        // Compute the ACTUAL next fire time after the skip ends
+        const nextFireDate = this._findNextOccurrenceFrom(schedule, skipUntilDate);
+        schedule.nextFireAfterSkip = nextFireDate?.toISOString() ?? null;
+
         this.saveSchedules();
-        return { skipUntil: schedule.skipUntil, nextNormalTrigger: nextTrigger.toISOString() };
+        return {
+            skipUntil: schedule.skipUntil,
+            skippedTrigger: nextTrigger.toISOString(),
+            nextFireAfterSkip: schedule.nextFireAfterSkip
+        };
     }
 
     cancelSkip(id) {
         const schedule = this.schedules.find(s => s.id === id);
         if (!schedule) return null;
         schedule.skipUntil = null;
+        schedule.nextFireAfterSkip = null;
         this.saveSchedules();
         return true;
     }

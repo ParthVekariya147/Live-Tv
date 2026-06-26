@@ -11,13 +11,13 @@ function to12hr(t) {
 }
 import { logKathaRefresh, logKathaVideoFound, logKathaLoadPlayer } from '../utils/logger';
 
-const LOCAL_API_BASE = "http://localhost:3000";
+const LOCAL_API_BASE = import.meta.env.VITE_LOCAL_API_BASE || "http://localhost:3000";
 
 async function fetchKathaVideoFullDescription(videoId) {
     try {
         const response = await fetch(
             `${LOCAL_API_BASE}/api/video-description?videoId=${encodeURIComponent(videoId)}`,
-            { signal: AbortSignal.timeout(15000) }
+            { signal: AbortSignal.timeout(15000), cache: 'no-store' }
         );
         if (!response.ok) throw new Error(`Local API HTTP ${response.status}`);
         const payload = await response.json();
@@ -127,14 +127,16 @@ const KathaMonitor = () => {
     }, [allVideos, dateFilter, fetchedAt]);
 
     // Fetch last 30 videos + all descriptions in parallel — called on mount and on Refresh
-    const fetchAllVideos = async () => {
+    // force=true bypasses the server-side cache so a manual Refresh always pulls live data
+    const fetchAllVideos = async (force = false) => {
         setLoading(true);
         setError(null);
         setStatusText("Loading Katha videos...");
 
         try {
-            const response = await fetch(`${LOCAL_API_BASE}/api/videos`, {
+            const response = await fetch(`${LOCAL_API_BASE}/api/videos${force ? '?force=1' : ''}`, {
                 signal: AbortSignal.timeout(15000),
+                cache: 'no-store',
             });
             if (!response.ok) throw new Error(`Local API HTTP ${response.status}`);
 
@@ -197,8 +199,8 @@ const KathaMonitor = () => {
                     if (message.type === 'SCHEDULER_TRIGGER') {
                         const { action, source } = message.data;
                         if (action === 'katha_refresh' || source === 'Katha Refresh') {
-                            // Re-fetch all 30 from API on scheduled refresh
-                            fetchAllVideosRef.current?.();
+                            // Re-fetch all 30 from API on scheduled refresh, bypassing cache
+                            fetchAllVideosRef.current?.(true);
                         } else if (action === 'katha_player' || source === 'Katha Player') {
                             loadToDelayPlayerRef.current?.();
                         }
@@ -410,7 +412,7 @@ const KathaMonitor = () => {
                 <button
                     type="button"
                     className="common-btn-style btn-secondary flex-1"
-                    onClick={fetchAllVideos}
+                    onClick={() => fetchAllVideos(true)}
                     disabled={loading}
                 >
                     {loading ? "Loading..." : "↻ Refresh"}
@@ -469,7 +471,7 @@ const KathaMonitor = () => {
                 </div>
             )}
 
-            <div className="grid grid-cols-1 gap-4 w-full mb-4">
+            <div className={`grid grid-cols-1 gap-4 w-full mb-4${dateFilter === 'all' ? ' max-h-[600px] overflow-y-auto pr-1' : ''}`}>
                 {!loading && !error && allVideos.length === 0 && (
                     <p className="text-center text-gray-600">No videos loaded — click ↻ Refresh to fetch.</p>
                 )}

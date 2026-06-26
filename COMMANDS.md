@@ -2,11 +2,13 @@
 
 ## Ports
 
-| Service            | Port |
-|--------------------|------|
-| YouTube API server | 3000 |
-| Vite dev server    | 3003 |
-| Controller server  | 3004 |
+| Service                 | Port |
+|--------------------------|------|
+| YouTube API server      | 3000 |
+| Controller (dev & prod)  | 3004 |
+| Controller API (dev only, internal) | 3005 |
+
+Browser-facing port is always **3004** — in dev mode Vite serves the UI there and proxies `/api`, `/videos`, `/ws` to the internal Express backend on 3005; in production the same Express server (`server.cjs`) serves the built UI and API directly on 3004.
 
 ---
 
@@ -16,7 +18,7 @@ All commands run from the **project root** using `node smk.cjs`:
 
 ```bash
 node smk.cjs           # Interactive menu (choose from list)
-node smk.cjs dev       # Start dev mode (Vite :3003 + API :3004)
+node smk.cjs dev       # Start dev mode (Vite :3004 + API :3005)
 node smk.cjs build     # Build React UI → live-tv-controller-react/dist/
 node smk.cjs exe       # Build Windows EXE → windows/exe/
 node smk.cjs start     # Start production services via PM2
@@ -50,7 +52,7 @@ node smk.cjs stop
 
 ### Mac — manual kill by ports
 ```bash
-lsof -ti :3000,:3003,:3004 | xargs kill -9
+lsof -ti :3000,:3004,:3005 | xargs kill -9
 ```
 
 ### Mac — nuclear (kill ALL node processes)
@@ -61,8 +63,8 @@ pkill -9 node
 ### Windows — manual kill by port (find PID first, then kill)
 ```cmd
 netstat -ano | findstr :3000
-netstat -ano | findstr :3003
 netstat -ano | findstr :3004
+netstat -ano | findstr :3005
 
 taskkill /PID <PID> /F
 ```
@@ -78,14 +80,14 @@ taskkill /IM node.exe /F
 
 ### Mac
 ```bash
-lsof -i :3000 -i :3003 -i :3004
+lsof -i :3000 -i :3004 -i :3005
 ```
 
 ### Windows
 ```cmd
 netstat -ano | findstr :3000
-netstat -ano | findstr :3003
 netstat -ano | findstr :3004
+netstat -ano | findstr :3005
 ```
 
 ### PM2 status

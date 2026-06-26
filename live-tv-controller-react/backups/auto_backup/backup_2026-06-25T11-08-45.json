@@ -1,0 +1,337 @@
+{
+  "exportedAt": "2026-06-25T11:08:45.599Z",
+  "version": "2.0",
+  "serverState": {
+    "player.loop": {
+      "playlist": [
+        "_cab8kJr-pE",
+        "vOmx8KqUZRA",
+        "5ftHyZ4vZT4",
+        "mdqaRpUMXDQ",
+        "jF-2NDLMI7s",
+        "l3RmabbrtTA",
+        "ywHmlqTvcfk",
+        "LgDmM-eO9ug",
+        "NunKAAyg9x0",
+        "ExKHSHWA2-E",
+        "cFvxW3twly8"
+      ],
+      "currentIndex": 2,
+      "isPlaying": false,
+      "isMuted": false,
+      "isStopped": false,
+      "videoId": "5ftHyZ4vZT4"
+    },
+    "player.live": {
+      "videoId": "u9SEkGgmEbo",
+      "priority": "matchSearchTerms",
+      "isPlaying": true,
+      "isMuted": false,
+      "isStopped": false
+    },
+    "player.delay": {
+      "videoId": "2zxHedhFiSg",
+      "startTime": "00:28:50",
+      "endTime": "",
+      "isPlaying": false,
+      "isMuted": false,
+      "isStopped": false
+    },
+    "player.local": {
+      "playlist": [
+        {
+          "path": "/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5C01_Shree%20Hari%20ni%20Swabhavik%20Chesta%20%C2%A6%20Swaminarayan%20Film%20%C2%A6%20Full%20Chesta%203D%20Animation%20%C2%A6%20Chesta%20na%20Pado.mp4",
+          "name": "01_Shree Hari ni Swabhavik Chesta ¦ Swaminarayan Film ¦ Full Chesta 3D Animation ¦ Chesta na Pado.mp4",
+          "startTime": "",
+          "endTime": "",
+          "enabled": true
+        },
+        {
+          "path": "/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5CHari%20Leela%20-%2008%20_%20Avtariya%20Avinashi%20_%2027%20Mar%202026%20_%20Gyanjivandasji%20Swami%20-%20Kundaldham_1080p50.mp4",
+          "name": "Hari Leela - 08 _ Avtariya Avinashi _ 27 Mar 2026 _ Gyanjivandasji Swami - Kundaldham_1080p50.mp4",
+          "startTime": "",
+          "endTime": "",
+          "enabled": true
+        },
+        {
+          "path": "/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5CMurti%20Lagat%20Pyari%20Shree.._%20Murti%20Varnan%20_%20Dharmanand%20Padras%20-%2001%20_%20Gyanjivandasji%20Swami%20-%20Kundaldham_1080p50.mp4",
+          "name": "Murti Lagat Pyari Shree.._ Murti Varnan _ Dharmanand Padras - 01 _ Gyanjivandasji Swami - Kundaldham_1080p50.mp4",
+          "startTime": "",
+          "endTime": "",
+          "enabled": true
+        },
+        {
+          "path": "/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5CUncha%20Uncha%20Dungare...%20_%20Kirtan%20Kiran%20-%2015%20_%2005%20Apr%202026%20_%20Gyanjivandasji%20Swami%20-%20Kundaldham_1080p.mp4",
+          "name": "Uncha Uncha Dungare... _ Kirtan Kiran - 15 _ 05 Apr 2026 _ Gyanjivandasji Swami - Kundaldham_1080p.mp4",
+          "startTime": "",
+          "endTime": "",
+          "enabled": true
+        },
+        {
+          "path": "/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5CYTDown_YouTube_Keri-Jame-Hari-Kirtan-Kiran-17-17-May-20_Media_TPb2NbK_dLs_002_720p.mp4",
+          "name": "YTDown_YouTube_Keri-Jame-Hari-Kirtan-Kiran-17-17-May-20_Media_TPb2NbK_dLs_002_720p.mp4",
+          "startTime": "",
+          "endTime": "",
+          "enabled": true
+        }
+      ],
+      "currentIndex": 0,
+      "isPlaying": false,
+      "isMuted": false,
+      "isStopped": false
+    },
+    "player.local.endActions": {
+      "0": "Loop Player",
+      "1": "Loop Player",
+      "2": "Loop Player",
+      "3": "Loop Player",
+      "4": "Loop Player",
+      "5": "Loop Player",
+      "6": "Loop Player"
+    },
+    "monitor.1.enabled": true,
+    "monitor.1.searchTerms": "",
+    "monitor.2.enabled": true,
+    "monitor.2.searchTerms": "",
+    "katha.refresh.enabled": false,
+    "katha.refresh.time": "06:00",
+    "katha.refresh.lastTriggered": null,
+    "katha.player.enabled": false,
+    "katha.player.time": "07:00",
+    "katha.player.lastTriggered": null,
+    "obs.activeSource": null,
+    "app.version": "1.0.0",
+    "schedulerTriggerHistory": [
+      {
+        "id": 1782385710779,
+        "title": "",
+        "source": "Local Player",
+        "action": "show",
+        "firedAt": "2026-06-25T11:08:30.779Z"
+      },
+      {
+        "id": 1782385710675,
+        "title": "",
+        "source": "Live Player",
+        "action": "show",
+        "firedAt": "2026-06-25T11:08:30.675Z"
+      },
+      {
+        "id": 1782385710569,
+        "title": "Delay",
+        "source": "Delay Live",
+        "action": "show",
+        "firedAt": "2026-06-25T11:08:30.569Z"
+      },
+      {
+        "id": 1782235320362,
+        "title": "Local",
+        "source": "Local Player",
+        "action": "show",
+        "firedAt": "2026-06-23T17:22:00.362Z"
+      },
+      {
+        "id": 1782232401394,
+        "title": "Load Katha to Delay Player",
+        "source": "Katha Player",
+        "action": "katha_player",
+        "firedAt": "2026-06-23T16:33:21.394Z"
+      },
+      {
+        "id": 1782232401284,
+        "title": "Refresh Katha Content",
+        "source": "Katha Refresh",
+        "action": "katha_refresh",
+        "firedAt": "2026-06-23T16:33:21.284Z"
+      },
+      {
+        "id": 1782232401165,
+        "title": "Live",
+        "source": "Live Player",
+        "action": "show",
+        "firedAt": "2026-06-23T16:33:21.165Z"
+      },
+      {
+        "id": 1782205261030,
+        "title": "Delay",
+        "source": "Delay Live",
+        "action": "show",
+        "firedAt": "2026-06-23T09:01:01.030Z"
+      },
+      {
+        "id": 1782205200402,
+        "title": "",
+        "source": "Local Player",
+        "action": "show",
+        "firedAt": "2026-06-23T09:00:00.402Z"
+      },
+      {
+        "id": 1782197939277,
+        "title": "",
+        "source": "Live Player",
+        "action": "show",
+        "firedAt": "2026-06-23T06:58:59.277Z"
+      }
+    ],
+    "obs.connected": true
+  },
+  "schedules": [
+    {
+      "id": 1769188208541,
+      "time": "22:52",
+      "source": "Local Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "Local",
+      "enabled": true,
+      "lastTriggered": "2026-06-23-22:52",
+      "lastTriggeredAt": "2026-06-23T17:22:00.328Z",
+      "createdAt": "2026-01-23T17:10:08.541Z"
+    },
+    {
+      "id": 1769245106689,
+      "time": "14:31",
+      "source": "Delay Live",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "Delay",
+      "enabled": true,
+      "lastTriggered": "2026-06-25-14:31",
+      "lastTriggeredAt": "2026-06-25T11:08:30.554Z",
+      "createdAt": "2026-01-24T08:58:26.689Z"
+    },
+    {
+      "id": 1769269727536,
+      "time": "21:20",
+      "source": "Live Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "Live",
+      "enabled": true,
+      "lastTriggered": "2026-06-23-21:20",
+      "lastTriggeredAt": "2026-06-23T16:33:21.148Z",
+      "createdAt": "2026-01-24T15:48:47.536Z"
+    },
+    {
+      "id": 1769270206595,
+      "time": "23:07",
+      "source": "Delay Live",
+      "action": "show",
+      "recurrence": "weekly",
+      "days": [],
+      "scheduledDay": 6,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-06-13-23:07",
+      "lastTriggeredAt": "2026-06-13T17:37:00.437Z",
+      "createdAt": "2026-01-24T15:56:46.595Z"
+    },
+    {
+      "id": 1769270651423,
+      "time": "21:41",
+      "source": "Katha Refresh",
+      "action": "katha_refresh",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "Refresh Katha Content",
+      "enabled": true,
+      "lastTriggered": "2026-06-23-21:41",
+      "lastTriggeredAt": "2026-06-23T16:33:21.271Z",
+      "createdAt": "2026-01-24T16:04:11.423Z",
+      "skipIfLivePlaying": false
+    },
+    {
+      "id": 1769270682396,
+      "time": "21:39",
+      "source": "Katha Player",
+      "action": "katha_player",
+      "recurrence": "daily",
+      "days": [],
+      "title": "Load Katha to Delay Player",
+      "enabled": true,
+      "lastTriggered": "2026-06-23-21:39",
+      "lastTriggeredAt": "2026-06-23T16:33:21.380Z",
+      "createdAt": "2026-01-24T16:04:42.396Z",
+      "skipIfLivePlaying": false
+    },
+    {
+      "id": 1769271220084,
+      "time": "21:45",
+      "source": "Local Player",
+      "action": "hide",
+      "recurrence": "days",
+      "days": [
+        4,
+        3,
+        5,
+        6
+      ],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-06-13-21:45",
+      "lastTriggeredAt": "2026-06-13T16:15:00.211Z",
+      "createdAt": "2026-01-24T16:13:40.084Z"
+    },
+    {
+      "id": 1781411950013,
+      "time": "10:10",
+      "source": "Live Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-06-25-10:10",
+      "lastTriggeredAt": "2026-06-25T11:08:30.660Z",
+      "createdAt": "2026-06-14T04:39:10.013Z"
+    },
+    {
+      "id": 1782205159123,
+      "time": "14:30",
+      "source": "Local Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-06-25-14:30",
+      "lastTriggeredAt": "2026-06-25T11:08:30.765Z",
+      "createdAt": "2026-06-23T08:59:19.123Z"
+    }
+  ],
+  "localStorage": {
+    "loopPlayerState": "{\"playlist\":[\"_cab8kJr-pE\",\"vOmx8KqUZRA\",\"5ftHyZ4vZT4\",\"mdqaRpUMXDQ\",\"jF-2NDLMI7s\",\"l3RmabbrtTA\",\"ywHmlqTvcfk\",\"LgDmM-eO9ug\",\"NunKAAyg9x0\",\"ExKHSHWA2-E\",\"cFvxW3twly8\"],\"currentIndex\":2,\"isPlaying\":false,\"isMuted\":false,\"isStopped\":false,\"videoId\":\"5ftHyZ4vZT4\"}",
+    "livePlayerState": "{\"videoId\":\"u9SEkGgmEbo\",\"priority\":\"matchSearchTerms\",\"isPlaying\":true,\"isMuted\":false,\"isStopped\":false}",
+    "delayPlayerState": "{\"videoId\":\"2zxHedhFiSg\",\"startTime\":\"00:28:50\",\"endTime\":\"\",\"isPlaying\":false,\"isMuted\":false,\"isStopped\":false}",
+    "localPCPlayerState": "{\"playlist\":[{\"path\":\"/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5C01_Shree%20Hari%20ni%20Swabhavik%20Chesta%20%C2%A6%20Swaminarayan%20Film%20%C2%A6%20Full%20Chesta%203D%20Animation%20%C2%A6%20Chesta%20na%20Pado.mp4\",\"name\":\"01_Shree Hari ni Swabhavik Chesta ¦ Swaminarayan Film ¦ Full Chesta 3D Animation ¦ Chesta na Pado.mp4\",\"startTime\":\"\",\"endTime\":\"\",\"enabled\":true},{\"path\":\"/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5CHari%20Leela%20-%2008%20_%20Avtariya%20Avinashi%20_%2027%20Mar%202026%20_%20Gyanjivandasji%20Swami%20-%20Kundaldham_1080p50.mp4\",\"name\":\"Hari Leela - 08 _ Avtariya Avinashi _ 27 Mar 2026 _ Gyanjivandasji Swami - Kundaldham_1080p50.mp4\",\"startTime\":\"\",\"endTime\":\"\",\"enabled\":true},{\"path\":\"/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5CMurti%20Lagat%20Pyari%20Shree.._%20Murti%20Varnan%20_%20Dharmanand%20Padras%20-%2001%20_%20Gyanjivandasji%20Swami%20-%20Kundaldham_1080p50.mp4\",\"name\":\"Murti Lagat Pyari Shree.._ Murti Varnan _ Dharmanand Padras - 01 _ Gyanjivandasji Swami - Kundaldham_1080p50.mp4\",\"startTime\":\"\",\"endTime\":\"\",\"enabled\":true},{\"path\":\"/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5CUncha%20Uncha%20Dungare...%20_%20Kirtan%20Kiran%20-%2015%20_%2005%20Apr%202026%20_%20Gyanjivandasji%20Swami%20-%20Kundaldham_1080p.mp4\",\"name\":\"Uncha Uncha Dungare... _ Kirtan Kiran - 15 _ 05 Apr 2026 _ Gyanjivandasji Swami - Kundaldham_1080p.mp4\",\"startTime\":\"\",\"endTime\":\"\",\"enabled\":true},{\"path\":\"/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5CYTDown_YouTube_Keri-Jame-Hari-Kirtan-Kiran-17-17-May-20_Media_TPb2NbK_dLs_002_720p.mp4\",\"name\":\"YTDown_YouTube_Keri-Jame-Hari-Kirtan-Kiran-17-17-May-20_Media_TPb2NbK_dLs_002_720p.mp4\",\"startTime\":\"\",\"endTime\":\"\",\"enabled\":true}],\"currentIndex\":0,\"isPlaying\":false,\"isMuted\":false,\"isStopped\":false}",
+    "localPCPlayerEndActions": "{\"0\":\"Loop Player\",\"1\":\"Loop Player\",\"2\":\"Loop Player\",\"3\":\"Loop Player\",\"4\":\"Loop Player\",\"5\":\"Loop Player\",\"6\":\"Loop Player\"}",
+    "liveMonitorEnabled1": "true",
+    "liveMonitorEnabled2": "true",
+    "savedSearchTitles1": "",
+    "savedSearchTitles2": ""
+  },
+  "validation": {
+    "warnings": [],
+    "playerKeys": [
+      "loopPlayerState",
+      "livePlayerState",
+      "delayPlayerState",
+      "localPCPlayerState",
+      "localPCPlayerEndActions",
+      "liveMonitorEnabled1",
+      "liveMonitorEnabled2",
+      "savedSearchTitles1",
+      "savedSearchTitles2"
+    ]
+  }
+}

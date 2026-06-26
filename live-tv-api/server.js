@@ -1,4 +1,7 @@
 import http from "http";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { warmCache, fetchStreamChannel, fetchKathaChannel } from "./lib/youtube.js";
 
 // ─── Crash protection — log and keep running ─────────────────────────────────
@@ -9,7 +12,46 @@ process.on("unhandledRejection", (reason) => {
   console.error("[FATAL] Unhandled rejection — keeping server alive:", reason);
 });
 
-const PORT = process.env.PORT || 3000;
+// ─── Load root .env (when run standalone, e.g. `npm run dev` here) ───────────
+// No-op when the launcher already injected env vars — never overwrites them.
+// __dirname inside a pkg snapshot would be virtual, not the real folder next
+// to the .exe, so resolve against process.execPath there instead.
+// NOTE: this file gets bundled to CJS by esbuild for the EXE build, and esbuild
+// empties out `import.meta` for cjs output — touching import.meta.url there
+// throws synchronously and would abort the whole module. Never reference it
+// when process.pkg is set, and guard the ESM path with try/catch regardless.
+function loadRootEnv() {
+  let baseDir = null;
+  if (process.pkg) {
+    baseDir = path.dirname(process.execPath);
+  } else {
+    try {
+      baseDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+    } catch {
+      baseDir = null; // e.g. running the esbuild cjs bundle directly, outside pkg
+    }
+  }
+  if (!baseDir) return;
+
+  const envPath = path.join(baseDir, ".env");
+  if (!fs.existsSync(envPath)) return;
+
+  for (const raw of fs.readFileSync(envPath, "utf8").split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (key && process.env[key] === undefined) process.env[key] = value;
+  }
+}
+loadRootEnv();
+
+const PORT = process.env.PORT || process.env.API_PORT || 3000;
 
 function extractDescriptionFromHtml(html) {
     const patterns = [
@@ -115,6 +157,7 @@ async function init() {
         res.setHeader("Access-Control-Allow-Origin", "*");
         res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
         res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+        res.setHeader("Cache-Control", "no-store");
 
         if (req.method === "OPTIONS") {
             res.statusCode = 200;

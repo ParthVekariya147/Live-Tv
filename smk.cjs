@@ -5,7 +5,7 @@
  * Usage:  node smk.cjs [command]
  *
  * Commands:
- *   dev       Start dev mode  (Vite on :3003 + API server on :3004)
+ *   dev       Start dev mode  (Vite + API server, ports from .env)
  *   build     Build React UI  (creates live-tv-controller-react/dist/)
  *   exe       Build Windows EXE  (runs build.cjs, outputs to windows/exe/)
  *   start     Start production services via PM2
@@ -23,6 +23,7 @@ const { execSync, spawn } = require('child_process');
 const path = require('path');
 const fs   = require('fs');
 const readline = require('readline');
+const { loadEnv } = require('./env-loader.cjs');
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
 const ROOT    = __dirname;
@@ -30,6 +31,14 @@ const REACT   = path.join(ROOT, 'live-tv-controller-react');
 const API     = path.join(ROOT, 'live-tv-api');
 const ECOS    = path.join(ROOT, 'ecosystem.config.cjs');
 const IS_WIN  = process.platform === 'win32';
+
+// ── Env-driven ports (see .env.example) ────────────────────────────────────────
+loadEnv(path.join(ROOT, '.env'));
+const API_PORT            = Number(process.env.API_PORT) || 3000;
+const CONTROLLER_PORT     = Number(process.env.CONTROLLER_PORT) || 3004;
+const CONTROLLER_DEV_PORT = Number(process.env.CONTROLLER_DEV_PORT) || 3005;
+const VITE_DEV_PORT       = Number(process.env.VITE_DEV_PORT) || 3004;
+const ALL_PORTS           = [API_PORT, CONTROLLER_PORT, CONTROLLER_DEV_PORT, VITE_DEV_PORT];
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const C = {
@@ -104,7 +113,7 @@ function ensurePm2() {
 
 function freePorts() {
     if (IS_WIN) {
-        for (const port of [3000, 3003, 3004]) {
+        for (const port of ALL_PORTS) {
             try {
                 const pids = execSync(`netstat -aon 2>nul | findstr ":${port} "`, { shell: true })
                     .toString().trim().split('\n')
@@ -114,7 +123,7 @@ function freePorts() {
             } catch { /* port already free */ }
         }
     } else {
-        tryRun('lsof -ti :3000,:3003,:3004 | xargs kill -9 2>/dev/null || true');
+        tryRun(`lsof -ti :${ALL_PORTS.join(',:')} | xargs kill -9 2>/dev/null || true`);
     }
 }
 
@@ -178,14 +187,14 @@ function cmdDev() {
         run('npm install', API);
     }
 
-    info('Freeing ports 3000, 3003, 3004...');
+    info(`Freeing ports ${ALL_PORTS.join(', ')}...`);
     freePorts();
 
     console.log('\n' + cyan('  Starting services:'));
-    info('API server  → http://localhost:3004 (and ws://localhost:3004/ws)');
-    info('Vite dev    → http://localhost:3003');
+    info(`API server  → http://localhost:${CONTROLLER_DEV_PORT} (and ws://localhost:${CONTROLLER_DEV_PORT}/ws)`);
+    info(`Vite dev    → http://localhost:${VITE_DEV_PORT}`);
     if (fs.existsSync(path.join(API, 'server.js'))) {
-        info('YouTube API → http://localhost:3000');
+        info(`YouTube API → http://localhost:${API_PORT}`);
     }
     console.log('\n' + yellow('  Press Ctrl+C to stop all services.\n'));
 
@@ -248,7 +257,7 @@ function cmdStart() {
     run(`${pm2} save`);
 
     ok('SMK TV is running!');
-    info('Dashboard → http://localhost:3004');
+    info(`Dashboard → http://localhost:${CONTROLLER_PORT}`);
     info('To stop   → node smk.cjs stop');
 }
 
@@ -271,9 +280,9 @@ function cmdStop() {
         warn('PM2 not found — skipping PM2 shutdown.');
     }
 
-    info('Freeing ports 3000, 3003, 3004...');
+    info(`Freeing ports ${ALL_PORTS.join(', ')}...`);
     if (IS_WIN) {
-        for (const port of [3000, 3003, 3004]) {
+        for (const port of ALL_PORTS) {
             try {
                 const pids = execSync(`netstat -aon 2>nul | findstr ":${port} "`, { shell: true })
                     .toString().trim().split('\n')
@@ -283,12 +292,12 @@ function cmdStop() {
             } catch { /* already free */ }
         }
     } else {
-        for (const port of [3000, 3003, 3004]) {
+        for (const port of ALL_PORTS) {
             tryRun(`lsof -ti :${port} | xargs kill -9 2>/dev/null || true`);
         }
     }
 
-    ok('All services stopped. Ports 3000 / 3003 / 3004 are free.');
+    ok(`All services stopped. Ports ${ALL_PORTS.join(' / ')} are free.`);
 }
 
 function cmdRestart() {

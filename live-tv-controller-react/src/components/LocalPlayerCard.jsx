@@ -7,6 +7,16 @@ import { logSourceChange, logVideoEnd } from '../utils/logger';
 import { setStateValue } from '../utils/state-api';
 import PlayerControlBtn from './common/PlayerControlBtn';
 
+// Derive a readable label when a playlist item has no clean `name` (e.g. typed/pasted path) —
+// avoids showing the raw "/api/videos/serve?path=..." streaming URL to the user.
+function displayName(item) {
+    if (item.name) return item.name;
+    if (!item.path) return '';
+    const queryMatch = item.path.match(/[?&]path=([^&]+)/);
+    const raw = queryMatch ? decodeURIComponent(queryMatch[1]) : item.path;
+    return raw.split(/[\\/]/).pop() || raw;
+}
+
 const daysMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const sourceNames = ["Loop Player", "Live Player", "Delay Live", "Local Player"];
 const WS_INITIAL_RECONNECT_DELAY = 1000;
@@ -17,7 +27,7 @@ const LocalPlayerCard = () => {
     const isVisible = sourceState["Local Player"];
     const isInitialized = useRef(false);
     const dragIndex = useRef(null);
-    const isPlayingRef = useRef(true);  // matches isPlaying initial state (true)
+    const isPlayingRef = useRef(false);  // matches isPlaying initial state (false)
     const isStoppedRef = useRef(false);
     // Tracks whether the user has explicitly started playback this session.
     // Prevents the proactive-skip effect from firing during initial load or
@@ -27,6 +37,7 @@ const LocalPlayerCard = () => {
     // the storage event listener (which is added once at mount).
     const setSourceVisibilityRef = useRef(null);
     // Refs for WS-triggered scheduler actions (always hold latest function)
+    const handleLoadRef = useRef(null);
     const handleLoadAndPlayRef = useRef(null);
     const handleStopRef = useRef(null);
     const handleNextRef = useRef(null);
@@ -62,13 +73,15 @@ const LocalPlayerCard = () => {
     useEffect(() => { sourceStateRef.current = sourceState; }, [sourceState]);
     useEffect(() => { setSourceVisibilityRef.current = setSourceVisibility; }, [setSourceVisibility]);
 
-    const [isPlaying, setIsPlaying] = useState(true);
+    const [isPlaying, setIsPlaying] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
     const [isStopped, setIsStopped] = useState(false);
 
-    // Keep playing/stopped refs in sync — declared after useState so no TDZ issue
+    // Keep playing/stopped/muted refs in sync — declared after useState so no TDZ issue
     useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
     useEffect(() => { isStoppedRef.current = isStopped; }, [isStopped]);
+    const isMutedRef = useRef(false);
+    useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
 
     const [videoInfo, setVideoInfo] = useState({ title: "No local video loaded" });
     const [statusText, setStatusText] = useState("Not loaded");
@@ -98,6 +111,7 @@ const LocalPlayerCard = () => {
                 const startSec = nextVideo.startTime ? timeHMToSeconds(nextVideo.startTime) : 0;
                 const endSec = nextVideo.endTime ? timeHMToSeconds(nextVideo.endTime) : null;
                 sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSec, endSec, convertToFileUrl(nextVideo.path));
+                if (isMutedRef.current) sendPlayerCommand('localPCPlayerCommand', 'mute');
                 lastLoadedVideoRef.current = nextVideo.path;
                 setIsPlaying(true);
                 setIsStopped(false);
@@ -185,9 +199,7 @@ const LocalPlayerCard = () => {
     // Save endActions
     useEffect(() => {
         if (!isInitialized.current) return;
-        if (endActions.some(a => a !== null)) {
-            localStorage.setItem('localPCPlayerEndActions', JSON.stringify(endActions));
-        }
+        localStorage.setItem('localPCPlayerEndActions', JSON.stringify(endActions));
     }, [endActions]);
 
     // Save custom folder path
@@ -255,12 +267,16 @@ const LocalPlayerCard = () => {
     };
 
     const resumePlayback = () => {
+        if (isStoppedRef.current) return; // respect explicit Stop — OBS visibility must not override it
         const pl = playlistRef.current;
         if (pl.length === 0) return;
 
-        const firstEnabled = findNextEnabledIndex(0, pl);
-        if (firstEnabled === -1) return; // all remaining disabled — do nothing
-        const ci = firstEnabled;
+        // Resume from current index; only advance if that item is disabled
+        const currentIdx = currentIndexRef.current;
+        let ci = (currentIdx >= 0 && currentIdx < pl.length && pl[currentIdx]?.enabled !== false)
+            ? currentIdx
+            : findNextEnabledIndex(currentIdx, pl);
+        if (ci === -1) return; // all remaining disabled — do nothing
         setCurrentIndex(ci);
 
         const currentVideo = pl[ci];
@@ -270,11 +286,11 @@ const LocalPlayerCard = () => {
             const startSeconds = currentVideo.startTime ? timeHMToSeconds(currentVideo.startTime) : 0;
             const endSeconds = currentVideo.endTime ? timeHMToSeconds(currentVideo.endTime) : null;
             sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(currentVideo.path));
+            if (isMutedRef.current) sendPlayerCommand('localPCPlayerCommand', 'mute');
             lastLoadedVideoRef.current = currentVideo.path;
             hasExplicitlyStarted.current = true;
             setIsPlaying(true);
             setIsStopped(false);
-            setIsMuted(false);
             setStatusText("Playing");
         }
     };
@@ -308,6 +324,8 @@ const LocalPlayerCard = () => {
                     advanceToNextRef.current?.();
                 } else if (data.event === 'videoError') {
                     // Load failed — show error then skip to next enabled video
+                    // Don't advance if the player was intentionally stopped
+                    if (isStoppedRef.current) return;
                     setStatusText(`Load failed: ${data.message || 'unknown error'} — skipping...`);
                     advanceToNextRef.current?.();
                 }
@@ -321,6 +339,7 @@ const LocalPlayerCard = () => {
     // Uses a while-loop to skip past any videos that became disabled since we last checked.
     // All state is read from refs so stale closures are impossible.
     const advanceToNext = () => {
+        if (isStoppedRef.current) return; // stop was intentional — don't advance
         const currentIdx = currentIndexRef.current;
         const currentPlaylist = playlistRef.current;
         const currentEndActions = endActionsRef.current;
@@ -349,6 +368,7 @@ const LocalPlayerCard = () => {
             const startSeconds = nextVideo.startTime ? timeHMToSeconds(nextVideo.startTime) : 0;
             const endSeconds = nextVideo.endTime ? timeHMToSeconds(nextVideo.endTime) : null;
             sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(nextVideo.path));
+            if (isMutedRef.current) sendPlayerCommand('localPCPlayerCommand', 'mute');
             lastLoadedVideoRef.current = nextVideo.path;
             hasExplicitlyStarted.current = true;
             setIsPlaying(true);
@@ -360,7 +380,7 @@ const LocalPlayerCard = () => {
             const targetScene = currentEndActions[currentDay];
             sendPlayerCommand('localPCPlayerCommand', 'stop');
             setIsPlaying(false);
-            setIsStopped(true);
+            setIsStopped(false);
             const firstEnabled = findNextEnabledIndex(0, currentPlaylist);
             const resetIdx = firstEnabled !== -1 ? firstEnabled : 0;
             setCurrentIndex(resetIdx);
@@ -430,6 +450,12 @@ const LocalPlayerCard = () => {
             if (item?.path?.startsWith('blob:')) URL.revokeObjectURL(item.path);
             return prev.filter((_, i) => i !== index);
         });
+        // Adjust currentIndex so it continues to point to the same playing item
+        setCurrentIndex(prev => {
+            if (index < prev) return prev - 1;          // removed before current → shift down
+            if (index === prev) return Math.max(0, prev - 1); // removed current → step back (or stay at 0)
+            return prev;                                // removed after current → unchanged
+        });
     };
 
     // ============================================
@@ -454,9 +480,14 @@ const LocalPlayerCard = () => {
                 endTime: "",
                 enabled: true
             }));
-            setPlaylist(newItems);
-            setCurrentIndex(0);
-            setStatusText(`Loaded ${newItems.length} video(s) from videos folder`);
+            const existingNames = new Set(playlist.map(item => item.name).filter(Boolean));
+            const added = newItems.filter(item => !existingNames.has(item.name));
+            setPlaylist(prev => [...prev, ...added]);
+            setStatusText(
+                added.length === 0
+                    ? `No new videos — ${newItems.length} already loaded`
+                    : `Added ${added.length} new video(s) from videos folder`
+            );
         } catch (err) {
             setStatusText("Scan failed: " + err.message);
         } finally {
@@ -488,8 +519,14 @@ const LocalPlayerCard = () => {
                 endTime: "",
                 enabled: true
             }));
-            setPlaylist(prev => [...prev, ...newItems]);
-            setStatusText(`Added ${newItems.length} video(s) from folder`);
+            const existingNames = new Set(playlist.map(item => item.name).filter(Boolean));
+            const deduped = newItems.filter(item => !existingNames.has(item.name));
+            setPlaylist(prev => [...prev, ...deduped]);
+            setStatusText(
+                deduped.length === newItems.length
+                    ? `Added ${deduped.length} video(s) from folder`
+                    : `Added ${deduped.length} video(s) from folder (${newItems.length - deduped.length} already loaded, skipped)`
+            );
         } catch (err) {
             setStatusText("Scan failed: " + err.message);
         } finally {
@@ -615,6 +652,27 @@ const LocalPlayerCard = () => {
     // PLAYBACK CONTROLS
     // ============================================
 
+    const handleLoad = () => {
+        const enabledIdx = findNextEnabledIndex(0, playlist);
+        if (enabledIdx === -1) { setStatusText("No enabled videos in playlist"); return; }
+        const currentVideo = playlist[enabledIdx];
+
+        setCurrentIndex(enabledIdx);
+        if (currentVideo?.path) {
+            const dName = currentVideo.name || currentVideo.path.split(/[\\/]/).pop();
+            setVideoInfo(prev => ({ ...prev, title: dName }));
+            const startSeconds = currentVideo.startTime ? timeHMToSeconds(currentVideo.startTime) : 0;
+            const endSeconds = currentVideo.endTime ? timeHMToSeconds(currentVideo.endTime) : null;
+            sendPlayerCommand('localPCPlayerCommand', 'loadVideoOnly', null, startSeconds, endSeconds, convertToFileUrl(currentVideo.path));
+            if (isMutedRef.current) sendPlayerCommand('localPCPlayerCommand', 'mute');
+            lastLoadedVideoRef.current = currentVideo.path;
+            hasExplicitlyStarted.current = false;
+            setIsPlaying(false);
+            setIsStopped(false);
+            setStatusText(`Loaded: ${dName}`);
+        }
+    };
+
     const handleLoadAndPlay = () => {
         const enabledIdx = findNextEnabledIndex(0, playlist);
         if (enabledIdx === -1) { setStatusText("No enabled videos in playlist"); return; }
@@ -669,14 +727,18 @@ const LocalPlayerCard = () => {
         if (video?.path) {
             const displayName = video.name || video.path.split(/[\\/]/).pop();
             setVideoInfo(prev => ({ ...prev, title: displayName }));
-            const startSeconds = video.startTime ? timeHMToSeconds(video.startTime) : 0;
-            const endSeconds = video.endTime ? timeHMToSeconds(video.endTime) : null;
-            sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(video.path));
-            lastLoadedVideoRef.current = video.path;
-            hasExplicitlyStarted.current = true;
-            setIsPlaying(true);
-            setIsStopped(false);
-            setStatusText("Playing");
+            if (!isStoppedRef.current) {
+                // Only load and play if not stopped — when stopped, just move selection
+                const startSeconds = video.startTime ? timeHMToSeconds(video.startTime) : 0;
+                const endSeconds = video.endTime ? timeHMToSeconds(video.endTime) : null;
+                sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(video.path));
+                if (isMutedRef.current) sendPlayerCommand('localPCPlayerCommand', 'mute');
+                lastLoadedVideoRef.current = video.path;
+                hasExplicitlyStarted.current = true;
+                setIsPlaying(true);
+                setIsStopped(false);
+                setStatusText("Playing");
+            }
         }
     };
 
@@ -699,14 +761,18 @@ const LocalPlayerCard = () => {
         if (video?.path) {
             const displayName = video.name || video.path.split(/[\\/]/).pop();
             setVideoInfo(prev => ({ ...prev, title: displayName }));
-            const startSeconds = video.startTime ? timeHMToSeconds(video.startTime) : 0;
-            const endSeconds = video.endTime ? timeHMToSeconds(video.endTime) : null;
-            sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(video.path));
-            lastLoadedVideoRef.current = video.path;
-            hasExplicitlyStarted.current = true;
-            setIsPlaying(true);
-            setIsStopped(false);
-            setStatusText("Playing");
+            if (!isStoppedRef.current) {
+                // Only load and play if not stopped — when stopped, just move selection
+                const startSeconds = video.startTime ? timeHMToSeconds(video.startTime) : 0;
+                const endSeconds = video.endTime ? timeHMToSeconds(video.endTime) : null;
+                sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(video.path));
+                if (isMutedRef.current) sendPlayerCommand('localPCPlayerCommand', 'mute');
+                lastLoadedVideoRef.current = video.path;
+                hasExplicitlyStarted.current = true;
+                setIsPlaying(true);
+                setIsStopped(false);
+                setStatusText("Playing");
+            }
         }
     };
 
@@ -719,6 +785,7 @@ const LocalPlayerCard = () => {
             const startSeconds = video.startTime ? timeHMToSeconds(video.startTime) : 0;
             const endSeconds = video.endTime ? timeHMToSeconds(video.endTime) : null;
             sendPlayerCommand('localPCPlayerCommand', 'loadVideo', null, startSeconds, endSeconds, convertToFileUrl(video.path));
+            if (isMutedRef.current) sendPlayerCommand('localPCPlayerCommand', 'mute');
             lastLoadedVideoRef.current = video.path;
             hasExplicitlyStarted.current = true;
             setIsPlaying(true);
@@ -728,6 +795,7 @@ const LocalPlayerCard = () => {
     };
 
     // Keep WS-action refs current so the WS handler never has stale closures
+    useEffect(() => { handleLoadRef.current = handleLoad; });
     useEffect(() => { handleLoadAndPlayRef.current = handleLoadAndPlay; });
     useEffect(() => { handleStopRef.current = handleStop; });
     useEffect(() => { handleNextRef.current = handleNext; });
@@ -744,7 +812,7 @@ const LocalPlayerCard = () => {
                     const message = JSON.parse(event.data);
                     if (message.type === 'SCHEDULER_TRIGGER') {
                         const { action } = message.data;
-                        if (action === 'local_player_start') handleLoadAndPlayRef.current?.();
+                        if (action === 'local_player_start') { handleLoadRef.current?.(); handleLoadAndPlayRef.current?.(); }
                         else if (action === 'local_player_stop') handleStopRef.current?.();
                         else if (action === 'local_player_next') handleNextRef.current?.();
                     }
@@ -758,7 +826,7 @@ const LocalPlayerCard = () => {
         };
         connectWebSocket();
         return () => {
-            if (wsRef.current) wsRef.current.close();
+            if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); }
             if (wsReconnectRef.current) clearTimeout(wsReconnectRef.current);
         };
     }, []);
@@ -935,7 +1003,7 @@ const LocalPlayerCard = () => {
                             {/* File name / path */}
                             <div
                                 style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
-                                title={`Double-click to play: ${item.name || item.path}`}
+                                title={`Double-click to play: ${displayName(item)}`}
                                 onDoubleClick={() => !isDisabled && handlePlayAt(index)}
                             >
                                 <input
@@ -947,7 +1015,7 @@ const LocalPlayerCard = () => {
                                         textDecoration: isDisabled ? 'line-through' : 'none'
                                     }}
                                     placeholder="Video path"
-                                    value={item.name || item.path}
+                                    value={displayName(item)}
                                     onChange={(e) => updatePath(index, e.target.value)}
                                     title={item.path}
                                 />
@@ -1027,7 +1095,7 @@ const LocalPlayerCard = () => {
 
             {/* PLAYBACK CONTROLS */}
             <div className="btn-group mt-2">
-                <PlayerControlBtn className="btn-primary" onClick={handleLoadAndPlay}>Load &amp; Play</PlayerControlBtn>
+                <PlayerControlBtn className="btn-primary" onClick={handleLoad}>Load</PlayerControlBtn>
                 <PlayerControlBtn className={isPlaying ? "btn-success" : "btn-danger"} onClick={handlePlayPause}>
                     {isPlaying ? "Playing" : "Paused"}
                 </PlayerControlBtn>

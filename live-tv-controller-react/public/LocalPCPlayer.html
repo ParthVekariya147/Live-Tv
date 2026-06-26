@@ -24,8 +24,8 @@
 </head>
 
 <body>
-  <!-- NOTE: Video starts UNMUTED - we handle autoplay policy by trying muted fallback only if needed -->
-  <video id="localVideoPlayer" autoplay playsinline></video>
+  <!-- NOTE: No autoplay attribute — play is triggered exclusively by JS (playVideoWithSound) -->
+  <video id="localVideoPlayer" playsinline></video>
 
   <script>
     const videoPlayer = document.getElementById("localVideoPlayer");
@@ -39,6 +39,7 @@
     let isPausedByCommand = false; // Track if pause was requested by controller
     let userRequestedMute = false; // Track explicit mute command — prevents late-unmute from overriding it
     let needsPlay = false;         // Set before load(); play triggered from loadedmetadata after seek
+    let srcCleared = false;        // Set when stop intentionally empties src — suppresses spurious error event
 
     function reportEvent(eventName, data = {}) {
       const eventData = {
@@ -169,6 +170,8 @@
     });
 
     videoPlayer.addEventListener("error", (e) => {
+      // Suppress spurious error when stop intentionally clears src
+      if (srcCleared) { srcCleared = false; return; }
       let errorMessage = "Unknown video error.";
       if (videoPlayer.error) {
         switch (videoPlayer.error.code) {
@@ -226,8 +229,10 @@
 
           switch (data.command) {
             case "loadVideo":
+            case "loadVideoOnly":
               if (data.videoPath) {
                 stopTimeChecking();
+                srcCleared = false;    // new real load — errors should be reported normally
                 isPausedByCommand = false;
                 userRequestedMute = false; // reset explicit-mute flag on new video load
 
@@ -238,10 +243,11 @@
                   path: data.videoPath,
                   startTime: startTime,
                   endTime: endTime,
+                  autoPlay: data.command === "loadVideo",
                 });
 
-                // Set needsPlay BEFORE load() so loadedmetadata fires play after seek
-                needsPlay = true;
+                // loadVideoOnly = pre-load without playing; loadVideo = load and play
+                needsPlay = data.command === "loadVideo";
                 videoPlayer.src = data.videoPath;
                 videoPlayer.load();
                 // playVideoWithSound() is now called from the loadedmetadata handler
@@ -262,6 +268,7 @@
             case "stop":
               stopTimeChecking();
               needsPlay = false; // cancel any pending play-on-load
+              srcCleared = true; // suppress error event from intentional src clear
               isPausedByCommand = true;
               videoPlayer.pause();
               videoPlayer.currentTime = 0;

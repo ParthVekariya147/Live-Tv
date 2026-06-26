@@ -5,9 +5,9 @@ import UpcomingEventMonitor from './UpcomingEventMonitor';
 import { logLiveMonitorEvent, logVideoLoad } from '../utils/logger';
 import { useOBS } from '../context/OBSContext';
 
-const LIVE_DETAILS_POLL_INTERVAL_MS = 30000;
+const LIVE_DETAILS_POLL_INTERVAL_MS = 20000;
 const RETRY_DELAY_MS = 10000; // retry after 10s on failure
-const LOCAL_API_BASE = "http://localhost:3000";
+const LOCAL_API_BASE = import.meta.env.VITE_LOCAL_API_BASE || "http://localhost:3000";
 const LIVE_CHANNEL_SELECT_KEY = "liveSelectedChannelId";
 
 const CHANNEL_OPTIONS = [
@@ -97,9 +97,14 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
 
         try {
             setError(null);
+            if (retryTimerRef.current) {
+                clearTimeout(retryTimerRef.current);
+                retryTimerRef.current = null;
+            }
 
             const response = await fetch(`${LOCAL_API_BASE}/api/live?channelId=${encodeURIComponent(selectedChannelId)}`, {
                 signal: AbortSignal.timeout(15000),
+                cache: 'no-store',
             });
             if (!response.ok) {
                 throw new Error(`API error ${response.status}`);
@@ -154,7 +159,10 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
                 videoIdToAutoLoad = liveEvent2.videoId;
             } else if (livePlayerPriority === 'matchSearchTerms') {
                 const searchTerms1 = localStorage.getItem('savedSearchTitles1') || '';
-                videoIdToAutoLoad = findMatchingVideoId(searchTerms1, liveEvents);
+                const searchTerms2 = localStorage.getItem('savedSearchTitles2') || '';
+                videoIdToAutoLoad =
+                    findMatchingVideoId(searchTerms1, liveEvents) ||
+                    findMatchingVideoId(searchTerms2, liveEvents);
             }
 
             // Only auto-load if found a new video (different from current and last auto-loaded)

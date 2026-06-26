@@ -12,7 +12,7 @@ export const CHANNELS = {
 
 // ─── Cache — cache-first, serves stale while refreshing in background ─────────
 const cache = new Map(); // key → { videos, fetchedAt }
-const CACHE_FRESH_MS  = 2  * 60 * 1000; // < 2min  → return instantly, no fetch
+const CACHE_FRESH_MS  = 15 * 1000;      // < 15s   → return instantly, no fetch (client polls every 20s)
 const CACHE_STALE_MS  = 60 * 60 * 1000; // < 60min → return stale + refresh bg
 const refreshing = new Set();            // keys currently being refreshed
 
@@ -194,6 +194,75 @@ function normalizePiped(stream, channelId, channelName) {
     publishedAt,
     source:        "piped",
   };
+}
+
+// ─── Scrape YouTube channel /videos page for past uploads (ytInitialData) ───────
+async function fetchYouTubeVideosScrape(channelId) {
+  const url = `https://www.youtube.com/channel/${channelId}/videos`;
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(12000),
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const html = await res.text();
+
+    const match =
+      html.match(/var ytInitialData\s*=\s*({.*?});\s*<\/script>/s) ||
+      html.match(/ytInitialData\s*=\s*({.*?});\s*(?:var |<\/script>)/s);
+    if (!match?.[1]) throw new Error("ytInitialData not found");
+
+    const ytData = JSON.parse(match[1]);
+    const videos = parseYouTubeVideosPage(ytData, channelId);
+    console.log(`[YT Videos Scrape] OK: ${channelId} → ${videos.length} items`);
+    return videos.length > 0 ? videos : null;
+  } catch (e) {
+    console.warn(`[YT Videos Scrape] FAIL: ${channelId} → ${e.message}`);
+    return null;
+  }
+}
+
+function parseYouTubeVideosPage(ytData, channelId) {
+  const tabs = ytData?.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
+
+  // The /videos URL loads with the Videos tab selected
+  const VIDEO_TITLES = new Set(["videos", "vidéos", "vídeos"]);
+  const videosTab = tabs.find((tab) => {
+    const title = (tab.tabRenderer?.title || "").toLowerCase();
+    const selected = tab.tabRenderer?.selected === true;
+    return selected || VIDEO_TITLES.has(title);
+  });
+
+  if (!videosTab) return [];
+
+  const items = [];
+
+  // New YouTube format (2025+): richGridRenderer
+  const richItems = videosTab?.tabRenderer?.content?.richGridRenderer?.contents || [];
+  if (richItems.length > 0) {
+    for (const item of richItems) {
+      const lvm = item?.richItemRenderer?.content?.lockupViewModel;
+      if (lvm) {
+        const v = normalizeLockupViewModel(lvm, channelId);
+        if (v && !v.isLive && !v.upcoming) items.push(v);
+      }
+    }
+    return items;
+  }
+
+  // Legacy format: sectionListRenderer
+  const legacyItems =
+    videosTab?.tabRenderer?.content?.sectionListRenderer?.contents?.[0]
+      ?.itemSectionRenderer?.contents || [];
+  for (const item of legacyItems) {
+    const v = normalizeVideoRenderer(item?.videoRenderer, channelId);
+    if (v && !v.isLive && !v.upcoming) items.push(v);
+  }
+  return items;
 }
 
 // ─── Scrape YouTube channel /streams page for live + upcoming (ytInitialData) ──
@@ -480,7 +549,7 @@ export function fetchStreamChannel() {
   return fetchChannels(CHANNELS.streams);
 }
 
-// Katha channel — Piped→RSS only (no scrape needed, just past videos)
+// Katha channel — Piped (with pagination to 30) → RSS only (no scrape needed)
 async function doFetchKatha() {
   const cacheKey = `katha:${CHANNELS.videos}`;
 
@@ -492,11 +561,39 @@ async function doFetchKatha() {
         const v = normalizePiped(stream, CHANNELS.videos, piped.data.name);
         if (v) videos.push(v);
       });
+
+      // Paginate until we have 30 videos (RSS is capped at 15, Piped pages at ~15)
+      let nextpage = piped.data.nextpage;
+      while (videos.length < 30 && nextpage) {
+        try {
+          const res = await fetch(
+            `${piped.source}/nextpage/channel/${CHANNELS.videos}?nextpage=${encodeURIComponent(nextpage)}`,
+            { signal: AbortSignal.timeout(4000), headers: { "User-Agent": "SMK-TV-Monitor/1.0" } }
+          );
+          if (!res.ok) break;
+          const pageData = await res.json();
+          (pageData.relatedStreams || []).forEach((stream) => {
+            const v = normalizePiped(stream, CHANNELS.videos, piped.data.name);
+            if (v) videos.push(v);
+          });
+          nextpage = pageData.nextpage;
+        } catch (e) {
+          console.warn(`[Piped Pagination] FAIL: ${e.message}`);
+          break;
+        }
+      }
+
+      console.log(`[Piped Katha] Fetched ${videos.length} videos total`);
       if (videos.length > 0) { cacheSet(cacheKey, videos); return videos; }
     }
   }
 
-  console.warn("[API] Piped failed for katha — falling back to RSS");
+  // Piped failed — try scraping the YouTube /videos tab (same approach as streams channel)
+  console.warn("[API] Piped failed for katha — scraping YouTube /videos tab");
+  const scraped = await fetchYouTubeVideosScrape(CHANNELS.videos);
+  if (scraped && scraped.length > 0) { cacheSet(cacheKey, scraped); return scraped; }
+
+  console.warn("[API] YT Videos scrape failed for katha — falling back to RSS (max 15)");
   const rss = await fetchRSSChannel(CHANNELS.videos);
   if (rss && rss.length > 0) { cacheSet(cacheKey, rss); return rss; }
 
@@ -508,8 +605,14 @@ async function doFetchKatha() {
   return [];
 }
 
-export function fetchKathaChannel() {
+export function fetchKathaChannel(forceRefresh = false) {
   const cacheKey = `katha:${CHANNELS.videos}`;
+
+  if (forceRefresh) {
+    // Bypass cache entirely — used by the manual "↻ Refresh" button
+    return doFetchKatha();
+  }
+
   const cached = cacheGet(cacheKey);
   if (cached) {
     const age = Date.now() - cached.fetchedAt;

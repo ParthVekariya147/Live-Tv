@@ -14,10 +14,21 @@ const http = require('http');
 const WebSocket = require('ws');
 const { spawn } = require('child_process');
 
+// Load root .env (when run standalone, e.g. `npm run start` here, or as a
+// standalone pkg EXE). Never overwrites vars already set by the launcher /
+// PM2 / shell. __dirname inside a pkg snapshot is virtual, not the real
+// folder the .exe lives in, so resolve against process.execPath there instead.
+try {
+    const envDir = process.pkg ? path.dirname(process.execPath) : path.join(__dirname, '..');
+    require('../env-loader.cjs').loadEnv(path.join(envDir, '.env'));
+} catch (_) { /* launcher already loaded it, or env-loader.cjs unavailable */ }
+
 const app = express();
-// Use 3004 for development (API only, Vite handles frontend)
-// Use 3003 for production (EXE serves everything)
-const PORT = process.env.PORT || (process.pkg ? 3003 : 3004);
+// CONTROLLER_DEV_PORT for development (API only, Vite handles frontend on VITE_DEV_PORT)
+// CONTROLLER_PORT for production (PM2 or EXE serves everything, same port as dev's public URL)
+const PORT = process.env.PORT || (process.pkg
+    ? (process.env.CONTROLLER_PORT || 3004)
+    : (process.env.CONTROLLER_DEV_PORT || 3005));
 
 // Create HTTP server for Express + WebSocket
 const server = http.createServer(app);
@@ -870,6 +881,7 @@ app.put('/api/schedules', (req, res) => {
             // Preserve server-side tracking fields that React state doesn't hold
             if (existing.lastTriggered && !s.lastTriggered) patch.lastTriggered = existing.lastTriggered;
             if (existing.skipUntil && !s.skipUntil) patch.skipUntil = existing.skipUntil;
+            if (existing.nextFireAfterSkip && !s.nextFireAfterSkip) patch.nextFireAfterSkip = existing.nextFireAfterSkip;
             return Object.keys(patch).length ? { ...s, ...patch } : s;
         }) : incoming;
         const schedules = scheduler.setAllSchedules(merged);

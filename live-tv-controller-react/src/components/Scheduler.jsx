@@ -80,6 +80,13 @@ const Scheduler = () => {
     const [showImportArea, setShowImportArea] = useState(false);
     const [importData, setImportData] = useState("");
 
+    // Live clock tick for countdown display (updates every 30s)
+    const [nowTick, setNowTick] = useState(() => Date.now());
+    useEffect(() => {
+        const t = setInterval(() => setNowTick(Date.now()), 30000);
+        return () => clearInterval(t);
+    }, []);
+
     const draggedItem = useRef(null);
 
     // ============================================
@@ -476,6 +483,30 @@ const Scheduler = () => {
             minute: "2-digit",
             hour12: true,
         });
+    };
+
+    // Full date + time for skip display — unambiguous across weeks
+    const formatSkipDateTime = (isoString) => {
+        if (!isoString) return '';
+        return new Date(isoString).toLocaleString('en-US', {
+            weekday: 'short', month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit', hour12: true
+        });
+    };
+
+    // Countdown to a future ISO datetime — "2d 14h 30m", "45m", "soon"
+    const formatCountdown = (isoString) => {
+        if (!isoString) return null;
+        const diff = new Date(isoString) - nowTick;
+        if (diff <= 0) return 'soon';
+        const days = Math.floor(diff / 86400000);
+        const hours = Math.floor((diff % 86400000) / 3600000);
+        const minutes = Math.floor((diff % 3600000) / 60000);
+        const parts = [];
+        if (days > 0) parts.push(`${days}d`);
+        if (hours > 0) parts.push(`${hours}h`);
+        if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
+        return parts.join(' ');
     };
 
     // ============================================
@@ -910,10 +941,22 @@ const Scheduler = () => {
                                 >
                                     <td className="px-3 py-2 font-mono">
                                         <span className="text-cyan-400">{formatTime12Hr(schedule.time)}</span>
-                                        {schedule.skipUntil && new Date(schedule.skipUntil) > new Date() && (
-                                            <div className="text-orange-400 text-xs mt-0.5 flex items-center gap-1">
-                                                <span>⏭</span>
-                                                <span>until {new Date(schedule.skipUntil).toLocaleString('en-US', { weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                                        {schedule.skipUntil && new Date(schedule.skipUntil) > new Date(nowTick) && (
+                                            <div className="text-orange-400 text-xs mt-0.5">
+                                                <div className="flex items-center gap-1 font-semibold">
+                                                    <span>⏭</span>
+                                                    <span>Skipping today</span>
+                                                </div>
+                                                {schedule.nextFireAfterSkip && (
+                                                    <div className="text-yellow-300 mt-0.5">
+                                                        Next: {formatSkipDateTime(schedule.nextFireAfterSkip)}
+                                                    </div>
+                                                )}
+                                                {schedule.nextFireAfterSkip && (
+                                                    <div className="text-orange-300">
+                                                        in {formatCountdown(schedule.nextFireAfterSkip)}
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </td>
@@ -963,7 +1006,7 @@ const Scheduler = () => {
                                             >
                                                 ▶
                                             </button>
-                                            {schedule.skipUntil && new Date(schedule.skipUntil) > new Date() ? (
+                                            {schedule.skipUntil && new Date(schedule.skipUntil) > new Date(nowTick) ? (
                                                 <button
                                                     onClick={() => handleCancelSkip(schedule.id)}
                                                     title="Cancel skip — resume normal schedule"
@@ -974,7 +1017,7 @@ const Scheduler = () => {
                                             ) : (
                                                 <button
                                                     onClick={() => handleSkipDay(schedule.id)}
-                                                    title="Skip next trigger by 1 day"
+                                                    title="Skip next trigger — fire the one after instead"
                                                     className="px-2 py-1 bg-gray-600 hover:bg-orange-600 text-gray-300 hover:text-white rounded text-xs"
                                                 >
                                                     ⏭ +1d

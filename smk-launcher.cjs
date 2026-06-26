@@ -5,8 +5,10 @@
  * Roles (set via SMK_ROLE env var):
  *   (none)      → Launcher: kills old ports, spawns watchdog, opens browser, exits
  *   watchdog    → Watches API + controller, restarts either if it crashes
- *   api         → Runs the YouTube live-tv API (ESM, port 3000)
- *   controller  → Runs the React UI server (CJS, port 3004)
+ *   api         → Runs the YouTube live-tv API (ESM, port from API_PORT)
+ *   controller  → Runs the React UI server (CJS, port from CONTROLLER_PORT)
+ *
+ * Ports and URLs are read from .env (see .env.example) — no more hardcoded ports.
  */
 
 const { spawn, execSync } = require('child_process');
@@ -14,11 +16,21 @@ const { exec } = require('child_process');
 const path = require('path');
 const http = require('http');
 const fs   = require('fs');
+const { loadEnv } = require('./env-loader.cjs');
 
 const EXE   = process.execPath;
 const ROLE  = process.env.SMK_ROLE || '';
 const ROOT  = __dirname;
 const IS_WIN = process.platform === 'win32';
+
+// __dirname inside a pkg snapshot is a virtual path, not the real folder the
+// .exe lives in — so a real .env dropped next to the .exe must be resolved
+// against process.execPath's directory instead, or it would never be found.
+const ENV_DIR = process.pkg ? path.dirname(EXE) : __dirname;
+loadEnv(path.join(ENV_DIR, '.env'));
+
+const API_PORT        = Number(process.env.API_PORT) || 3000;
+const CONTROLLER_PORT = Number(process.env.CONTROLLER_PORT) || 3004;
 
 // ─── Role dispatch ────────────────────────────────────────────────────────────
 
@@ -35,14 +47,14 @@ if (ROLE === 'api') {
 // ─── API (pre-bundled CJS by esbuild) ────────────────────────────────────────
 
 function runApi() {
-  process.env.PORT = process.env.PORT || '3000';
+  process.env.PORT = process.env.PORT || String(API_PORT);
   require('./live-tv-api/.bundle.cjs');
 }
 
 // ─── Controller (CJS) ────────────────────────────────────────────────────────
 
 function runController() {
-  process.env.PORT = process.env.PORT || '3004';
+  process.env.PORT = process.env.PORT || String(CONTROLLER_PORT);
   require('./live-tv-controller-react/server.cjs');
 }
 
@@ -72,8 +84,8 @@ function runWatchdog() {
     return child;
   }
 
-  spawnService('api',        3000, 'API');
-  spawnService('controller', 3004, 'Controller');
+  spawnService('api',        API_PORT,        'API');
+  spawnService('controller', CONTROLLER_PORT, 'Controller');
 
   // Keep watchdog alive
   setInterval(() => {}, 60_000);
@@ -87,9 +99,9 @@ function runLauncher() {
   // Register for auto-start on login (Windows only, runs once)
   if (IS_WIN) registerWindowsStartup();
 
-  // Kill anything on ports 3000 / 3004
-  killPort(3000);
-  killPort(3004);
+  // Kill anything on the configured API / Controller ports
+  killPort(API_PORT);
+  killPort(CONTROLLER_PORT);
 
   setTimeout(() => {
     // Spawn watchdog as detached background process (no visible window)
@@ -103,10 +115,11 @@ function runLauncher() {
 
     console.log('  Services starting in background...');
 
-    waitReady('http://localhost:3004', 40, () => {
+    const controllerUrl = `http://localhost:${CONTROLLER_PORT}`;
+    waitReady(controllerUrl, 40, () => {
       console.log('  SMK TV is ready — opening browser.');
-      if (IS_WIN) exec('start http://localhost:3004');
-      else exec('open http://localhost:3004');
+      if (IS_WIN) exec(`start ${controllerUrl}`);
+      else exec(`open ${controllerUrl}`);
       setTimeout(() => process.exit(0), 500);
     });
   }, 1000);

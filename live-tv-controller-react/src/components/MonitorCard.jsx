@@ -57,13 +57,13 @@ const MonitorCard = ({ id, title, enabled, data, error, stale, channelOptions, s
             <h3 className="live-monitor-card-h3 flex items-center gap-2">
                 {title}
                 {enabled && stale && (
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-900 text-yellow-300 font-medium">
-                        ⟳ Retrying
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-orange-900 text-orange-300 font-medium" title="Live sources are unreachable — showing last known data">
+                        ⚠ Stale
                     </span>
                 )}
                 {enabled && error && data && (
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-orange-900 text-orange-300 font-medium" title={error}>
-                        ⚠ Stale
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-900 text-yellow-300 font-medium" title={error}>
+                        ⟳ Retrying
                     </span>
                 )}
             </h3>

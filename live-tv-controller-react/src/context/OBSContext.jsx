@@ -5,7 +5,6 @@ const OBSContext = createContext();
 
 export const useOBS = () => useContext(OBSContext);
 
-const SCENE_NAME = "Scene";
 const SOURCE_NAMES = [
     "Live Player",
     "Loop Player",
@@ -34,6 +33,12 @@ export const OBSProvider = ({ children }) => {
     const [streamActive, setStreamActive] = useState(false);
     const [recordActive, setRecordActive] = useState(false);
     const [virtualCamActive, setVirtualCamActive] = useState(false);
+    // Scene name is whatever the user's current OBS program scene is actually called —
+    // fetched live via GetCurrentProgramScene instead of assumed, since OBS's default
+    // scene name ("Scene 1") never matched the hardcoded "Scene" this used to use.
+    const [sceneName, setSceneName] = useState(null);
+    const sceneNameRef = useRef(sceneName);
+    useEffect(() => { sceneNameRef.current = sceneName; }, [sceneName]);
 
     const pollIntervalRef = useRef(null);
     const socketRef = useRef(null);
@@ -70,7 +75,11 @@ export const OBSProvider = ({ children }) => {
         }));
     }, []);
 
-    const getSceneItems = useCallback(() => sendRequest("GetSceneItemList", { sceneName: SCENE_NAME }), [sendRequest]);
+    const getCurrentScene = useCallback(() => sendRequest("GetCurrentProgramScene"), [sendRequest]);
+    const getSceneItems = useCallback(() => {
+        if (!sceneNameRef.current) return; // wait until we know the real scene name
+        sendRequest("GetSceneItemList", { sceneName: sceneNameRef.current });
+    }, [sendRequest]);
     const getStreamStatus = useCallback(() => sendRequest("GetStreamStatus"), [sendRequest]);
     const getRecordStatus = useCallback(() => sendRequest("GetRecordStatus"), [sendRequest]);
     const getVirtualCamStatus = useCallback(() => sendRequest("GetVirtualCamStatus"), [sendRequest]);
@@ -85,6 +94,9 @@ export const OBSProvider = ({ children }) => {
     const handleOBSMessage = useCallback((msg) => {
         if (msg.op === 7 && msg.d.requestStatus.result) {
             switch (msg.d.requestType) {
+                case "GetCurrentProgramScene":
+                    setSceneName(msg.d.responseData.currentProgramSceneName ?? msg.d.responseData.sceneName);
+                    break;
                 case "GetSceneItemList": {
                     const items = msg.d.responseData.sceneItems;
                     const newSourceState = {};
@@ -118,11 +130,15 @@ export const OBSProvider = ({ children }) => {
         if (msg.op === 5) { // Events
             switch (msg.d.eventType) {
                 case "SceneItemEnableStateChanged": {
-                    const changedItemName = msg.d.eventData.sceneItemSourceName;
-                    if (SOURCE_NAMES.includes(changedItemName)) {
+                    // obs-websocket v5 eventData only carries sceneItemId, not the source
+                    // name — resolve it via the id->name map we built from GetSceneItemList.
+                    const { sceneItemId, sceneItemEnabled } = msg.d.eventData;
+                    const changedItemName = Object.entries(sourceIdsRef.current)
+                        .find(([, id]) => id === sceneItemId)?.[0];
+                    if (changedItemName && SOURCE_NAMES.includes(changedItemName)) {
                         setSourceState(prev => ({
                             ...prev,
-                            [changedItemName]: msg.d.eventData.sceneItemEnabled
+                            [changedItemName]: sceneItemEnabled
                         }));
                     }
                     break;
@@ -135,6 +151,9 @@ export const OBSProvider = ({ children }) => {
                     break;
                 case "VirtualCamStateChanged":
                     setVirtualCamActive(msg.d.eventData.outputActive);
+                    break;
+                case "CurrentProgramSceneChanged":
+                    setSceneName(msg.d.eventData.sceneName);
                     break;
             }
         }
@@ -178,13 +197,22 @@ export const OBSProvider = ({ children }) => {
             }).catch(() => { });
 
             // Identify
+            // General(0) | Scenes(2) | Inputs(3) | Transitions(4) | Filters(5) | Outputs(6) | SceneItems(7)
+            // Outputs/SceneItems are required so stream/record/vcam status and source visibility
+            // (SceneItemEnableStateChanged) arrive instantly via events instead of waiting on the
+            // 1s poll — without them the UI can briefly show a stale snapshot mid-switch and
+            // re-fire load/pause on every player card.
             ws.send(JSON.stringify({
                 op: 1,
                 d: {
                     rpcVersion: 1,
-                    eventSubscriptions: (1 << 0) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5),
+                    eventSubscriptions: (1 << 0) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6) | (1 << 7),
                 },
             }));
+
+            // Find out what the current program scene is actually called before
+            // doing anything scene-scoped — it's rarely the literal word "Scene".
+            getCurrentScene();
 
             // Initial fetch
             fetchAllStatuses();
@@ -196,10 +224,11 @@ export const OBSProvider = ({ children }) => {
                 // Use a short timeout to allow first poll to complete
                 setTimeout(() => {
                     const currentIds = sourceIdsRef.current;
-                    if (currentIds[savedActiveSource]) {
+                    const scene = sceneNameRef.current;
+                    if (scene && currentIds[savedActiveSource]) {
                         // Turn on the saved source
                         sendRequest("SetSceneItemEnabled", {
-                            sceneName: SCENE_NAME,
+                            sceneName: scene,
                             sceneItemId: currentIds[savedActiveSource],
                             sceneItemEnabled: true
                         });
@@ -209,7 +238,7 @@ export const OBSProvider = ({ children }) => {
                         SOURCE_NAMES.forEach(s => {
                             if (s !== savedActiveSource && currentIds[s]) {
                                 sendRequest("SetSceneItemEnabled", {
-                                    sceneName: SCENE_NAME,
+                                    sceneName: scene,
                                     sceneItemId: currentIds[s],
                                     sceneItemEnabled: false
                                 });
@@ -267,7 +296,7 @@ export const OBSProvider = ({ children }) => {
             console.error("OBS WebSocket error:", err);
             setConnectionError("OBS WebSocket Error");
         };
-    }, [fetchAllStatuses, handleOBSMessage]);
+    }, [fetchAllStatuses, handleOBSMessage, getCurrentScene]);
 
     useEffect(() => {
         connectOBS();
@@ -301,6 +330,11 @@ export const OBSProvider = ({ children }) => {
         const currentSourceIds = sourceIdsRef.current;
         const currentSourceState = sourceStateRef.current;
 
+        if (!sceneNameRef.current) {
+            console.warn(`setSourceVisibility: OBS program scene name not known yet. Cannot set visibility.`);
+            return;
+        }
+
         if (!currentSourceIds[sourceName]) {
             console.warn(`setSourceVisibility: Source ID for "${sourceName}" not found. Cannot set visibility.`);
             return;
@@ -309,7 +343,7 @@ export const OBSProvider = ({ children }) => {
 
         // Send command to OBS for the target source
         sendRequest("SetSceneItemEnabled", {
-            sceneName: SCENE_NAME,
+            sceneName: sceneNameRef.current,
             sceneItemId: currentSourceIds[sourceName],
             sceneItemEnabled: visible
         });
@@ -335,7 +369,7 @@ export const OBSProvider = ({ children }) => {
                     // Only send command if the other source is currently visible
                     if (currentSourceState[s]) {
                         sendRequest("SetSceneItemEnabled", {
-                            sceneName: SCENE_NAME,
+                            sceneName: sceneNameRef.current,
                             sceneItemId: currentSourceIds[s],
                             sceneItemEnabled: false
                         });
@@ -350,7 +384,7 @@ export const OBSProvider = ({ children }) => {
             if (!anyOtherVisible) {
                 if (currentSourceIds["Loop Player"]) {
                     sendRequest("SetSceneItemEnabled", {
-                        sceneName: SCENE_NAME,
+                        sceneName: sceneNameRef.current,
                         sceneItemId: currentSourceIds["Loop Player"],
                         sceneItemEnabled: true
                     });
@@ -396,7 +430,7 @@ export const OBSProvider = ({ children }) => {
             toggleSource,
             obsSettings,
             updateOBSSettings,
-            SCENE_NAME,
+            SCENE_NAME: sceneName,
             SOURCE_NAMES,
             socket: socketRef.current,
         }}>

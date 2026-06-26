@@ -15,9 +15,11 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
-    const allVideos = await fetchKathaChannel();
+    const force = new URL(req.url, "http://localhost").searchParams.get("force") === "1";
+    const allVideos = await fetchKathaChannel(force);
     const videos    = getRecentVideos(allVideos, 30);
     const source    = allVideos[0]?.source ?? "none";
+    const stale     = allVideos.some((v) => v.stale === true);
 
     return res.status(200).json({
       success:   true,
@@ -26,6 +28,7 @@ export default async function handler(req, res) {
       limit:     30,
       count:     videos.length,
       source,
+      stale,
       data:      videos,
       updatedAt: new Date().toISOString(),
     });

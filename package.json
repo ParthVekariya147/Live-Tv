@@ -22,6 +22,7 @@
   "pkg": {
     "scripts": [
       "smk-launcher.cjs",
+      "env-loader.cjs",
       "live-tv-api/.bundle.cjs",
       "live-tv-controller-react/server.cjs",
       "live-tv-controller-react/scheduler-service.cjs",

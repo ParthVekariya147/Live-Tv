@@ -209,8 +209,10 @@ const MAX_LISTENERS = 50; // Prevent memory leaks
  */
 const getWsUrl = () => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // In development, connect to the API server port (3004)
-    const port = import.meta.env.DEV ? '3004' : window.location.port || '3003';
+    // In development, connect to the API server port (VITE_CONTROLLER_DEV_PORT from .env)
+    const port = import.meta.env.DEV
+        ? (import.meta.env.VITE_CONTROLLER_DEV_PORT || '3005')
+        : (window.location.port || import.meta.env.VITE_CONTROLLER_PORT || '3004');
     return `${protocol}//${window.location.hostname}:${port}/ws`;
 };
 

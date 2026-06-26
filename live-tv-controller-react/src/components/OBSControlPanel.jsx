@@ -1,8 +1,18 @@
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useOBS } from '../context/OBSContext';
 import PreviewBox from './PreviewBox';
 import SettingsBackup from './SettingsBackup';
+import { LIVE_PLAYER_EVENT_KEY, PLAYER_EVENT_KEY, DELAY_PLAYER_EVENT_KEY, LOCAL_PLAYER_EVENT_KEY } from '../utils/core-utils';
+
+// Maps OBS source name -> the localStorage event key / playerType its player page reports timeUpdate on
+const SOURCE_EVENT_INFO = {
+    "Live Player":  { eventKey: LIVE_PLAYER_EVENT_KEY,  playerType: 'live' },
+    "Loop Player":  { eventKey: PLAYER_EVENT_KEY,       playerType: 'loop' },
+    "Delay Live":   { eventKey: DELAY_PLAYER_EVENT_KEY, playerType: 'delay' },
+    "Local Player": { eventKey: LOCAL_PLAYER_EVENT_KEY, playerType: 'local' },
+};
+const HEALTH_CHECK_TIMEOUT_MS = 8000;
 
 const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor2Enabled, toggleMonitor2 }) => {
     const {
@@ -74,6 +84,45 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
         }
     }, [isLivePlayerVisible]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // ── Switch-source loading + 5-10s health check ───────────────────────────
+    // loadingSource: name of the source button currently spinning (waiting for confirmation)
+    // warnSource: name of the source whose stream didn't report back in time ("not working")
+    const [loadingSource, setLoadingSource] = useState(null);
+    const [warnSource, setWarnSource] = useState(null);
+    const healthTimeoutRef = useRef(null);
+
+    const switchToSource = useCallback((sourceName) => {
+        setSourceVisibility(sourceName, true);
+        setWarnSource(prev => (prev === sourceName ? null : prev));
+        setLoadingSource(sourceName);
+
+        if (healthTimeoutRef.current) clearTimeout(healthTimeoutRef.current);
+        healthTimeoutRef.current = setTimeout(() => {
+            setLoadingSource(prev => (prev === sourceName ? null : prev));
+            setWarnSource(sourceName);
+        }, HEALTH_CHECK_TIMEOUT_MS);
+    }, [setSourceVisibility]);
+
+    // Listen for the player page's timeUpdate ping — proof the switched-to source is actually playing
+    useEffect(() => {
+        const handleStorageEvent = (event) => {
+            if (!event.newValue || !loadingSource) return;
+            const info = SOURCE_EVENT_INFO[loadingSource];
+            if (!info || event.key !== info.eventKey) return;
+            try {
+                const data = JSON.parse(event.newValue);
+                if (data.playerType !== info.playerType || data.event !== 'timeUpdate') return;
+                if (healthTimeoutRef.current) clearTimeout(healthTimeoutRef.current);
+                setLoadingSource(null);
+                setWarnSource(prev => (prev === loadingSource ? null : prev));
+            } catch { /* ignore parse errors */ }
+        };
+        window.addEventListener('storage', handleStorageEvent);
+        return () => window.removeEventListener('storage', handleStorageEvent);
+    }, [loadingSource]);
+
+    useEffect(() => () => { if (healthTimeoutRef.current) clearTimeout(healthTimeoutRef.current); }, []);
+
     const toggleLiveLoop = () => {
         if (sourceState["Live Player"]) {
             setSourceVisibility("Loop Player", true);
@@ -96,16 +145,20 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
         return 'Off';
     };
 
-    // Compact toggle button component
-    const ToggleBtn = ({ active, onClick, label, activeClass = 'bg-green-600' }) => (
+    // Compact toggle button component — shows a spinner while waiting for the
+    // switched-to player to confirm playback, and a warning ring if it never does
+    const ToggleBtn = ({ active, onClick, label, activeClass = 'bg-green-600', loading, warn }) => (
         <button
             onClick={onClick}
-            className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${active
+            title={warn ? 'No playback signal received — stream may not be working' : undefined}
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-all flex items-center gap-1.5 ${active
                 ? `${activeClass} text-white`
                 : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                }`}
+                } ${warn ? 'ring-2 ring-red-500' : ''}`}
         >
+            {loading && <span className="inline-block w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
             {label}
+            {warn && <span title="Not responding">⚠</span>}
         </button>
     );
 
@@ -133,27 +186,35 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
                 </button> */}
                     <ToggleBtn
                         active={sourceState["Live Player"]}
-                        onClick={() => setSourceVisibility("Live Player", !sourceState["Live Player"])}
+                        onClick={() => switchToSource("Live Player")}
                         label={`Live ${sourceState["Live Player"] ? '●' : '○'}`}
                         activeClass="bg-green-600"
+                        loading={loadingSource === "Live Player"}
+                        warn={warnSource === "Live Player"}
                     />
                     <ToggleBtn
                         active={sourceState["Loop Player"]}
-                        onClick={() => setSourceVisibility("Loop Player", !sourceState["Loop Player"])}
+                        onClick={() => switchToSource("Loop Player")}
                         label={`Loop ${sourceState["Loop Player"] ? '●' : '○'}`}
                         activeClass="bg-blue-600"
+                        loading={loadingSource === "Loop Player"}
+                        warn={warnSource === "Loop Player"}
                     />
                 <ToggleBtn
                     active={sourceState["Delay Live"]}
-                    onClick={() => setSourceVisibility("Delay Live", !sourceState["Delay Live"])}
+                    onClick={() => switchToSource("Delay Live")}
                     label={`Delay ${sourceState["Delay Live"] ? '●' : '○'}`}
                     activeClass="bg-purple-600"
+                    loading={loadingSource === "Delay Live"}
+                    warn={warnSource === "Delay Live"}
                 />
                 <ToggleBtn
                     active={sourceState["Local Player"]}
-                    onClick={() => setSourceVisibility("Local Player", !sourceState["Local Player"])}
+                    onClick={() => switchToSource("Local Player")}
                     label={`Local ${sourceState["Local Player"] ? '●' : '○'}`}
                     activeClass="bg-pink-600"
+                    loading={loadingSource === "Local Player"}
+                    warn={warnSource === "Local Player"}
                 />
             </div>
 
