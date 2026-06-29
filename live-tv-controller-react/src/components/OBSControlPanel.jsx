@@ -4,6 +4,7 @@ import { useOBS } from '../context/OBSContext';
 import PreviewBox from './PreviewBox';
 import SettingsBackup from './SettingsBackup';
 import { LIVE_PLAYER_EVENT_KEY, PLAYER_EVENT_KEY, DELAY_PLAYER_EVENT_KEY, LOCAL_PLAYER_EVENT_KEY } from '../utils/core-utils';
+import { logError, LogCategory, LogType } from '../utils/logger';
 
 // Maps OBS source name -> the localStorage event key / playerType its player page reports timeUpdate on
 const SOURCE_EVENT_INFO = {
@@ -92,7 +93,22 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
     const healthTimeoutRef = useRef(null);
 
     const switchToSource = useCallback((sourceName) => {
-        setSourceVisibility(sourceName, true);
+        const ok = setSourceVisibility(sourceName, true);
+
+        // setSourceVisibility returns false when OBS scene/sourceId not yet known —
+        // show the warning immediately instead of waiting 8s for the health timer.
+        if (!ok) {
+            logError(
+                LogType.OBS_SOURCE_ERROR,
+                LogCategory.SYSTEM,
+                { function: 'switchToSource', sourceName, isConnected, SCENE_NAME },
+                `switchToSource("${sourceName}") failed — setSourceVisibility returned false`
+            );
+            setWarnSource(sourceName);
+            setLoadingSource(null);
+            return;
+        }
+
         setWarnSource(prev => (prev === sourceName ? null : prev));
         setLoadingSource(sourceName);
 
@@ -101,7 +117,7 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
             setLoadingSource(prev => (prev === sourceName ? null : prev));
             setWarnSource(sourceName);
         }, HEALTH_CHECK_TIMEOUT_MS);
-    }, [setSourceVisibility]);
+    }, [setSourceVisibility, isConnected, SCENE_NAME]);
 
     // Listen for the player page's timeUpdate ping — proof the switched-to source is actually playing
     useEffect(() => {
@@ -122,28 +138,6 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
     }, [loadingSource]);
 
     useEffect(() => () => { if (healthTimeoutRef.current) clearTimeout(healthTimeoutRef.current); }, []);
-
-    const toggleLiveLoop = () => {
-        if (sourceState["Live Player"]) {
-            setSourceVisibility("Loop Player", true);
-        } else if (sourceState["Loop Player"]) {
-            setSourceVisibility("Live Player", true);
-        } else {
-            setSourceVisibility("Loop Player", true);
-        }
-    };
-
-    const getLiveLoopClass = () => {
-        if (sourceState["Live Player"]) return 'on-live';
-        if (sourceState["Loop Player"]) return 'on-loop';
-        return 'off';
-    };
-
-    const getLiveLoopText = () => {
-        if (sourceState["Live Player"]) return 'Live';
-        if (sourceState["Loop Player"]) return 'Loop';
-        return 'Off';
-    };
 
     // Compact toggle button component — shows a spinner while waiting for the
     // switched-to player to confirm playback, and a warning ring if it never does

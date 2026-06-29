@@ -65,7 +65,12 @@ const findMatchingVideoId = (searchTermsText, liveEvents) => {
 };
 
 const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
-    const { setSourceVisibility } = useOBS();
+    const { setSourceVisibility, sourceState } = useOBS();
+    // Ref so the guard inside fetchLiveVideoDetails always sees the latest sourceState
+    // without adding sourceState to the useCallback deps (which would recreate the callback
+    // every 1s from the OBS poll and destroy the 20s interval cadence).
+    const sourceStateRef = useRef(sourceState);
+    useEffect(() => { sourceStateRef.current = sourceState; }, [sourceState]);
     const [monitor1Data, setMonitor1Data] = useState(null);
     const [monitor2Data, setMonitor2Data] = useState(null);
     const [upcomingEventData, setUpcomingEventData] = useState(null);
@@ -182,7 +187,13 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
                     detail: { videoId: videoIdToAutoLoad }
                 }));
 
-                setSourceVisibility('Live Player', true);
+                // Skip redundant OBS command if Live Player is already visible.
+                // Use the ref (not sourceState) so this guard never causes fetchLiveVideoDetails
+                // to be recreated — adding sourceState to the callback's deps would reset the
+                // 20-second interval every ~1s because the OBS poll updates sourceState every tick.
+                if (!sourceStateRef.current["Live Player"]) {
+                    setSourceVisibility('Live Player', true);
+                }
             }
 
         } catch (err) {

@@ -1339,16 +1339,20 @@ class RecordingService {
     }
 
     _findYtDlp() {
+        // [FIX E2] Verify the executable actually exists before returning it.
+        // If not found synchronously, spawn would succeed but immediately emit
+        // an ENOENT error event, leaving the client in a false isRecording=true
+        // state for up to 2 seconds until the poll corrects it.
+        const check = (p) => { try { return fs.existsSync(p) ? p : null; } catch { return null; } };
+
         if (process.pkg) {
             const exeDir = path.dirname(process.execPath);
-            const candidates = [
-                path.join(exeDir, 'yt-dlp.exe'),
-                path.join(exeDir, 'yt-dlp'),
-            ];
-            for (const c of candidates) {
-                if (fs.existsSync(c)) return c;
-            }
+            return check(path.join(exeDir, 'yt-dlp.exe'))
+                || check(path.join(exeDir, 'yt-dlp'))
+                || null; // not found — start() will return a clear error
         }
+        // Development: look on PATH. We can't verify PATH availability without
+        // spawning, so return the bare name and let start() handle spawn errors.
         return process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
     }
 
@@ -1356,11 +1360,17 @@ class RecordingService {
         if (this.currentProcess) {
             return { success: false, error: 'Recording already in progress' };
         }
-        if (!videoId) {
+        // Trim to avoid accidental whitespace/extra chars causing wrong video
+        const cleanVideoId = (videoId || '').trim().replace(/[^A-Za-z0-9_-]/g, '');
+        if (!cleanVideoId) {
             return { success: false, error: 'videoId is required' };
         }
 
         const ytDlp = this._findYtDlp();
+        // [FIX E2] In pkg (EXE) mode _findYtDlp returns null if yt-dlp.exe is missing
+        if (!ytDlp) {
+            return { success: false, error: 'yt-dlp.exe not found next to the EXE. Place yt-dlp.exe in the same folder.' };
+        }
         const now = new Date();
         const ts = now.toISOString().replace(/[:.]/g, '-').slice(0, 16); // YYYY-MM-DDTHH-MM
         const safeTitle = title
@@ -1368,16 +1378,21 @@ class RecordingService {
             : null;
         const filename = safeTitle
             ? `${safeTitle}_${ts}.mp4`
-            : `recording_${ts}_${videoId}.mp4`;
+            : `recording_${ts}_${cleanVideoId}.mp4`;
         const outputPath = path.join(this.recordingsDir, filename);
+
+        console.log(`[Recording] Starting yt-dlp: ${ytDlp}`);
+        console.log(`[Recording] Video ID: ${cleanVideoId}`);
+        console.log(`[Recording] Output: ${outputPath}`);
 
         const args = [
             '--no-part',
             '--no-continue',
-            '-f', 'bestvideo+bestaudio/best',
+            '--no-playlist',           // never download a playlist, only the exact video
+            '-f', 'best[ext=mp4]/bestvideo+bestaudio/best',  // works for both live streams and VODs
             '--merge-output-format', 'mp4',
             '-o', outputPath,
-            `https://www.youtube.com/watch?v=${videoId}`,
+            `https://www.youtube.com/watch?v=${cleanVideoId}`,
         ];
 
         let proc;
@@ -1390,7 +1405,7 @@ class RecordingService {
         this.currentProcess = proc;
         this.currentRecording = filename;
         this.recordingStartTime = Date.now();
-        this.currentVideoId = videoId;
+        this.currentVideoId = cleanVideoId;
 
         const logLine = (level, msg) => {
             const trimmed = msg.trim();
@@ -1413,11 +1428,15 @@ class RecordingService {
 
         proc.on('close', code => {
             console.log(`[Recording] Process exited with code ${code}`);
-            const stoppedFile = this.currentRecording;
-            this.currentProcess = null;
-            this.currentRecording = null;
-            this.recordingStartTime = null;
-            this.currentVideoId = null;
+            // stoppedFile captured from closure — safe even if stop() already nulled fields
+            const stoppedFile = filename;
+            // Null out in case this is a natural finish (not via stop())
+            if (this.currentProcess === proc) {
+                this.currentProcess = null;
+                this.currentRecording = null;
+                this.recordingStartTime = null;
+                this.currentVideoId = null;
+            }
 
             // Auto-delete enforcement
             const { autoDeleteCount } = this.getSettings();
@@ -1448,7 +1467,15 @@ class RecordingService {
             try { this.currentProcess.kill('SIGINT'); } catch (_) { /* ignore */ }
         }
 
-        return { success: true, filename };
+        // [FIX E1] Null out immediately so start() doesn't see a zombie process
+        // during the async window between kill() and the 'close' event firing.
+        // The 'close' handler guards itself with the captured stoppedFile variable.
+        this.currentProcess = null;
+        this.currentRecording = null;
+        this.recordingStartTime = null;
+        this.currentVideoId = null;
+
+        return { success: true, filename, isRecording: false };
     }
 
     _enforceAutoDelete(maxCount) {
@@ -1468,7 +1495,9 @@ class RecordingService {
     deleteRecording(filename) {
         const safe = path.basename(filename);
         const fp = path.join(this.recordingsDir, safe);
-        if (!fp.startsWith(this.recordingsDir + path.sep) && fp !== path.join(this.recordingsDir, safe)) {
+        // [FIX E3] Previous guard was dead code (always false). path.basename already
+        // strips traversal — just verify the resolved path stays inside recordingsDir.
+        if (!fp.startsWith(this.recordingsDir + path.sep)) {
             return { success: false, error: 'Invalid filename' };
         }
         if (!fs.existsSync(fp)) {
@@ -1608,6 +1637,8 @@ app.post('/api/recording/start', (req, res) => {
         }
     }, title);
     if (result.success) {
+        // [FIX E4] Include isRecording flag for consistency with /status endpoint
+        result.isRecording = true;
         broadcast('RECORDING_STATUS', recordingService.getStatus());
         writeLog({
             level: 'info',
@@ -1624,6 +1655,9 @@ app.post('/api/recording/start', (req, res) => {
 app.post('/api/recording/stop', (req, res) => {
     const result = recordingService.stop();
     if (result.success) {
+        // [FIX E5] Broadcast immediately so all WebSocket clients see isRecording=false
+        // without waiting for the 'close' event (which fires 100-500ms later on Windows).
+        broadcast('RECORDING_STATUS', { isRecording: false, currentFile: null, durationSeconds: 0 });
         writeLog({
             level: 'info',
             type: 'RECORDING_STOP',

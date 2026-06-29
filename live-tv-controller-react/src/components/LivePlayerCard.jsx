@@ -4,7 +4,7 @@ import { useOBS } from '../context/OBSContext';
 import { sendPlayerCommand, LIVE_PLAYER_EVENT_KEY, secondsToHMS } from '../utils/core-utils';
 import { usePlayerTime } from '../utils/usePlayerHooks';
 import { useVideoInfo } from '../hooks/useVideoInfo';
-import { logVideoLoad, logVideoPlay } from '../utils/logger';
+import { logVideoLoad, logVideoPlay, logError, LogCategory, LogType } from '../utils/logger';
 import { setStateValue } from '../utils/state-api';
 import PlayerControlBtn from './common/PlayerControlBtn';
 import ThumbnailLoader from './common/ThumbnailLoader';
@@ -37,7 +37,7 @@ const LivePlayerCard = () => {
     const [isRecording, setIsRecording] = useState(false);
     const [recordingFile, setRecordingFile] = useState(null);
     const [recordingDuration, setRecordingDuration] = useState(0);
-    const [autoDeleteCount, setAutoDeleteCount] = useState(0);
+    const [, setAutoDeleteCount] = useState(0);
     const [autoDeleteInput, setAutoDeleteInput] = useState('0');
     const [recordingStatus, setRecordingStatus] = useState('');
     const recordingPollRef = useRef(null);
@@ -58,8 +58,12 @@ const LivePlayerCard = () => {
         autoRecordRef.current = autoRecord;
         localStorage.setItem('liveAutoRecord', JSON.stringify(autoRecord));
     }, [autoRecord]);
-    // true while the current recording was started automatically (not by the user)
+
+    // wasAutoStarted: true while current recording was started automatically.
+    // Keep both a ref (for use in closures/callbacks) and state (for UI rendering).
     const wasAutoStartedRef = useRef(false);
+    const [wasAutoStarted, setWasAutoStarted] = useState(false);
+
     const isRecordingRef = useRef(isRecording);
     useEffect(() => { isRecordingRef.current = isRecording; }, [isRecording]);
 
@@ -77,7 +81,7 @@ const LivePlayerCard = () => {
                 setIsPlaying(parsed.isPlaying ?? true);
                 setIsMuted(parsed.isMuted ?? false);
                 setIsStopped(parsed.isStopped ?? false);
-            } catch (e) { }
+            } catch { /* ignore malformed localStorage */ }
         }
         isInitialized.current = true;
     }, []);
@@ -107,7 +111,7 @@ const LivePlayerCard = () => {
         return () => window.removeEventListener('flushPlayerState', handler);
     }, []);
 
-    // Load recording settings from server
+    // Load recording settings from server and restore active recording state
     useEffect(() => {
         fetch(`${API_BASE}/api/recording/settings`)
             .then(r => r.json())
@@ -120,7 +124,8 @@ const LivePlayerCard = () => {
             })
             .catch(() => { });
 
-        // Check if a recording is already active (e.g. server restarted while recording)
+        // [FIX A2] Restore recording state after page refresh.
+        // Also restore wasAutoStartedRef so auto-stop works correctly after refresh.
         fetch(`${API_BASE}/api/recording/status`)
             .then(r => r.json())
             .then(d => {
@@ -128,12 +133,18 @@ const LivePlayerCard = () => {
                     setIsRecording(true);
                     setRecordingFile(d.currentFile);
                     setRecordingDuration(d.durationSeconds || 0);
+                    // If autoRecord is on, the in-progress recording was almost certainly
+                    // auto-started — restore the flag so switching players will stop it.
+                    if (autoRecordRef.current) {
+                        wasAutoStartedRef.current = true;
+                        setWasAutoStarted(true);
+                    }
                 }
             })
             .catch(() => { });
     }, []);
 
-    // Poll recording status while recording
+    // Poll recording status while recording is active
     const startStatusPoll = useCallback(() => {
         if (recordingPollRef.current) return;
         recordingPollRef.current = setInterval(() => {
@@ -143,12 +154,15 @@ const LivePlayerCard = () => {
                     if (d.success) {
                         setIsRecording(d.isRecording);
                         setRecordingDuration(d.durationSeconds || 0);
+                        // [FIX G1] yt-dlp finished naturally — clear auto-start flag
                         if (!d.isRecording) {
                             clearInterval(recordingPollRef.current);
                             recordingPollRef.current = null;
                             setRecordingFile(null);
                             setRecordingDuration(0);
                             setRecordingStatus('Recording saved');
+                            wasAutoStartedRef.current = false;
+                            setWasAutoStarted(false);
                         }
                     }
                 })
@@ -163,21 +177,90 @@ const LivePlayerCard = () => {
         }
     }, []);
 
+    // [FIX A3] Let this effect be the single place that starts/stops the poll.
+    // startRecording() no longer calls startStatusPoll() directly to avoid the
+    // double-start/stop cycle that happened across the render boundary.
     useEffect(() => {
         if (isRecording) {
             startStatusPoll();
+            return () => stopStatusPoll();
         }
-        return () => { if (!isRecording) stopStatusPoll(); };
     }, [isRecording, startStatusPoll, stopStatusPoll]);
 
-    // Cleanup on unmount
+    // Cleanup poll on unmount
     useEffect(() => () => stopStatusPoll(), [stopStatusPoll]);
+
+    // [FIX A1] Stop recording when tab/window is closed so yt-dlp doesn't run forever.
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            if (isRecordingRef.current) {
+                navigator.sendBeacon(`${API_BASE}/api/recording/stop`);
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, []);
+
+    // ── Recording helpers (shared by manual button + auto-record logic) ──────
+    const startRecording = useCallback(async (vid, title) => {
+        // [FIX D1] Guard against double-start race (e.g. auto + manual fire at same time)
+        if (isRecordingRef.current) { setRecordingStatus('Already recording'); return false; }
+        if (!vid) { setRecordingStatus('No video ID — cannot record'); return false; }
+        setRecordingStatus('Starting...');
+        try {
+            const res = await fetch(`${API_BASE}/api/recording/start`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ videoId: vid, title: title || undefined }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                setIsRecording(true); // triggers the isRecording effect → startStatusPoll()
+                setRecordingFile(data.filename);
+                setRecordingDuration(0);
+                setRecordingStatus('Recording...');
+                return true;
+            }
+            setRecordingStatus(`Start failed: ${data.error}`);
+            return false;
+        } catch (e) {
+            setRecordingStatus(`Error: ${e.message}`);
+            return false;
+        }
+    }, []); // no deps — isRecordingRef is a ref, setters are stable
+
+    const stopRecording = useCallback(async () => {
+        setRecordingStatus('Stopping...');
+        try {
+            const res = await fetch(`${API_BASE}/api/recording/stop`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                setIsRecording(false);
+                setRecordingFile(null);
+                setRecordingDuration(0);
+                setRecordingStatus('Recording saved');
+                stopStatusPoll();
+                return true;
+            }
+            setRecordingStatus(`Stop failed: ${data.error}`);
+            return false;
+        } catch (e) {
+            setRecordingStatus(`Error: ${e.message}`);
+            return false;
+        }
+    }, [stopStatusPoll]);
 
     // Listen for auto-load events from MonitorManager
     useEffect(() => {
-        const handleAutoLoad = (event) => {
+        // [FIX Bug4] Stop active recording before switching to a new video via auto-load
+        const handleAutoLoad = async (event) => {
             const { videoId: newVideoId } = event.detail;
             if (newVideoId) {
+                if (isRecordingRef.current) {
+                    wasAutoStartedRef.current = false;
+                    setWasAutoStarted(false);
+                    await stopRecording();
+                }
                 setVideoId(newVideoId);
                 sendPlayerCommand('livePlayerCommand', 'loadVideo', newVideoId);
                 sendPlayerCommand('livePlayerCommand', 'play');
@@ -191,7 +274,7 @@ const LivePlayerCard = () => {
 
         window.addEventListener('livePlayerAutoLoad', handleAutoLoad);
         return () => window.removeEventListener('livePlayerAutoLoad', handleAutoLoad);
-    }, []);
+    }, [stopRecording]);
 
     // Resume playback when OBS visibility changes
     const resumePlayback = () => {
@@ -204,6 +287,13 @@ const LivePlayerCard = () => {
             setIsStopped(false);
             setIsMuted(false);
             setStatusText("Playing");
+        } else {
+            logError(
+                LogType.PLAYER_ERROR,
+                LogCategory.SYSTEM,
+                { function: 'resumePlayback', videoId, isVisible },
+                'Live Player became visible but videoIdRef is empty — no playback command sent'
+            );
         }
     };
 
@@ -212,6 +302,7 @@ const LivePlayerCard = () => {
 
     useEffect(() => {
         const timeSinceMount = Date.now() - mountTime.current;
+
         if (timeSinceMount < 500) {
             prevIsVisible.current = isVisible;
             return;
@@ -223,6 +314,7 @@ const LivePlayerCard = () => {
         }
 
         if (prevIsVisible.current === isVisible) return;
+
         prevIsVisible.current = isVisible;
 
         if (isVisible) {
@@ -235,13 +327,26 @@ const LivePlayerCard = () => {
         }
     }, [isVisible]);
 
-    const handleLoadAndPlay = () => {
+    // [FIX Bug4] Stop active recording before loading a new video manually
+    const handleLoadAndPlay = async () => {
         if (!videoId) {
+            logError(
+                LogType.PLAYER_ERROR,
+                LogCategory.SYSTEM,
+                { function: 'handleLoadAndPlay', videoId, isVisible },
+                'Live Player load attempted with no videoId'
+            );
             setStatusText("Please enter a YouTube Video ID.");
             return;
         }
 
         setLoadingAction(true);
+
+        if (isRecordingRef.current) {
+            wasAutoStartedRef.current = false;
+            setWasAutoStarted(false);
+            await stopRecording();
+        }
 
         if (isVisible) {
             sendPlayerCommand('livePlayerCommand', 'loadVideo', videoId);
@@ -296,58 +401,84 @@ const LivePlayerCard = () => {
         try {
             await navigator.clipboard.writeText(data);
             setStatusText("Data copied to clipboard!");
-        } catch (err) {
+        } catch {
             setStatusText("Failed to copy");
         }
     };
 
-    // ── Recording helpers (shared by manual button + auto-record logic) ──────
-    const startRecording = useCallback(async (vid, title) => {
-        if (!vid) { setRecordingStatus('No video ID — cannot record'); return false; }
-        setRecordingStatus('Starting...');
-        try {
-            const res = await fetch(`${API_BASE}/api/recording/start`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ videoId: vid, title: title || undefined }),
-            });
-            const data = await res.json();
-            if (data.success) {
-                setIsRecording(true);
-                setRecordingFile(data.filename);
-                setRecordingDuration(0);
-                setRecordingStatus('Recording...');
-                startStatusPoll();
-                return true;
-            }
-            setRecordingStatus(`Start failed: ${data.error}`);
-            return false;
-        } catch (e) {
-            setRecordingStatus(`Error: ${e.message}`);
-            return false;
+    // ── Manual toggle (REC button) ────────────────────────────────────────────
+    const handleToggleRecording = async () => {
+        if (isRecording) {
+            wasAutoStartedRef.current = false;
+            setWasAutoStarted(false);
+            await stopRecording();
+        } else {
+            wasAutoStartedRef.current = false; // manual start — never auto-stop on player switch
+            setWasAutoStarted(false);
+            await startRecording(videoId, videoTitle);
         }
-    }, [startStatusPoll]);
+    };
 
-    const stopRecording = useCallback(async () => {
-        setRecordingStatus('Stopping...');
-        try {
-            const res = await fetch(`${API_BASE}/api/recording/stop`, { method: 'POST' });
-            const data = await res.json();
-            if (data.success) {
-                setIsRecording(false);
-                setRecordingFile(null);
-                setRecordingDuration(0);
-                setRecordingStatus('Recording saved');
-                stopStatusPoll();
-                return true;
+    // ── [FIX Bug1] Post-mount check: if Live Player was already visible when the
+    // page loaded, the isVisible transition never fires so we check once after the
+    // 500ms guard window expires.
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (autoRecordRef.current && isVisible && !isRecordingRef.current) {
+                wasAutoStartedRef.current = true;
+                setWasAutoStarted(true);
+                startRecording(videoIdRef.current, videoTitleRef.current);
             }
-            setRecordingStatus(`Stop failed: ${data.error}`);
-            return false;
-        } catch (e) {
-            setRecordingStatus(`Error: ${e.message}`);
-            return false;
+        }, 600);
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // intentionally run once on mount only
+
+    // ── [FIX Bug2] Auto-record on visibility change ───────────────────────────
+    // Auto-START is gated on autoRecord switch.
+    // Auto-STOP always fires when Live Player hides and recording was auto-started,
+    // even if the user has since turned autoRecord OFF.
+    useEffect(() => {
+        const timeSinceMount = Date.now() - mountTime.current;
+        if (timeSinceMount < 500) return; // ignore on initial mount
+
+        if (isVisible) {
+            // Live Player just became visible — auto-start if switch is ON and not already recording
+            if (autoRecordRef.current && !isRecordingRef.current) {
+                const vid = videoIdRef.current;
+                const t = videoTitleRef.current;
+                wasAutoStartedRef.current = true;
+                setWasAutoStarted(true);
+                startRecording(vid, t);
+            }
+        } else {
+            // Live Player just became hidden — auto-stop regardless of switch state,
+            // but only if WE started this recording automatically
+            if (isRecordingRef.current && wasAutoStartedRef.current) {
+                wasAutoStartedRef.current = false;
+                setWasAutoStarted(false);
+                stopRecording();
+            }
         }
-    }, [stopStatusPoll]);
+    }, [isVisible, startRecording, stopRecording]);
+
+    const handleAutoDeleteChange = (e) => {
+        const raw = e.target.value.replace(/[^0-9]/g, '');
+        setAutoDeleteInput(raw);
+    };
+
+    const handleAutoDeleteBlur = async () => {
+        const count = Math.max(0, parseInt(autoDeleteInput, 10) || 0);
+        setAutoDeleteCount(count);
+        setAutoDeleteInput(String(count));
+        try {
+            await fetch(`${API_BASE}/api/recording/settings`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ autoDeleteCount: count }),
+            });
+        } catch { /* silent */ }
+    };
 
     // ── File Manager ─────────────────────────────────────────────────────────
     const fetchRecordingsList = useCallback(async () => {
@@ -384,58 +515,6 @@ const LivePlayerCard = () => {
             if (data.success) setRecordingsList(prev => prev.filter(r => r.filename !== filename));
         } catch { /* ignore */ }
     }, []);
-
-    // ── Manual toggle (REC button) ────────────────────────────────────────────
-    const handleToggleRecording = async () => {
-        if (isRecording) {
-            wasAutoStartedRef.current = false;
-            await stopRecording();
-        } else {
-            wasAutoStartedRef.current = false; // manual start
-            await startRecording(videoId, videoTitle);
-        }
-    };
-
-    // ── Auto-record: start when Live Player becomes visible, stop when hidden ─
-    useEffect(() => {
-        const timeSinceMount = Date.now() - mountTime.current;
-        if (timeSinceMount < 500) return; // ignore on initial mount
-        if (!autoRecordRef.current) return; // master switch is OFF
-
-        if (isVisible) {
-            // Live Player just became visible — auto-start if not already recording
-            if (!isRecordingRef.current) {
-                const vid = videoIdRef.current;
-                const t = videoTitleRef.current;
-                wasAutoStartedRef.current = true;
-                startRecording(vid, t);
-            }
-        } else {
-            // Live Player just became hidden — auto-stop only if WE started it
-            if (isRecordingRef.current && wasAutoStartedRef.current) {
-                wasAutoStartedRef.current = false;
-                stopRecording();
-            }
-        }
-    }, [isVisible, startRecording, stopRecording]);
-
-    const handleAutoDeleteChange = (e) => {
-        const raw = e.target.value.replace(/[^0-9]/g, '');
-        setAutoDeleteInput(raw);
-    };
-
-    const handleAutoDeleteBlur = async () => {
-        const count = Math.max(0, parseInt(autoDeleteInput, 10) || 0);
-        setAutoDeleteCount(count);
-        setAutoDeleteInput(String(count));
-        try {
-            await fetch(`${API_BASE}/api/recording/settings`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ autoDeleteCount: count }),
-            });
-        } catch (e) { /* silent */ }
-    };
 
     const recordingDurationLabel = secondsToHMS(recordingDuration);
 
@@ -515,8 +594,9 @@ const LivePlayerCard = () => {
                         title={isRecording ? 'Stop Recording' : 'Start Recording'}
                     >
                         <span className={`rec-dot${isRecording ? ' rec-dot-pulse' : ''}`} />
+                        {/* [FIX G2] Use wasAutoStarted state (not ref) so badge renders instantly */}
                         {isRecording
-                            ? `REC  ${recordingDurationLabel}${wasAutoStartedRef.current ? ' (auto)' : ''}`
+                            ? `REC  ${recordingDurationLabel}${wasAutoStarted ? ' (auto)' : ''}`
                             : 'REC'}
                     </button>
 
