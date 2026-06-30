@@ -12,18 +12,45 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "node server.cjs",
-    "build:exe": "npm run build && pkg . --targets node18-win-x64 --output live-tv-controller.exe"
+    "build:exe": "npm run build && node generate-public-assets.cjs && pkg . --targets node18-win-x64 --output live-tv-controller.exe"
   },
   "pkg": {
+    "scripts": [
+      "node_modules/firebase-admin/lib/**/*.js",
+      "node_modules/google-auth-library/build/src/**/*.js",
+      "node_modules/gtoken/build/src/**/*.js",
+      "node_modules/gaxios/build/src/**/*.js",
+      "node_modules/node-fetch/**/*.js"
+    ],
     "assets": [
-      "dist/**/*"
+      "dist/**",
+      "dist/**/*",
+      "public/setup.html",
+      "public/firebase-messaging-sw.js",
+      "public/manifest.json",
+      "public/icon-192.png",
+      "public/icon-512.png",
+      "public/vite.svg",
+      "public/DelayLive.html",
+      "public/LivePlayer.html",
+      "public/LocalPCPlayer.html",
+      "public/LoopPlayer.html",
+      "public/obs-auto-setup.html",
+      "node_modules/firebase-admin/**/*.json",
+      "node_modules/google-auth-library/**/*.json",
+      "node_modules/gaxios/**/*.json"
     ],
     "outputPath": "."
   },
   "dependencies": {
     "express": "^4.18.2",
+    "firebase": "^12.15.0",
+    "firebase-admin": "^14.1.0",
+    "localtunnel": "^2.0.2",
+    "qrcode": "^1.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "selfsigned": "^5.5.0",
     "ws": "^8.19.0"
   },
   "devDependencies": {
@@ -40,5 +67,11 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.1",
     "vite": "^7.2.4"
+  },
+  "allowScripts": {
+    "@firebase/util@1.15.1": true,
+    "firebase@12.15.0": true,
+    "firebase-admin@14.1.0": true,
+    "protobufjs@7.6.4": true
   }
 }

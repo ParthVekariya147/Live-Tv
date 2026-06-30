@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Live TV — Enable Notifications</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 36px 28px;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .icon { font-size: 48px; margin-bottom: 16px; }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #f1f5f9;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-bottom: 28px;
+      line-height: 1.6;
+    }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 14px 20px;
+      border-radius: 10px;
+      border: none;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-primary { background: #06b6d4; color: #0f172a; }
+    .btn-primary:hover:not(:disabled) { opacity: 0.9; }
+
+    .btn-secondary {
+      background: #334155;
+      color: #e2e8f0;
+      margin-top: 10px;
+      font-size: 14px;
+      padding: 10px 16px;
+    }
+
+    .status {
+      margin-top: 20px;
+      padding: 14px;
+      border-radius: 10px;
+      font-size: 14px;
+      line-height: 1.5;
+      display: none;
+      text-align: left;
+    }
+    .status.show { display: block; }
+    .status.success { background: #14532d; border: 1px solid #16a34a; color: #86efac; }
+    .status.error   { background: #450a0a; border: 1px solid #dc2626; color: #fca5a5; }
+    .status.info    { background: #1e3a5f; border: 1px solid #3b82f6; color: #93c5fd; }
+    .status.warn    { background: #431407; border: 1px solid #ea580c; color: #fdba74; }
+
+    .spinner {
+      display: inline-block;
+      width: 18px; height: 18px;
+      border: 2px solid #0f172a40;
+      border-top-color: #0f172a;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .features {
+      text-align: left;
+      margin-bottom: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .feature {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      color: #cbd5e1;
+    }
+    .feature-icon { font-size: 18px; flex-shrink: 0; }
+
+    .diag {
+      margin-top: 20px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 12px;
+      color: #64748b;
+      text-align: left;
+    }
+    .diag-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .diag-ok   { color: #4ade80; }
+    .diag-fail { color: #f87171; }
+    .diag-warn { color: #fb923c; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">📺</div>
+  <h1>Live TV Controller</h1>
+  <p class="subtitle">Enable push notifications to get alerts on this phone — even on 4G/5G after setup.</p>
+
+  <div class="features">
+    <div class="feature"><span class="feature-icon">🗓️</span> Schedule triggered alerts</div>
+    <div class="feature"><span class="feature-icon">🔴</span> Recording started / stopped</div>
+    <div class="feature"><span class="feature-icon">📡</span> Live stream detected</div>
+    <div class="feature"><span class="feature-icon">⚠️</span> System warnings</div>
+  </div>
+
+  <button class="btn btn-primary" id="btn" onclick="setup()">
+    🔔 Enable Notifications
+  </button>
+  <button class="btn btn-secondary" id="btn-test" onclick="sendTestNow()" style="display:none">
+    🧪 Send test notification
+  </button>
+
+  <div class="status" id="status"></div>
+
+  <div class="diag" id="diag" style="display:none">
+    <div class="diag-row"><span>Push support</span><span id="d-push">checking…</span></div>
+    <div class="diag-row"><span>Notification permission</span><span id="d-perm">checking…</span></div>
+    <div class="diag-row"><span>Service worker</span><span id="d-sw">checking…</span></div>
+    <div class="diag-row"><span>FCM token</span><span id="d-token">checking…</span></div>
+    <div class="diag-row"><span>Server status</span><span id="d-server">checking…</span></div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp }  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+  import { getMessaging, getToken, onMessage, deleteToken } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
+
+  const FIREBASE_CONFIG = {
+    apiKey:            'AIzaSyArEsWAGlOF2VPZVb9lPYEGesgDAAE6RYE',
+    authDomain:        'live-tv-1dab0.firebaseapp.com',
+    projectId:         'live-tv-1dab0',
+    storageBucket:     'live-tv-1dab0.firebasestorage.app',
+    messagingSenderId: '221221340671',
+    appId:             '1:221221340671:web:986f566248262a4d1093ca',
+  };
+  const VAPID_KEY = 'BAW5sxTZ-NUY6-nurk5LPrg3s_TaKf3sDNl0LRWXjbxYfWqtiJox8E5UqkuEZaO0exz5_b4K-_t84x2PVOHBccM';
+
+  const btn      = document.getElementById('btn');
+  const btnTest  = document.getElementById('btn-test');
+  const statusEl = document.getElementById('status');
+  const diagEl   = document.getElementById('diag');
+
+  function showStatus(type, msg) {
+    statusEl.className = `status show ${type}`;
+    statusEl.innerHTML = msg;
+  }
+  function d(id, val, cls) {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = val; el.className = cls || ''; }
+  }
+
+  function getBrowserName() {
+    const ua = navigator.userAgent;
+    if (/android/i.test(ua)) return 'Android';
+    if (/iphone|ipad/i.test(ua)) return 'iPhone/iPad';
+    if (ua.includes('Edg/')) return 'Edge';
+    if (ua.includes('Chrome/')) return 'Chrome';
+    if (ua.includes('Firefox/')) return 'Firefox';
+    if (ua.includes('Safari/')) return 'Safari';
+    return 'Browser';
+  }
+
+  // Run diagnostics on page load
+  async function runDiag() {
+    diagEl.style.display = 'block';
+
+    // Push API
+    const hasPush = 'PushManager' in window && 'Notification' in window && 'serviceWorker' in navigator;
+    d('d-push', hasPush ? '✓ supported' : '✗ NOT supported', hasPush ? 'diag-ok' : 'diag-fail');
+    if (!hasPush) {
+      btn.disabled = true;
+      showStatus('error', '❌ This browser does not support push notifications. Use Chrome on Android.');
+      return;
+    }
+
+    // Notification permission
+    const perm = Notification.permission;
+    if (perm === 'granted')  d('d-perm', '✓ granted',  'diag-ok');
+    if (perm === 'denied')   d('d-perm', '✗ BLOCKED — go to Android Settings → Apps → Chrome → Notifications → ON, then clear site permissions', 'diag-fail');
+    if (perm === 'default')  d('d-perm', '⚠ not yet asked', 'diag-warn');
+
+    // Service worker
+    try {
+      const reg = await navigator.serviceWorker.getRegistration('/');
+      if (reg) {
+        d('d-sw', '✓ registered', 'diag-ok');
+      } else {
+        d('d-sw', '⚠ not yet registered', 'diag-warn');
+      }
+    } catch (e) {
+      d('d-sw', '✗ error: ' + e.message, 'diag-fail');
+    }
+
+    // FCM token
+    const saved = localStorage.getItem('fcm_token');
+    d('d-token', saved ? '✓ saved (' + saved.slice(0, 12) + '…)' : '⚠ none', saved ? 'diag-ok' : 'diag-warn');
+
+    // Server notification status
+    try {
+      const r = await fetch('/api/notifications/status');
+      const s = await r.json();
+      if (s.ready) {
+        d('d-server', `✓ ready (${s.activeDevices} device${s.activeDevices !== 1 ? 's' : ''})`, 'diag-ok');
+      } else {
+        d('d-server', '✗ NOT ready — restart the server', 'diag-fail');
+      }
+    } catch {
+      d('d-server', '✗ server not reachable', 'diag-fail');
+    }
+
+    // Show test button if already registered
+    if (perm === 'granted' && saved) {
+      btnTest.style.display = 'block';
+      btn.textContent = '🔄 Re-register this device';
+    }
+  }
+
+  runDiag();
+
+  // Foreground message handler — shows notification when this tab is in focus
+  let messagingInstance = null;
+  async function initForegroundHandler(swReg) {
+    try {
+      const app       = initializeApp(FIREBASE_CONFIG);
+      messagingInstance = getMessaging(app);
+      onMessage(messagingInstance, (payload) => {
+        navigator.serviceWorker.ready.then((reg) => {
+          const n = payload.notification || {};
+          const tag = payload.data?.tag || 'livetv';
+          reg.showNotification(n.title || 'Live TV Controller', {
+            body: n.body || '', icon: n.icon || '/icon-192.png',
+            tag, renotify: true, badge: '/icon-192.png',
+          });
+        });
+      });
+    } catch (_) {}
+  }
+
+  // Try to set up foreground handler on page load if already registered
+  navigator.serviceWorker.getRegistration('/').then(reg => {
+    if (reg) initForegroundHandler(reg);
+  }).catch(() => {});
+
+  // Send a test notification via the server
+  window.sendTestNow = async function () {
+    btnTest.disabled = true;
+    btnTest.innerHTML = '<span class="spinner"></span>Sending…';
+    try {
+      const r = await fetch('/api/notifications/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: localStorage.getItem('fcm_token') }),
+      });
+      if (r.ok) {
+        showStatus('success', '✅ Test sent! Check your notification shade.\n\nIf you see nothing:\n• Android Settings → Apps → Chrome → Notifications must be ON\n• Chrome → Site Settings → Notifications → this site must be Allowed');
+      } else {
+        const e = await r.json();
+        showStatus('error', '❌ Server error: ' + (e.error || r.status));
+      }
+    } catch (err) {
+      showStatus('error', '❌ ' + err.message);
+    }
+    btnTest.disabled = false;
+    btnTest.innerHTML = '🧪 Send test notification';
+  };
+
+  window.setup = async function() {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Step 1/4: Registering service worker…';
+    showStatus('info', 'Setting up…');
+
+    try {
+      // Step 1: Register service worker (force update to get fresh SW)
+      const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+        scope: '/',
+        updateViaCache: 'none',  // always fetch fresh SW script
+      });
+      // Wait for SW to be active
+      await new Promise(resolve => {
+        if (swReg.active) { resolve(); return; }
+        const sw = swReg.installing || swReg.waiting;
+        if (sw) sw.addEventListener('statechange', () => { if (sw.state === 'activated') resolve(); });
+        else resolve();
+      });
+      d('d-sw', '✓ registered', 'diag-ok');
+
+      // Step 2: Request notification permission
+      btn.innerHTML = '<span class="spinner"></span>Step 2/4: Requesting permission…';
+      const permission = await Notification.requestPermission();
+      localStorage.setItem('fcm_permission_status', permission);
+      d('d-perm', permission === 'granted' ? '✓ granted' : '✗ ' + permission,
+        permission === 'granted' ? 'diag-ok' : 'diag-fail');
+
+      if (permission !== 'granted') {
+        showStatus('error',
+          '❌ Permission denied.<br><br>' +
+          '<b>On Android:</b><br>' +
+          '1. Android Settings → Apps → Chrome → Notifications → turn ON<br>' +
+          '2. Come back here and tap Enable again');
+        btn.innerHTML = '🔔 Enable Notifications';
+        btn.disabled = false;
+        return;
+      }
+
+      // Step 3: Get FCM token
+      btn.innerHTML = '<span class="spinner"></span>Step 3/4: Getting device token…';
+      showStatus('info', 'Connecting to Firebase…');
+
+      const app       = initializeApp(FIREBASE_CONFIG);
+      messagingInstance = getMessaging(app);
+
+      // Read OLD token BEFORE overwriting (needed for cleanup)
+      const oldToken = localStorage.getItem('fcm_token');
+
+      let token = null;
+      for (let i = 1; i <= 3; i++) {
+        try {
+          token = await getToken(messagingInstance, { vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg });
+          break;
+        } catch (e) {
+          if (i === 3) throw new Error('Could not get FCM token: ' + e.message);
+          await new Promise(r => setTimeout(r, i * 1500));
+        }
+      }
+
+      if (!token) throw new Error('FCM returned empty token');
+      d('d-token', '✓ ' + token.slice(0, 12) + '…', 'diag-ok');
+
+      // Step 4: Register with server (remove old token first to prevent duplicates)
+      btn.innerHTML = '<span class="spinner"></span>Step 4/4: Registering with server…';
+
+      if (oldToken && oldToken !== token) {
+        // Delete old token from server so only 1 token per device
+        try {
+          await fetch('/api/notifications/register', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: oldToken }),
+          });
+        } catch (_) { /* best effort */ }
+      }
+
+      // Save new token
+      localStorage.setItem('fcm_token', token);
+
+      const res = await fetch('/api/notifications/register', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          deviceName: `${getBrowserName()} on ${navigator.platform || 'Device'}`,
+          userAgent:  navigator.userAgent,
+        }),
+      });
+
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+
+      // Set up foreground handler so notifications show when this tab is open
+      onMessage(messagingInstance, (payload) => {
+        navigator.serviceWorker.ready.then((reg) => {
+          const n = payload.notification || {};
+          const tag = payload.data?.tag || 'livetv';
+          reg.showNotification(n.title || 'Live TV Controller', {
+            body: n.body || '', icon: n.icon || '/icon-192.png',
+            tag, renotify: true, badge: '/icon-192.png',
+          });
+        });
+      });
+
+      // Re-check server status
+      try {
+        const sr = await fetch('/api/notifications/status');
+        const ss = await sr.json();
+        d('d-server', ss.ready
+          ? `✓ ready (${ss.activeDevices} device${ss.activeDevices !== 1 ? 's' : ''})`
+          : '✗ NOT ready — restart server', ss.ready ? 'diag-ok' : 'diag-fail');
+      } catch (_) {}
+
+      showStatus('success',
+        '✅ Done! Notifications enabled.<br><br>' +
+        'Tap <b>Send test notification</b> below to verify your phone shows it.<br><br>' +
+        '<span style="font-size:12px;opacity:0.8">If the test arrives but you still miss real notifications:<br>' +
+        '• Android Settings → Apps → Chrome → Notifications → ON<br>' +
+        '• Keep Chrome running in the background</span>');
+
+      btn.innerHTML = '🔄 Re-register this device';
+      btn.disabled = false;
+      btnTest.style.display = 'block';
+
+    } catch (err) {
+      console.error('[Setup]', err);
+      showStatus('error', `❌ Setup failed: ${err.message}`);
+      btn.innerHTML = '🔔 Try Again';
+      btn.disabled = false;
+    }
+  };
+</script>
+</body>
+</html>

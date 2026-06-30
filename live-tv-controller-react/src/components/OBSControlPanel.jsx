@@ -3,6 +3,7 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useOBS } from '../context/OBSContext';
 import PreviewBox from './PreviewBox';
 import SettingsBackup from './SettingsBackup';
+import NotificationSettings from './NotificationSettings';
 import { LIVE_PLAYER_EVENT_KEY, PLAYER_EVENT_KEY, DELAY_PLAYER_EVENT_KEY, LOCAL_PLAYER_EVENT_KEY } from '../utils/core-utils';
 import { logError, LogCategory, LogType } from '../utils/logger';
 
@@ -354,6 +355,9 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
 
             {/* Settings Export / Import */}
             <SettingsBackup />
+
+            {/* Push Notification Settings */}
+            <NotificationSettings />
         </div>
     );
 };

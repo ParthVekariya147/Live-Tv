@@ -69,9 +69,28 @@ run(`"${pkgBin}" . --no-bytecode --public-packages "*" --public --output "${EXE_
 // Clean up temp bundle
 try { fs.unlinkSync(path.join(ROOT, 'live-tv-api', '.bundle.cjs')); } catch {}
 
-// Move output to exe/ folder
+// Move output to exe/ folder (with retry for OneDrive / antivirus locks)
+function moveFile(src, dest, retries = 5, delayMs = 1000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      fs.renameSync(src, dest);
+      return;
+    } catch (err) {
+      if (err.code !== 'EBUSY' && err.code !== 'EPERM') throw err;
+      if (i < retries - 1) {
+        console.log(`  ⏳ File locked (${err.code}), retrying in ${delayMs / 1000}s... (${i + 1}/${retries})`);
+        execSync(`powershell -Command "Start-Sleep -Milliseconds ${delayMs}"`, { stdio: 'ignore' });
+      }
+    }
+  }
+  // Final fallback: copy + delete
+  console.log('  ⏳ Rename failed after retries, falling back to copy + delete...');
+  fs.copyFileSync(src, dest);
+  try { fs.unlinkSync(src); } catch {}
+}
+
 if (fs.existsSync(EXE_TEMP)) {
-  fs.renameSync(EXE_TEMP, EXE_OUT);
+  moveFile(EXE_TEMP, EXE_OUT);
   const size = (fs.statSync(EXE_OUT).size / 1024 / 1024).toFixed(1);
   console.log(`\n  ====================================`);
   console.log(`   Build #${BUILD_NUM} complete!`);

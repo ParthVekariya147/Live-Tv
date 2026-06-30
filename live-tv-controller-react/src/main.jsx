@@ -4,6 +4,7 @@ import './index.css'
 import App from './App.jsx'
 import { OBSProvider } from './context/OBSContext.jsx'
 import { logError, LogCategory, LogType } from './utils/logger.js'
+import { initFCM } from './services/fcm.js'
 
 window.onerror = (msg, src, line, col, err) => {
     logError(
@@ -30,3 +31,9 @@ createRoot(document.getElementById('root')).render(
     </OBSProvider>
   </StrictMode>,
 )
+
+// Init FCM after React has painted — avoids blocking initial render
+// and gives the service worker time to register cleanly.
+setTimeout(() => {
+  initFCM().catch(err => console.warn('[FCM] Init error:', err))
+}, 2000)

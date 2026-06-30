@@ -87,10 +87,14 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
         setSelectedChannelId(newId);
         localStorage.setItem(LIVE_CHANNEL_SELECT_KEY, newId);
         lastAutoLoadedIdRef.current = null;
+        localStorage.removeItem('lastAutoLoadedVideoId');
     }, []);
 
-    // Use a ref for lastAutoLoadedId so it doesn't trigger effect re-runs
-    const lastAutoLoadedIdRef = useRef(null);
+    // Persist lastAutoLoadedId across page reloads so the monitor doesn't re-dispatch
+    // a play command for the video that was already playing before the reload.
+    const lastAutoLoadedIdRef = useRef(
+        localStorage.getItem('lastAutoLoadedVideoId') || null
+    );
 
     const fetchLiveVideoDetails = useCallback(async () => {
         if (!monitor1Enabled && !monitor2Enabled) {
@@ -177,6 +181,7 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
                 videoIdToAutoLoad !== lastAutoLoadedIdRef.current
             ) {
                 lastAutoLoadedIdRef.current = videoIdToAutoLoad;
+                localStorage.setItem('lastAutoLoadedVideoId', videoIdToAutoLoad);
 
                 const videoTitle = liveEvents.find(e => e.videoId === videoIdToAutoLoad)?.title || 'Unknown';
                 const channelName = liveEvents.find(e => e.videoId === videoIdToAutoLoad)?.channelName || 'Swaminarayan';
