@@ -395,15 +395,20 @@ const LivePlayerCard = () => {
         }
     };
 
-    const handleExport = async () => {
+    const handleExport = () => {
         const timestamp = new Date().toLocaleString();
         const data = `Video ID: ${videoId || "N/A"}\nPriority: ${priority}\nTimestamp: ${timestamp}`;
-        try {
-            await navigator.clipboard.writeText(data);
-            setStatusText("Data copied to clipboard!");
-        } catch {
-            setStatusText("Failed to copy");
-        }
+        const blob = new Blob([data], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        a.href = url;
+        a.download = `live-player-export-${stamp}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        setStatusText("Exported to file");
     };
 
     // ── Manual toggle (REC button) ────────────────────────────────────────────

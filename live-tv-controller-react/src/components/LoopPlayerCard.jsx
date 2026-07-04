@@ -23,6 +23,8 @@ const LoopPlayerCard = () => {
     useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
     const [inputValue, setInputValue] = useState("");
     const [jumpIndex, setJumpIndex] = useState(""); // For jump to index feature
+    const [isImporting, setIsImporting] = useState(false);
+    const fileInputRef = useRef(null);
 
     // Playback State
     const [isPlaying, setIsPlaying] = useState(true);
@@ -46,7 +48,8 @@ const LoopPlayerCard = () => {
                 if (parsed.playlist && parsed.playlist.length > 0) {
                     setPlaylist(parsed.playlist);
                     setCurrentIndex(parsed.currentIndex || 0);
-                    setInputValue(parsed.playlist.join(','));
+                    // Don't dump the (potentially huge) playlist back into the text input —
+                    // a single-line <input> with 10,000+ IDs freezes the browser on render.
                     setIsPlaying(parsed.isPlaying ?? true);
                     setIsMuted(parsed.isMuted ?? false);
                     setIsStopped(parsed.isStopped ?? false);
@@ -297,15 +300,89 @@ const LoopPlayerCard = () => {
         setStatusText("Playlist reset");
     };
 
-    const handleExport = async () => {
-        const timestamp = new Date().toLocaleString();
-        const currentVid = playlist[currentIndex] || "N/A";
-        const data = `Video ID: ${currentVid}\nPlaylist: ${playlist.join(', ')}\nCurrent Index: ${currentIndex + 1}/${playlist.length}\nTimestamp: ${timestamp}`;
+    const handleExport = () => {
+        if (playlist.length === 0) {
+            setStatusText("Playlist is empty — nothing to export");
+            return;
+        }
+        // Download as a real file (one ID per line) — clipboard copy silently
+        // fails/truncates for large playlists, which is why exports looked incomplete.
+        const blob = new Blob([playlist.join('\n')], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        a.href = url;
+        a.download = `loop-player-playlist-${stamp}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        setStatusText(`Exported ${playlist.length.toLocaleString()} video ID(s) to file`);
+    };
+
+    // Splits raw pasted/file text into IDs — accepts newline, comma, or CR/LF separated lists.
+    const parseIdsFromText = (text) => text.split(/[\r\n,]+/).map(s => s.trim()).filter(Boolean);
+
+    // Accepts either a bare 11-char YouTube ID or a full URL (watch?v=, youtu.be/, /shorts/, /embed/)
+    // and returns just the ID — so files/pastes built from copied URLs still work.
+    const YOUTUBE_URL_ID_RE = /(?:v=|\/embed\/|\/shorts\/|youtu\.be\/|\/v\/)([a-zA-Z0-9_-]{11})/;
+    const extractVideoId = (raw) => {
+        const trimmed = String(raw ?? '').trim();
+        if (!trimmed) return '';
+        if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) return trimmed;
+        const match = trimmed.match(YOUTUBE_URL_ID_RE);
+        return match ? match[1] : trimmed;
+    };
+
+    const loadIds = (rawIds, sourceLabel) => {
+        const unique = [...new Set(rawIds.map(extractVideoId).filter(Boolean))];
+        if (unique.length === 0) {
+            setStatusText("No video IDs found");
+            return;
+        }
+        setPlaylist(unique);
+        setCurrentIndex(0);
+        setInputValue("");
+        hasUserData.current = true;
+        setStatusText(`Loaded ${unique.length.toLocaleString()} video ID(s)${sourceLabel ? ` from ${sourceLabel}` : ''}`);
+    };
+
+    // Large pastes (10,000-50,000+ IDs) freeze the browser if they land inside a
+    // single-line <input>. Intercept them and parse directly instead of rendering.
+    const handleInputPaste = (e) => {
+        const text = e.clipboardData?.getData('text') || '';
+        if (text.length > 20000) {
+            e.preventDefault();
+            loadIds(parseIdsFromText(text), 'paste');
+        }
+    };
+
+    const handleFileImport = async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = ''; // allow re-selecting the same file next time
+        if (!file) return;
+
+        setIsImporting(true);
+        setStatusText(`Reading ${file.name}...`);
         try {
-            await navigator.clipboard.writeText(data);
-            setStatusText("Data copied to clipboard!");
+            const ext = file.name.split('.').pop().toLowerCase();
+            let ids;
+            if (ext === 'xlsx' || ext === 'xls') {
+                const XLSX = await import('xlsx');
+                const buf = await file.arrayBuffer();
+                const wb = XLSX.read(buf, { type: 'array' });
+                const sheet = wb.Sheets[wb.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                ids = rows.flat().map(v => String(v ?? '').trim()).filter(Boolean);
+            } else {
+                ids = parseIdsFromText(await file.text());
+            }
+            loadIds(ids, file.name);
         } catch (err) {
-            setStatusText("Failed to copy");
+            console.error('Loop Player file import error:', err);
+            setStatusText('Failed to read file: ' + err.message);
+        } finally {
+            setIsImporting(false);
         }
     };
 
@@ -320,9 +397,18 @@ const LoopPlayerCard = () => {
             <input
                 type="text"
                 className="input-field"
-                placeholder="Comma-separated YouTube IDs"
+                placeholder="Comma-separated YouTube IDs (small lists — use Import File for 1000+)"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
+                onPaste={handleInputPaste}
+            />
+
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept=".txt,.csv,.xlsx,.xls"
+                style={{ display: 'none' }}
+                onChange={handleFileImport}
             />
 
             <div className="btn-group mt-2">
@@ -332,6 +418,14 @@ const LoopPlayerCard = () => {
                     disabled={loadingAction}
                 >
                     {loadingAction ? <><span className="btn-spinner" /> Loading</> : 'Load'}
+                </PlayerControlBtn>
+                <PlayerControlBtn
+                    className={`btn-neutral${isImporting ? ' btn-loading' : ''}`}
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isImporting}
+                    title="Import video IDs from a .txt, .csv or Excel file — one ID per line, or comma-separated"
+                >
+                    {isImporting ? <><span className="btn-spinner" /> Reading</> : 'Import File'}
                 </PlayerControlBtn>
                 <PlayerControlBtn className={isPlaying ? "btn-success" : "btn-danger"} onClick={handlePlayPause}>
                     {isPlaying ? "Playing" : "Paused"}

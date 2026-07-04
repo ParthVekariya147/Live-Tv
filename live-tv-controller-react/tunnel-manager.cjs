@@ -39,6 +39,10 @@ async function startTunnel(port, { maxRetries = 3, subdomain } = {}) {
             if (subdomain) opts.subdomain = subdomain;
             const tunnel = await localtunnel(opts);
 
+            if (subdomain && !tunnel.url.includes(subdomain)) {
+                console.warn(`[Tunnel] ⚠ Requested subdomain "${subdomain}" was unavailable — got ${tunnel.url} instead. Phones registered against the old URL must re-register.`);
+            }
+
             // Update env var in-process immediately
             process.env.TUNNEL_URL = tunnel.url;
 

@@ -11,7 +11,7 @@ const tokenStore = require('./token-store.cjs');
 
 // Top-level requires so pkg can detect and bundle these modules.
 // Init() still handles runtime errors gracefully if credentials are missing.
-let _fbApp, _fbCert, _fbMessaging;
+let _fbApp, _fbCert, _fbMessaging, _fbLoadError;
 try {
     const fbApp = require('firebase-admin/app');
     _fbApp  = fbApp.initializeApp;
@@ -21,7 +21,22 @@ try {
     // Also pre-load getApp for reuse detection
     const { getApp } = fbApp;
     _fbApp._getApp = getApp;
-} catch (_) { /* firebase-admin unavailable — notificationService.ready stays false */ }
+} catch (subpathErr) {
+    // pkg's resolver can fail on the "firebase-admin/app" subpath export inside
+    // the exe. The v14 main entry re-exports the app API (initializeApp, cert,
+    // getApp), and the real lib file path — which pkg resolves fine — provides
+    // getMessaging. Node itself never reaches this branch (subpaths work there).
+    try {
+        const admin = require('firebase-admin');
+        _fbApp = admin.initializeApp;
+        _fbApp._getApp = admin.getApp;
+        _fbCert = admin.cert;
+        _fbMessaging = require('firebase-admin/lib/messaging/index.js').getMessaging;
+        console.warn('[NotificationService] Loaded firebase-admin via fallback paths (subpath failed:', subpathErr.message + ')');
+    } catch (mainErr) {
+        _fbLoadError = mainErr.message || subpathErr.message;
+    }
+}
 
 // ── Provider abstraction ────────────────────────────────────────────────────
 
@@ -178,7 +193,7 @@ class NotificationService {
         }
         try {
             if (!_fbApp || !_fbCert || !_fbMessaging) {
-                throw new Error('firebase-admin could not be loaded — check installation');
+                throw new Error(`firebase-admin could not be loaded — ${_fbLoadError || 'check installation'}`);
             }
 
             let app;

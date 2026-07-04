@@ -2080,8 +2080,12 @@ server.listen(PORT, () => {
         }
 
         // 2. Auto-start localtunnel for trusted HTTPS (bypasses self-signed cert issue on phones)
-        console.log('[Tunnel] Auto-starting localtunnel…');
-        await tunnelManager.startTunnel(PORT);
+        // A pinned subdomain keeps the URL stable across restarts, so phones that
+        // registered earlier don't hit "503 Tunnel Unavailable" on a dead random URL.
+        const tunnelSubdomain = (process.env.TUNNEL_SUBDOMAIN || '').trim()
+            || 'smk-tv-' + require('crypto').createHash('md5').update(require('os').hostname()).digest('hex').slice(0, 8);
+        console.log(`[Tunnel] Auto-starting localtunnel (subdomain: ${tunnelSubdomain})…`);
+        await tunnelManager.startTunnel(PORT, { subdomain: tunnelSubdomain });
     })();
 
     const primaryIP = ipDetector.getPrimaryLANIP();

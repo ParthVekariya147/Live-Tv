@@ -30,7 +30,6 @@
     let player;
     const PLAYER_KEY = "livePlayerCommand"; // Unique key for this player in localStorage
     const LIVE_PLAYER_EVENT_KEY = 'livePlayerEvent';
-    let videoDuration;
     let isLoadingVideo = false; // Flag to prevent videoEnded during loading
     let timeUpdateInterval = null; // 24/7 Reliability: Track interval for cleanup
 
@@ -238,14 +237,17 @@
       if (!player || typeof player.getPlayerState !== "function") {
         return;
       }
-      if (!videoDuration) videoDuration = player.getDuration()
-      const currentTime = player.getCurrentTime()
-      // FIX 2: Check state using the correct method and constant
-      if (player.getPlayerState() === YT.PlayerState.PLAYING) {
+      // Read duration fresh every tick — caching it once made every later
+      // video inherit the first video's duration (and remaining time went
+      // negative, which the controller renders as a blank).
+      const duration = player.getDuration();
+      const currentTime = player.getCurrentTime();
+      // getDuration() returns 0 until the video's metadata is loaded — skip until then
+      if (player.getPlayerState() === YT.PlayerState.PLAYING && duration > 0) {
         reportEvent("timeUpdate", {
-          // FIX 2: Get time using the correct method
           currentTime,
-          remainingTime: videoDuration - currentTime
+          duration,
+          remainingTime: Math.max(0, duration - currentTime)
         });
       }
     }, 1000);

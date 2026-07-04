@@ -7,6 +7,13 @@
 
 const fs         = require('fs');
 const path       = require('path');
+
+// selfsigned v5 (via pkijs) needs the WebCrypto global, which Node 18 — the pkg
+// exe runtime — doesn't provide. Shim it before selfsigned is loaded.
+if (!globalThis.crypto) {
+    try { globalThis.crypto = require('crypto').webcrypto; } catch (_) {}
+}
+
 const selfsigned = require('selfsigned');
 
 function getCertPaths() {
@@ -51,6 +58,9 @@ async function generate(lanIPs, paths) {
 
     // selfsigned v5+ is async
     const pems = await selfsigned.generate(attrs, opts);
+    if (!pems || !pems.cert || !pems.private) {
+        throw new Error('selfsigned.generate() returned an incomplete result (missing cert/private key)');
+    }
 
     const dataDir = path.dirname(paths.cert);
     if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
@@ -92,6 +102,16 @@ async function getCert(lanIPs = []) {
         return _cached;
     } catch (err) {
         console.error('[CertManager] Failed to generate certificate:', err.message);
+        // Fall back to the last good cert (even if its IPs are stale) so the
+        // HTTPS setup server still starts instead of silently disappearing.
+        if (fs.existsSync(paths.cert) && fs.existsSync(paths.key)) {
+            console.warn('[CertManager] Using previously generated cert — it may not cover the current LAN IPs');
+            _cached = {
+                cert: fs.readFileSync(paths.cert, 'utf8'),
+                key:  fs.readFileSync(paths.key,  'utf8'),
+            };
+            return _cached;
+        }
         return null;
     }
 }

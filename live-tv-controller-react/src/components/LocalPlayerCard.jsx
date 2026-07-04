@@ -849,19 +849,24 @@ const LocalPlayerCard = () => {
         setEndActions(newEndActions);
     };
 
-    const handleExport = async () => {
+    const handleExport = () => {
         const timestamp = new Date().toLocaleString();
         const playlistPaths = playlist.map((item, i) =>
             `${i + 1}. [${item.enabled !== false ? 'ON' : 'OFF'}] ${item.name || item.path || "Empty"}`
         ).join('\n');
         const endActionsStr = endActions.map((action, i) => `${daysMap[i]}: ${action || "Do Nothing"}`).join(', ');
         const data = `Local PC Player Playlist\nTimestamp: ${timestamp}\nCurrent: ${currentIndex + 1}/${playlist.length}\n\nPlaylist:\n${playlistPaths}\n\nEnd Actions: ${endActionsStr}`;
-        try {
-            await navigator.clipboard.writeText(data);
-            setStatusText("Data copied to clipboard!");
-        } catch (err) {
-            setStatusText("Failed to copy");
-        }
+        const blob = new Blob([data], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        a.href = url;
+        a.download = `local-player-playlist-${stamp}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        setStatusText("Exported to file");
     };
 
     const enabledCount = playlist.filter(item => item.enabled !== false).length;
