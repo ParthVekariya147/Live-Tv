@@ -42,6 +42,17 @@ console.log(`  ====================================`);
 // Ensure exe/ output folder exists
 fs.mkdirSync(EXE_DIR, { recursive: true });
 
+// Sync .env into the exe folder. The packaged exe reads its env from next to
+// process.execPath (windows/exe/.env), not the repo root — that copy silently
+// drifted out of sync after Firebase Admin credentials were added to the root
+// .env, so every build kept shipping without server-side push notifications
+// even though the UI and tunnel worked fine.
+const rootEnvPath = path.join(ROOT, '.env');
+if (fs.existsSync(rootEnvPath)) {
+  fs.copyFileSync(rootEnvPath, path.join(EXE_DIR, '.env'));
+  console.log('  .env synced to exe/.env');
+}
+
 // Step 1: Build React UI
 console.log('\n[1/4] Building React UI...');
 run('npm run build', path.join(ROOT, 'live-tv-controller-react'));
