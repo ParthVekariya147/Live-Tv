@@ -1,7 +1,8 @@
 # SMK TV — Live TV Controller — Full Feature Report
 
 > One-file reference: what the project does, every feature, how each one works internally, and where its code lives.
-> Generated: 2026-07-01
+> Generated: 2026-07-01 · Last updated: 2026-07-14 (confirm-before-notify scheduler flow, Delay Player keyword skip, tunnel health checks, YouTube description caching)
+> When something is broken, start with [TROUBLESHOOTING.md](TROUBLESHOOTING.md) instead.
 
 ---
 
@@ -55,7 +56,7 @@ Live-Tv/                              ← git root
 | `live-tv-api` | 3000 | YouTube data proxy (live streams, upcoming events, Katha videos, descriptions) |
 | `live-tv-controller-react` (dev UI) | 3004 | Vite dev server, proxies to 3005 |
 | `live-tv-controller-react` (dev API) | 3005 | Express + WebSocket (dev only) |
-| `live-tv-controller-react` (production) | 3003 or `CONTROLLER_PORT` | Single Express server serves UI + API + WebSocket |
+| `live-tv-controller-react` (production) | 3004 (`CONTROLLER_PORT`) | Single Express server serves UI + API + WebSocket — same port as the dev UI, so OBS Browser Source URLs never change |
 | HTTPS (mobile notification setup) | `HTTPS_PORT` (see server.cjs) | Self-signed cert server, needed because push notifications require a secure context on phones |
 
 ---
@@ -118,7 +119,7 @@ React PlayerCard  →  localStorage.setItem(commandKey, JSON.stringify(cmd))
 OBS Browser Source HTML page  →  YouTube IFrame API / <video> element
 ```
 
-This gives zero-latency, server-free IPC between the control UI and the actual on-air players, because OBS Browser Sources and the control-panel tab are the same origin (`localhost:3003`).
+This gives zero-latency, server-free IPC between the control UI and the actual on-air players, because OBS Browser Sources and the control-panel tab are the same origin (`localhost:3004`).
 
 ### 4.1 Loop Player
 `src/components/LoopPlayerCard.jsx` + `public/LoopPlayer.html`
@@ -133,6 +134,8 @@ Plays a single YouTube video ID — normally the actual live broadcast. Can be a
 ### 4.3 Delay Live Player
 `src/components/DelayPlayerCard.jsx` + `public/DelayLive.html`
 Plays a YouTube video ID starting at a specific timestamp and stopping at another — used to air a segment with a custom in/out window (e.g. skip a video's intro, or delay a live feed). On end, hides itself and falls back to Loop Player if Live Player isn't currently visible.
+
+**Skip section by keyword** (added July 2026): a checkbox + comma-separated keyword input on the card. On Load & Play, the card fetches the video's description from `live-tv-api` (`/api/video-description`), scans description lines that carry a `H:MM(:SS)` timestamp, and for each keyword found builds a skip range from that line's timestamp to the *next* timestamp in the description (if the keyword sits on the last timestamp, the video simply finishes there). Overlapping ranges are merged, then sent to `DelayLive.html` as a `setSkipRanges` player command; the player's 1-second watcher seeks over any range it enters, so the section is never shown on air. Everything is best-effort and non-blocking — if the description fetch fails or no keyword matches, the video plays in full and the card's status line says why. The checkbox + keywords persist in `localStorage['delayPlayerState']`.
 
 ### 4.4 Local PC Player
 `src/components/LocalPlayerCard.jsx` + `public/LocalPCPlayer.html`
@@ -152,7 +155,16 @@ This supports HTTP Range requests (required for `<video>` seeking) and avoids br
 
 Each schedule has: title, time (`HH:MM`), target OBS source, action (`show`/`hide`/`local_player_start`/`local_player_stop`/`local_player_next`), recurrence (`daily` / `weekly` with specific weekdays / `once`), enabled flag, and `lastTriggered`. On server restart, any schedule whose expected trigger time has already passed (and hasn't fired) is caught up immediately. Failed triggers retry up to 3 times with a 5-second delay; after repeated failures an alert is broadcast over WebSocket and (if configured) pushed as a notification. The last 100 executions and running totals (`totalTriggers`, `totalMissed`, `totalSkipped`, `totalRetries`) are kept for the Scheduler UI's health view. Individual schedules can also be "skipped" for their next occurrence only.
 
-The React `Scheduler.jsx` component connects to the server's WebSocket, receives `SCHEDULER_TICK` (for countdowns) and `SCHEDULER_TRIGGER` (executes the actual OBS visibility change or Local Player command), and manages CRUD for schedules via REST.
+The React `Scheduler.jsx` component connects to the server's WebSocket, receives `SCHEDULER_TICK` (for countdowns — since July 2026 it carries next-trigger info for *all* schedules, not just 10) and `SCHEDULER_TRIGGER` (executes the actual OBS visibility change or Local Player command), and manages CRUD for schedules via REST. Besides `show`/`hide` and `local_player_start/stop/next`, the Katha Monitor registers its own `katha_refresh` and `katha_player` actions.
+
+**Confirm-before-notify (added July 2026):** for `show`/`hide` triggers, the push notification is no longer sent the instant the timer matches. Instead:
+
+1. The frontend executes the OBS change via `setSourceVisibilityConfirmed()` (`OBSContext.jsx`), which waits for OBS's own `RequestResponse` (op 7) instead of firing blind.
+2. It reports the real outcome back with `reportTriggerResult()` (`scheduler-api.js`) — over the WebSocket as a `TRIGGER_RESULT` message, or `POST /api/scheduler/trigger-result` as a REST fallback if the socket is down.
+3. The server (`server.cjs` → `awaitTriggerConfirmation`) holds the notification until that report arrives: success → normal `SCHEDULER_TRIGGER` push; failure or skip (OBS disconnected, source missing, Live Player active) → a `SCHEDULER_TRIGGER_FAILED` push with the concrete reason.
+4. If nothing reports back within **130 s** (browser closed, tab dead, OBS never reconnected — deliberately longer than the frontend's 2-minute trigger-replay window), the server sends the failure push anyway, so a silent no-op never looks like a successful run.
+
+Non-OBS actions (`katha_refresh`, `katha_player`, `local_player_*`) have no confirmation path and notify immediately as before.
 
 ---
 
@@ -193,10 +205,11 @@ This is the newest feature set (added in the latest commit, alongside SSL and th
 **How it's wired together:**
 
 1. **Device registration** — A phone/browser visits `GET /setup` (served by `server.cjs`), which shows `public/setup.html`. That page registers a Web Push subscription and posts the resulting FCM token to `POST /api/notifications/register` (`server.cjs` → `token-store.cjs`). Tokens are stored in `data/fcm-tokens.json` with atomic write + `.bak` recovery (same pattern as `state-service.cjs`). Max token count is capped (`MAX_FCM_TOKENS`, default 50); oldest inactive tokens are evicted first.
-2. **Sending a notification** — Application code calls `notificationService.send(eventName, data)` (see call sites in `server.cjs` around scheduler trigger/alert handling). `notification-service.cjs` looks up a message template for the event (`SCHEDULER_TRIGGER`, `SCHEDULER_ALERT`, `RECORDING_STARTED/STOPPED/ERROR`, `BACKUP_COMPLETED`, `MEMORY_WARNING`, `MONITOR_LIVE`), checks per-event on/off preferences (read from `data/app-state.json`), then sends via Firebase Admin SDK's `sendEachForMulticast` (chunked at 500 tokens/call) to every active device token. Failed/expired tokens are automatically pruned from the store. Every send is appended to a rolling history (`data/notification-history.json`, capped at 500 entries, only if `NOTIFICATION_HISTORY=true`).
+2. **Sending a notification** — Application code calls `notificationService.send(eventName, data)` (see call sites in `server.cjs` around scheduler trigger/alert handling). `notification-service.cjs` looks up a message template for the event (`SCHEDULER_TRIGGER`, `SCHEDULER_TRIGGER_FAILED`, `SCHEDULER_ALERT`, `RECORDING_STARTED/STOPPED/ERROR`, `BACKUP_COMPLETED`, `MEMORY_WARNING`, `MONITOR_LIVE`), checks per-event on/off preferences (read from `data/app-state.json`), then sends via Firebase Admin SDK's `sendEachForMulticast` (chunked at 500 tokens/call) to every active device token. Failed/expired tokens are automatically pruned from the store. Every send is appended to a rolling history (`data/notification-history.json`, capped at 500 entries, only if `NOTIFICATION_HISTORY=true`).
 3. **Receiving on the device** — `public/firebase-messaging-sw.js` is a plain service worker (not the Firebase JS SDK, to avoid depending on `gstatic.com` availability) that listens for the raw `push` event, shows a native OS notification, and focuses/opens the app tab on click.
 4. **Why HTTPS matters** — Web Push and service workers require a secure context. Since this app normally runs on plain `http://localhost`, `cert-manager.cjs` generates a self-signed certificate (`selfsigned` package) whose Subject Alternative Names cover every current LAN IP address (via `ip-detector.cjs`) plus `localhost`/`127.0.0.1`. `server.cjs` starts a parallel `https` server with that cert so phones on the same LAN can load `/setup` over HTTPS and accept push permission. The cert is cached in `data/ssl-*.pem` and only regenerated if the LAN IP list changes.
-5. **Off-LAN access** — `tunnel-manager.cjs` optionally starts a public `localtunnel` on server boot, writes the resulting HTTPS URL into the shared `.env` as `TUNNEL_URL`, and auto-reconnects if the tunnel drops (localtunnel's free tier is flaky). This lets `/setup` be reached from outside the LAN (e.g. mobile data) without port-forwarding.
+5. **Off-LAN access** — `tunnel-manager.cjs` optionally starts a public `localtunnel` on server boot, writes the resulting HTTPS URL into the shared `.env` as `TUNNEL_URL`, and auto-reconnects if the tunnel drops (localtunnel's free tier is flaky). This lets `/setup` be reached from outside the LAN (e.g. mobile data) without port-forwarding. Because the localtunnel client can stay "connected" while the public edge answers 502/503 (no close/error event fires), the manager also **polls the real public URL every 45 s** — two consecutive failures force a reconnect (`checkTunnelHealth` / `forceReconnect` exports). `GET /api/notifications/setup-url` performs the same live check before handing out the tunnel URL in the QR code, falling back to the LAN HTTPS URL if the tunnel is dead.
+6. **Honest test sends** — `sendTest()` throws when FCM rejects the token (surfacing FCM's real error code *and* message, e.g. the cause behind `app/invalid-credential`), so the setup page and in-app "send test" button show real failures instead of a false success.
 
 **Notification API surface** (all in `server.cjs`):
 
@@ -204,7 +217,7 @@ This is the newest feature set (added in the latest commit, alongside SSL and th
 |---|---|
 | `GET /setup` | Serves the mobile/device registration page |
 | `POST /api/notifications/register` | Register/refresh a device's FCM token |
-| `DELETE /api/notifications/register` | Remove a device token |
+| `DELETE /api/notifications/register` | Remove a device — accepts `{ token }` (setup page) or `{ deviceId }` (in-app UI, which never sees raw tokens) |
 | `GET /api/notifications/devices` | List registered devices (token itself excluded from response) |
 | `POST /api/notifications/test` | Send a test push to an arbitrary token |
 | `POST /api/notifications/test-device` | Send a test push to a specific registered device by id |
@@ -249,7 +262,9 @@ A small, standalone Node HTTP server (no Express) run separately on port 3000, w
 |---|---|
 | `GET /api/live?channelId=` | Currently-live + upcoming videos for a channel (defaults to the configured "streams" channel) |
 | `GET /api/videos` | Last ~30 recent uploads for the Katha Monitor channel |
-| `GET /api/video-description?videoId=` | Scrapes a video's full description (used to find the Mangla Charan timestamp) |
+| `GET /api/video-description?videoId=` | A video's full description (Mangla Charan timestamp detection, Delay Player keyword-skip) |
+
+**Description endpoint resilience** (hardened July 2026 after the machine's IP got 429-blocked by YouTube): responses are cached in memory for 6 hours; at most 3 watch-page fetches run concurrently (the Katha Monitor requests ~30 descriptions at once); the primary source is YouTube's **innertube API** (`POST youtubei/v1/player` — a small JSON call that keeps working even when the watch page is behind the Google "sorry" block), with the HTML scrape as fallback; a 429 puts the scrape path on a 5-minute cooldown; and if every source is down, an expired cache entry is served with `stale: true` rather than failing.
 
 Background refresh runs every 90 seconds (`warmCache`, `fetchStreamChannel`, `fetchKathaChannel`) so the endpoints usually respond from cache instantly. Also deployable standalone to Vercel (`vercel.json`, `DEPLOY.md` present in that folder).
 
@@ -269,6 +284,8 @@ Background refresh runs every 90 seconds (`warmCache`, `fetchStreamChannel`, `fe
 | `node smk.cjs start` / `stop` / `restart` | Manage production processes through PM2 (`ecosystem.config.cjs` defines `smk-controller` and `smk-api` processes) |
 | `node smk.cjs install` | Runs `npm install` in root, `live-tv-api/`, and `live-tv-controller-react/` |
 | `node smk.cjs status` / `logs` | PM2 status / tailing logs |
+
+`build.cjs` (the EXE pipeline behind `smk.cjs exe` / `npm run build:exe`) auto-numbers builds by scanning `windows/exe/` (`SMK TV <N>.exe`), **syncs the root `.env` into `windows/exe/.env`** (the packaged exe reads its env from next to `process.execPath`, not the repo root — this copy once drifted and silently shipped builds without Firebase credentials), and retries the final file move up to 5× with a copy+delete fallback to survive OneDrive/antivirus `EBUSY`/`EPERM` locks.
 
 `env-loader.cjs` loads the single shared root `.env` file so all three Node processes (launcher, API, controller) see identical configuration — ports, Firebase credentials, tunnel settings, etc. Windows (`windows/Start SMK TV.bat`, `Stop SMK TV.bat`, `Build SMK TV.bat`) and Mac (`mac/SMK TV.app`, `Build SMK TV.command`, `stop.command`) each get double-clickable equivalents for non-technical operation.
 
@@ -312,7 +329,8 @@ Player UI state (current video, playlist, play/pause flags) additionally persist
 | `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` | `notification-service.cjs` | Firebase Admin SDK credentials for sending push notifications |
 | `MAX_FCM_TOKENS` | `token-store.cjs` | Cap on stored device tokens (default 50) |
 | `NOTIFICATION_HISTORY` | `notification-service.cjs` | Set `true` to persist send history to disk |
-| `TUNNEL_URL` | `tunnel-manager.cjs` (auto-written), read by setup-url endpoint | Public HTTPS URL for `/setup` when off-LAN access is enabled |
+| `TUNNEL_URL` | `tunnel-manager.cjs` (auto-written), read by setup-url endpoint | Public HTTPS URL for `/setup` when off-LAN access is enabled — machine-managed, don't hand-edit while running |
+| `HTTPS_PORT` | `server.cjs` | Self-signed HTTPS server port for phone setup (default 3443) |
 
 ---
 
@@ -327,4 +345,4 @@ Player UI state (current video, playlist, play/pause flags) additionally persist
 
 ---
 
-*Companion documents: `live-tv-controller-react/PROJECT.md` (deep technical reference for the controller app specifically — architecture diagrams, full REST/WebSocket tables, localStorage key reference), `FCM-PUSH-NOTIFICATIONS.md` and `FCM-PARALLEL-PLAN.md` (original design docs for the push notification feature), `COMMANDS.md` (day-to-day ops command reference).*
+*Companion documents: `TROUBLESHOOTING.md` (symptom → cause → fix, start here when something breaks), `live-tv-controller-react/PROJECT.md` (deep technical reference for the controller app specifically — architecture diagrams, full REST/WebSocket tables, localStorage key reference), `FCM-PUSH-NOTIFICATIONS.md` and `FCM-PARALLEL-PLAN.md` (original design docs for the push notification feature — historical), `COMMANDS.md` (day-to-day ops command reference).*

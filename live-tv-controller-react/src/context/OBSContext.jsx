@@ -42,6 +42,9 @@ export const OBSProvider = ({ children }) => {
 
     const pollIntervalRef = useRef(null);
     const socketRef = useRef(null);
+    // Tracks in-flight OBS requests awaiting their op:7 RequestResponse, keyed by requestId —
+    // lets sendRequestConfirmed() resolve with the real OBS-side result instead of firing blind.
+    const pendingRequestsRef = useRef(new Map());
     const obsReconnectTimeoutRef = useRef(null);
     const obsReconnectDelayRef = useRef(5000);
     const OBS_MAX_RECONNECT_DELAY = 60000;
@@ -74,6 +77,26 @@ export const OBSProvider = ({ children }) => {
         ws.send(JSON.stringify(payload));
     }, []);
 
+    // Like sendRequest, but resolves with the OBS-side outcome instead of firing blind.
+    // Used only where a caller needs to know the action actually took effect (e.g. the
+    // scheduler's confirm-before-notify flow) — everyday UI calls stay on sendRequest.
+    const sendRequestConfirmed = useCallback((type, data = {}, timeoutMs = 5000) => {
+        return new Promise((resolve) => {
+            const ws = socketRef.current;
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                resolve({ ok: false, reason: 'OBS WebSocket not open' });
+                return;
+            }
+            const requestId = `${type}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            const timeoutId = setTimeout(() => {
+                pendingRequestsRef.current.delete(requestId);
+                resolve({ ok: false, reason: 'OBS did not respond in time' });
+            }, timeoutMs);
+            pendingRequestsRef.current.set(requestId, { resolve, timeoutId });
+            ws.send(JSON.stringify({ op: 6, d: { requestType: type, requestId, requestData: data } }));
+        });
+    }, []);
+
     const getCurrentScene = useCallback(() => {
         sendRequest("GetCurrentProgramScene");
     }, [sendRequest]);
@@ -97,6 +120,18 @@ export const OBSProvider = ({ children }) => {
     }, [getStreamStatus, getRecordStatus, getVirtualCamStatus, getSceneItems]);
 
     const handleOBSMessage = useCallback((msg) => {
+        if (msg.op === 7) {
+            const pending = pendingRequestsRef.current.get(msg.d.requestId);
+            if (pending) {
+                clearTimeout(pending.timeoutId);
+                pendingRequestsRef.current.delete(msg.d.requestId);
+                pending.resolve({
+                    ok: !!msg.d.requestStatus.result,
+                    reason: msg.d.requestStatus.result ? null : (msg.d.requestStatus.comment || 'OBS rejected the request')
+                });
+            }
+        }
+
         if (msg.op === 7 && msg.d.requestStatus.result) {
             switch (msg.d.requestType) {
                 case "GetCurrentProgramScene": {
@@ -414,6 +449,60 @@ export const OBSProvider = ({ children }) => {
         return true;
     }, [sendRequest]);
 
+    // Confirmed variant of setSourceVisibility — awaits OBS's actual RequestResponse
+    // before resolving, so callers (the scheduler's confirm-before-notify flow) know
+    // the change really took effect rather than assuming success once it's sent.
+    const setSourceVisibilityConfirmed = useCallback(async (sourceName, visible, trigger = 'scheduler') => {
+        const currentSourceIds = sourceIdsRef.current;
+
+        if (!sceneNameRef.current) {
+            return { ok: false, reason: 'OBS scene name unknown' };
+        }
+        if (currentSourceIds[sourceName] == null) {
+            return { ok: false, reason: `Source "${sourceName}" not found in OBS scene` };
+        }
+
+        const result = await sendRequestConfirmed('SetSceneItemEnabled', {
+            sceneName: sceneNameRef.current,
+            sceneItemId: currentSourceIds[sourceName],
+            sceneItemEnabled: visible
+        });
+
+        if (!result.ok) return result;
+
+        setSourceState(prev => ({ ...prev, [sourceName]: visible }));
+        logSourceChange(sourceName, visible, trigger, null);
+
+        if (visible) {
+            localStorage.setItem(ACTIVE_SOURCE_KEY, sourceName);
+            // Enforce exclusivity: turning ON one source turns OFF all others.
+            // These companion calls are best-effort (fire-and-forget) — the caller's
+            // confirmation only depends on the primary source's own acknowledgment.
+            SOURCE_NAMES.forEach(s => {
+                if (s !== sourceName && currentSourceIds[s] != null && sourceStateRef.current[s]) {
+                    sendRequest("SetSceneItemEnabled", {
+                        sceneName: sceneNameRef.current,
+                        sceneItemId: currentSourceIds[s],
+                        sceneItemEnabled: false
+                    });
+                    setSourceState(prev => ({ ...prev, [s]: false }));
+                }
+            });
+        } else {
+            const anyOtherVisible = SOURCE_NAMES.some(s => s !== sourceName && sourceStateRef.current[s]);
+            if (!anyOtherVisible && currentSourceIds["Loop Player"] != null) {
+                sendRequest("SetSceneItemEnabled", {
+                    sceneName: sceneNameRef.current,
+                    sceneItemId: currentSourceIds["Loop Player"],
+                    sceneItemEnabled: true
+                });
+                setSourceState(prev => ({ ...prev, "Loop Player": true }));
+            }
+        }
+
+        return result;
+    }, [sendRequestConfirmed, sendRequest]);
+
     const toggleSource = useCallback((sourceName) => {
         const current = sourceStateRef.current[sourceName];
         setSourceVisibility(sourceName, !current);
@@ -446,6 +535,7 @@ export const OBSProvider = ({ children }) => {
             toggleRecord,
             toggleVirtualCam,
             setSourceVisibility,
+            setSourceVisibilityConfirmed,
             toggleSource,
             obsSettings,
             updateOBSSettings,

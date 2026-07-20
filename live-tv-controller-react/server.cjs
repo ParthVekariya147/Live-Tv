@@ -178,6 +178,14 @@ wss.on('connection', (ws) => {
     console.log('[WebSocket] Client connected');
     wsClients.add(ws);
 
+    ws.on('message', (raw) => {
+        let msg;
+        try { msg = JSON.parse(raw); } catch (_) { return; }
+        if (msg?.type === 'TRIGGER_RESULT' && msg.data) {
+            handleTriggerResult(msg.data);
+        }
+    });
+
     ws.on('close', () => {
         console.log('[WebSocket] Client disconnected');
         wsClients.delete(ws);
@@ -192,7 +200,7 @@ wss.on('connection', (ws) => {
     try {
         ws.send(JSON.stringify({ type: 'SCHEDULER_STATUS', data: scheduler.getStatus(), timestamp: new Date().toISOString() }));
         ws.send(JSON.stringify({ type: 'SCHEDULES_UPDATED', data: { schedules: scheduler.getAllSchedules() }, timestamp: new Date().toISOString() }));
-        ws.send(JSON.stringify({ type: 'SCHEDULER_TICK', data: { nextTriggers: scheduler.getNextTriggers(10), serverTime: new Date().toISOString() }, timestamp: new Date().toISOString() }));
+        ws.send(JSON.stringify({ type: 'SCHEDULER_TICK', data: { nextTriggers: scheduler.getNextTriggers(scheduler.schedules.length), serverTime: new Date().toISOString() }, timestamp: new Date().toISOString() }));
         ws.send(JSON.stringify({ type: 'STATE_SYNC', data: stateService.getAll(), timestamp: new Date().toISOString() }));
         const unackedAlerts = scheduler.getUnacknowledgedAlerts();
         if (unackedAlerts.length > 0) {
@@ -270,13 +278,6 @@ scheduler.onTrigger = (triggerData) => {
     // Broadcast to all WebSocket clients
     broadcast('SCHEDULER_TRIGGER', triggerData);
 
-    // Push notification
-    notificationService.send('SCHEDULER_TRIGGER', {
-        scheduleName: triggerData.title || triggerData.source,
-        action: triggerData.action,
-        time: new Date().toLocaleTimeString(),
-    }).catch(() => {});
-
     // Persist trigger history (newest first, max 10)
     const history = stateService.get('schedulerTriggerHistory') || [];
     history.unshift({
@@ -296,7 +297,71 @@ scheduler.onTrigger = (triggerData) => {
         message: `Schedule triggered: ${triggerData.action} ${triggerData.source} - ${triggerData.title}`,
         data: triggerData
     });
+
+    // OBS show/hide actions are confirmed by the frontend — it's the only side that knows
+    // whether OBS was connected, the source existed, and OBS's own response said it actually
+    // applied the change. Hold the push notification until that confirmation arrives instead
+    // of notifying the instant the scheduler's timer matched. Non-OBS actions (katha_refresh,
+    // katha_player, ...) have no such confirmation path, so notify immediately as before.
+    if (triggerData.action === 'show' || triggerData.action === 'hide') {
+        awaitTriggerConfirmation(triggerData);
+    } else {
+        notificationService.send('SCHEDULER_TRIGGER', {
+            scheduleName: triggerData.title || triggerData.source,
+            action: triggerData.action,
+            time: new Date().toLocaleTimeString(),
+        }).catch(() => {});
+    }
 };
+
+// ============================================
+// SCHEDULER TRIGGER CONFIRMATION (confirm-before-notify)
+// ============================================
+// The push notification for a show/hide trigger is held here until the frontend reports
+// back (via TRIGGER_RESULT) whether OBS actually confirmed the change. If nothing reports
+// back in time — app closed, tab backgrounded, OBS never reconnected — we still notify,
+// but as a failure, so a silent no-op never looks like a successful run.
+const pendingTriggerConfirmations = new Map(); // `${id}-${triggerKey}` -> { timeout, triggerData }
+// Must exceed the frontend's OBS_TRIGGER_EXPIRY_MS (2 minutes, Scheduler.jsx) — that's how
+// long it keeps retrying a queued trigger after OBS reconnects, so this can't time out sooner
+// without contradicting a success report that arrives right after.
+const TRIGGER_CONFIRM_TIMEOUT_MS = 130000;
+
+function awaitTriggerConfirmation(triggerData) {
+    const key = `${triggerData.id}-${triggerData.triggerKey}`;
+    const timeout = setTimeout(() => {
+        pendingTriggerConfirmations.delete(key);
+        notificationService.send('SCHEDULER_TRIGGER_FAILED', {
+            scheduleName: triggerData.title || triggerData.source,
+            action: triggerData.action,
+            reason: `No confirmation from the app within ${Math.round(TRIGGER_CONFIRM_TIMEOUT_MS / 1000)}s (closed, backgrounded, or OBS unreachable)`,
+        }).catch(() => {});
+    }, TRIGGER_CONFIRM_TIMEOUT_MS);
+    pendingTriggerConfirmations.set(key, { timeout, triggerData });
+}
+
+function handleTriggerResult({ id, triggerKey, ok, reason, action, source, title } = {}) {
+    const key = `${id}-${triggerKey}`;
+    const pending = pendingTriggerConfirmations.get(key);
+    if (pending) {
+        clearTimeout(pending.timeout);
+        pendingTriggerConfirmations.delete(key);
+    }
+
+    if (ok) {
+        notificationService.send('SCHEDULER_TRIGGER', {
+            scheduleName: title || source,
+            action,
+            time: new Date().toLocaleTimeString(),
+        }).catch(() => {});
+    } else {
+        notificationService.send('SCHEDULER_TRIGGER_FAILED', {
+            scheduleName: title || source,
+            action,
+            reason: reason || 'Unknown error',
+        }).catch(() => {});
+    }
+}
 
 // After each successful execution, push updated schedules to all clients so
 // React state always has the latest lastTriggered values.  Without this,
@@ -391,7 +456,7 @@ scheduler.start();
 let tickInterval = setInterval(() => {
     if (wsClients.size > 0) {
         const tickData = {
-            nextTriggers: scheduler.getNextTriggers(10),
+            nextTriggers: scheduler.getNextTriggers(scheduler.schedules.length),
             serverTime: new Date().toISOString(),
             isRunning: scheduler.isRunning,
             schedulesCount: scheduler.schedules.length
@@ -420,7 +485,9 @@ process.on('SIGINT', () => {
 // MIDDLEWARE
 // ============================================
 
-app.use(express.json());
+// Large playlists (50k+ loop-player IDs) make state/backup/import bodies exceed
+// Express's 100kb default, which 413-rejects them and silently drops the data.
+app.use(express.json({ limit: '100mb' }));
 
 // ============================================
 // STATIC FILE SERVING
@@ -721,6 +788,13 @@ app.get('/api/scheduler/next', (req, res) => {
         success: true,
         nextTriggers: scheduler.getNextTriggers(count)
     });
+});
+
+// POST /api/scheduler/trigger-result - REST fallback for reporting a trigger's confirmed
+// outcome when the WebSocket isn't open at the moment the frontend finishes executing it.
+app.post('/api/scheduler/trigger-result', (req, res) => {
+    handleTriggerResult(req.body || {});
+    res.json({ success: true });
 });
 
 // GET /api/scheduler/status - Get scheduler status
@@ -1826,12 +1900,20 @@ app.post('/api/notifications/register', async (req, res) => {
     }
 });
 
-// DELETE /api/notifications/register — remove a device token
+// DELETE /api/notifications/register — remove a device token.
+// Accepts either the raw token (setup page has it client-side) or a deviceId
+// (the controller UI only ever sees ids — /devices strips tokens on purpose).
 app.delete('/api/notifications/register', (req, res) => {
     try {
-        const { token } = req.body || {};
-        if (!token) return res.status(400).json({ error: 'token is required' });
-        const removed = tokenStore.removeToken(token);
+        const { token, deviceId } = req.body || {};
+        let tok = token;
+        if (!tok && deviceId) {
+            const dev = tokenStore.getTokens().find(t => t.id === deviceId);
+            if (!dev) return res.status(404).json({ error: 'Device not found' });
+            tok = dev.token;
+        }
+        if (!tok) return res.status(400).json({ error: 'token or deviceId is required' });
+        const removed = tokenStore.removeToken(tok);
         res.json({ removed });
     } catch (err) {
         res.status(500).json({ error: 'Failed to remove token' });
@@ -1950,8 +2032,16 @@ app.get('/api/notifications/setup-url', async (req, res) => {
         const allIPs = ipDetector.getLANIPs().filter(ip => ip !== '127.0.0.1');
         const primaryIP = ipDetector.getPrimaryLANIP();
 
-        // Prefer tunnel URL (trusted cert) over self-signed LAN HTTPS
-        const tunnelBase = (process.env.TUNNEL_URL || '').replace(/\/$/, '');
+        // Prefer tunnel URL (trusted cert) over self-signed LAN HTTPS — but only if
+        // it actually resolves right now. The tunnel client can look "connected"
+        // while the public edge answers with 502/503, so verify live instead of
+        // trusting the env var, and kick a reconnect in the background if it's down.
+        let tunnelBase = (process.env.TUNNEL_URL || '').replace(/\/$/, '');
+        if (tunnelBase && !(await tunnelManager.checkTunnelHealth(tunnelBase))) {
+            console.warn('[Notifications] Tunnel unreachable at QR-generation time — falling back to LAN URL, requesting reconnect');
+            tunnelManager.forceReconnect();
+            tunnelBase = '';
+        }
         const primaryUrl = tunnelBase
             ? `${tunnelBase}/setup`
             : `https://${primaryIP}:${HTTPS_PORT_VAL}/setup`;

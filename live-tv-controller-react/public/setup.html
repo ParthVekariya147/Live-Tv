@@ -292,11 +292,15 @@
       if (r.ok) {
         showStatus('success', '✅ Test sent! Check your notification shade.\n\nIf you see nothing:\n• Android Settings → Apps → Chrome → Notifications must be ON\n• Chrome → Site Settings → Notifications → this site must be Allowed');
       } else {
-        const e = await r.json();
-        showStatus('error', '❌ Server error: ' + (e.error || r.status));
+        // The response may arrive truncated/corrupted over a flaky tunnel —
+        // don't let a raw JSON.parse error leak to the user, just fall back
+        // to the HTTP status.
+        let message = 'HTTP ' + r.status;
+        try { message = (await r.json()).error || message; } catch (_) {}
+        showStatus('error', '❌ Server error: ' + message);
       }
     } catch (err) {
-      showStatus('error', '❌ ' + err.message);
+      showStatus('error', '❌ Could not reach the server — check your connection and try again.');
     }
     btnTest.disabled = false;
     btnTest.innerHTML = '🧪 Send test notification';

@@ -211,7 +211,9 @@ function cmdDev() {
     }
 
     // Vite dev server
-    const vite = spawn(IS_WIN ? 'npm.cmd' : 'npm', ['run', 'dev'], { cwd: REACT, stdio: 'inherit', shell: false });
+    // shell:true is required on Windows here — spawning a .cmd file with shell:false
+    // throws EINVAL on Node versions patched for CVE-2024-27980 (Node >= 18.20.2/20.12.2/21.7.3).
+    const vite = spawn(IS_WIN ? 'npm.cmd' : 'npm', ['run', 'dev'], { cwd: REACT, stdio: 'inherit', shell: IS_WIN });
     procs.push(vite);
 
     const cleanup = () => {

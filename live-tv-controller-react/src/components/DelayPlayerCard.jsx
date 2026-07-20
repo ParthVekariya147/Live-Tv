@@ -1,13 +1,69 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useOBS } from '../context/OBSContext';
-import { sendPlayerCommand, timeToSeconds, DELAY_PLAYER_EVENT_KEY } from '../utils/core-utils';
+import { sendPlayerCommand, timeToSeconds, secondsToHMS, DELAY_PLAYER_EVENT_KEY } from '../utils/core-utils';
 import { usePlayerTime } from '../utils/usePlayerHooks';
 import { useVideoInfo } from '../hooks/useVideoInfo';
 import { logVideoLoad, logVideoPlay } from '../utils/logger';
 import { setStateValue } from '../utils/state-api';
 import PlayerControlBtn from './common/PlayerControlBtn';
 import ThumbnailLoader from './common/ThumbnailLoader';
+
+const LOCAL_API_BASE = import.meta.env.VITE_LOCAL_API_BASE || "http://localhost:3000";
+
+async function fetchVideoDescription(videoId) {
+    const response = await fetch(
+        `${LOCAL_API_BASE}/api/video-description?videoId=${encodeURIComponent(videoId)}`,
+        { signal: AbortSignal.timeout(15000), cache: 'no-store' }
+    );
+    if (!response.ok) throw new Error(`API HTTP ${response.status}`);
+    const payload = await response.json();
+    return payload.description || "";
+}
+
+// Finds the sections to skip, one per keyword: each section runs from the
+// timestamp on the keyword's description line to the next timestamp in the
+// description (end = null when the keyword is the last timestamp → finish there).
+// Handles both "12:34 Keyword" and "Keyword 12:34" orderings.
+// Overlapping/touching sections are merged so the player gets a clean sorted list.
+function findKeywordSkipRanges(description, keywords) {
+    const result = { ranges: [], notFound: [] };
+    if (!description || keywords.length === 0) return result;
+    const timePattern = /\d{1,2}:\d{2}(?::\d{2})?/;
+    const stampLines = [];
+    for (const line of description.split('\n')) {
+        const timeMatch = line.match(timePattern);
+        if (!timeMatch) continue;
+        const seconds = timeToSeconds(timeMatch[0]);
+        if (seconds === null) continue;
+        stampLines.push({ seconds, lower: line.toLowerCase() });
+    }
+    const allStamps = stampLines.map(s => s.seconds);
+    for (const keyword of keywords) {
+        const lowerKeyword = keyword.toLowerCase();
+        const hit = stampLines.find(s => s.lower.includes(lowerKeyword));
+        if (!hit) {
+            result.notFound.push(keyword);
+            continue;
+        }
+        const later = allStamps.filter(s => s > hit.seconds);
+        result.ranges.push({ start: hit.seconds, end: later.length > 0 ? Math.min(...later) : null });
+    }
+    result.ranges.sort((a, b) => a.start - b.start);
+    const merged = [];
+    for (const range of result.ranges) {
+        const prev = merged[merged.length - 1];
+        if (prev && (prev.end === null || range.start <= prev.end)) {
+            if (prev.end !== null) {
+                prev.end = range.end === null ? null : Math.max(prev.end, range.end);
+            }
+        } else {
+            merged.push({ ...range });
+        }
+    }
+    result.ranges = merged;
+    return result;
+}
 
 const DelayPlayerCard = () => {
     const { sourceState } = useOBS();
@@ -30,6 +86,9 @@ const DelayPlayerCard = () => {
     const [isStopped, setIsStopped] = useState(false);
     const [loadingAction, setLoadingAction] = useState(false);
 
+    const [keywordSkipEnabled, setKeywordSkipEnabled] = useState(false);
+    const [skipKeyword, setSkipKeyword] = useState("");
+
     const { title: videoTitle, thumbnail: videoThumbnail, loading: thumbLoading } = useVideoInfo(videoId);
     const [statusText, setStatusText] = useState("Not loaded");
 
@@ -49,6 +108,8 @@ const DelayPlayerCard = () => {
                     setIsPlaying(parsed.isPlaying ?? true);
                     setIsMuted(parsed.isMuted ?? false);
                     setIsStopped(parsed.isStopped ?? false);
+                    setKeywordSkipEnabled(parsed.keywordSkipEnabled ?? false);
+                    setSkipKeyword(parsed.skipKeyword || "");
                     hasUserData.current = true; // Mark that we have valid user data
                 }
             } catch (e) { }
@@ -91,10 +152,10 @@ const DelayPlayerCard = () => {
             hasUserData.current = true;
         }
 
-        const state = { videoId, startTime, endTime, isPlaying, isMuted, isStopped };
+        const state = { videoId, startTime, endTime, isPlaying, isMuted, isStopped, keywordSkipEnabled, skipKeyword };
         localStorage.setItem('delayPlayerState', JSON.stringify(state));
         setStateValue('player.delay', state);
-    }, [videoId, startTime, endTime, isPlaying, isMuted, isStopped]);
+    }, [videoId, startTime, endTime, isPlaying, isMuted, isStopped, keywordSkipEnabled, skipKeyword]);
 
     // Always-current ref to flush current state on demand (pre-backup / pre-export)
     const flushStateRef = useRef(null);
@@ -102,7 +163,7 @@ const DelayPlayerCard = () => {
         flushStateRef.current = () => {
             if (!isInitialized.current) return;
             if (!hasUserData.current && !videoId) return;
-            const state = { videoId, startTime, endTime, isPlaying, isMuted, isStopped };
+            const state = { videoId, startTime, endTime, isPlaying, isMuted, isStopped, keywordSkipEnabled, skipKeyword };
             localStorage.setItem('delayPlayerState', JSON.stringify(state));
             setStateValue('player.delay', state);
         };
@@ -156,9 +217,55 @@ const DelayPlayerCard = () => {
             const startSeconds = startTimeRef.current ? timeToSeconds(startTimeRef.current) : 0;
             const endSeconds = endTimeRef.current ? timeToSeconds(endTimeRef.current) : null;
             sendPlayerCommand('delayLivePlayerCommand', 'loadVideo', vid, startSeconds, endSeconds);
+            // loadVideo resets the player's skip sections — re-send them for this video
+            if (skipRangeRef.current && skipRangeRef.current.videoId === vid) {
+                sendSkipRanges(skipRangeRef.current);
+            }
             setIsPlaying(true);
             setIsStopped(false);
             setIsMuted(false);
+        }
+    };
+
+    // Skip sections computed from the description — sent to the player after load.
+    // Kept in a ref so resumePlayback can re-send them when the source becomes visible.
+    const skipRangeRef = useRef(null); // { videoId, ranges: [{ start, end }] }
+
+    const sendSkipRanges = (entry) => {
+        sendPlayerCommand('delayLivePlayerCommand', 'setSkipRanges', null, null, null, null, {
+            skipRanges: entry.ranges,
+        });
+    };
+
+    // Fetch description in the background and tell the player which sections to skip.
+    // Never delays or changes the normal load — video starts from Start Time as always.
+    const applyKeywordSkip = async (vid, playerIsVisible) => {
+        const keywords = skipKeyword.split(',').map(k => k.trim()).filter(Boolean);
+        try {
+            const description = await fetchVideoDescription(vid);
+            const { ranges, notFound } = findKeywordSkipRanges(description, keywords);
+            if (ranges.length === 0) {
+                skipRangeRef.current = null;
+                setStatusText(`Keyword${keywords.length > 1 ? 's' : ''} "${keywords.join(', ')}" not found in description — playing full video.`);
+                return;
+            }
+            skipRangeRef.current = { videoId: vid, ranges };
+            if (playerIsVisible) {
+                sendSkipRanges(skipRangeRef.current);
+            }
+            const parts = ranges.map(r =>
+                r.end === null
+                    ? `${secondsToHMS(r.start)} → finish`
+                    : `${secondsToHMS(r.start)} → ${secondsToHMS(r.end)}`
+            );
+            let msg = `Playing. Will skip ${parts.join(', ')}.`;
+            if (notFound.length > 0) {
+                msg += ` Not found: ${notFound.join(', ')}.`;
+            }
+            setStatusText(msg);
+        } catch (err) {
+            skipRangeRef.current = null;
+            setStatusText(`Description fetch failed (${err.message}) — playing full video.`);
         }
     };
 
@@ -170,6 +277,7 @@ const DelayPlayerCard = () => {
 
         setLoadingAction(true);
         hasUserData.current = true;
+        skipRangeRef.current = null;
 
         const startSeconds = startTime ? timeToSeconds(startTime) : 0;
         const endSeconds = endTime ? timeToSeconds(endTime) : null;
@@ -186,6 +294,10 @@ const DelayPlayerCard = () => {
         } else {
             setStatusText("Loaded - will play when source is visible.");
             logVideoLoad('Delay Live', videoId, videoTitle, 'manual_prepared', { startTime, endTime });
+        }
+
+        if (keywordSkipEnabled && skipKeyword.trim()) {
+            applyKeywordSkip(videoId, isVisible);
         }
 
         setTimeout(() => setLoadingAction(false), 800);
@@ -264,6 +376,27 @@ const DelayPlayerCard = () => {
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
             />
+
+            <label className="flex items-center gap-2 mt-2 cursor-pointer select-none">
+                <input
+                    type="checkbox"
+                    checked={keywordSkipEnabled}
+                    onChange={() => setKeywordSkipEnabled(!keywordSkipEnabled)}
+                    className="accent-cyan-500"
+                />
+                <span className={keywordSkipEnabled ? 'text-gray-200' : 'text-gray-500'}>
+                    Skip section by keyword (keyword timestamp → next timestamp)
+                </span>
+            </label>
+            {keywordSkipEnabled && (
+                <input
+                    type="text"
+                    className="input-field mt-2"
+                    placeholder="Keywords, comma separated (e.g. Kirtan, Dhun)"
+                    value={skipKeyword}
+                    onChange={(e) => setSkipKeyword(e.target.value)}
+                />
+            )}
 
             <div className="btn-group mt-2">
                 <PlayerControlBtn

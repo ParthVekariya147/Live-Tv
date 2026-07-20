@@ -3,6 +3,7 @@
 > Project: Live TV Controller (`live-tv-controller-react`)
 > Strategy: Two independent tracks (Backend + Frontend) run in parallel, then merge.
 > Execution: Fully autonomous — no prompts, no confirmations, continuous until done.
+> Status: **HISTORICAL — executed and complete.** Kept for context only; current behavior is documented in `FEATURES-REPORT.md` §8 and `TROUBLESHOOTING.md` §3.
 
 ---
 

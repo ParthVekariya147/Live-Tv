@@ -16,6 +16,7 @@ import {
     skipScheduleDay,
     cancelScheduleSkip,
     importSchedules,
+    reportTriggerResult,
     connectWebSocket,
     disconnectWebSocket,
     addWsListener,
@@ -36,7 +37,7 @@ const daysList = [
 const OBS_TRIGGER_EXPIRY_MS = 2 * 60 * 1000; // drop pending OBS actions after 2 min
 
 const Scheduler = () => {
-    const { sourceState, sourceIds, setSourceVisibility, isConnected: obsConnected } = useOBS();
+    const { sourceState, sourceIds, setSourceVisibilityConfirmed, isConnected: obsConnected } = useOBS();
 
     // Server state
     const [schedules, setSchedules] = useState([]);
@@ -107,9 +108,19 @@ const Scheduler = () => {
         setTriggerLog(prev => [entry, ...prev].slice(0, 5));
     }, []);
 
-    // Execute a show/hide OBS action for a trigger
-    const executeOBSTrigger = useCallback((triggerData) => {
+    // Execute a show/hide OBS action for a trigger, then report the confirmed outcome
+    // back to the server so it can hold the push notification until the real result is known.
+    const executeOBSTrigger = useCallback(async (triggerData) => {
         const now = new Date();
+        const report = (ok, reason) => reportTriggerResult({
+            id: triggerData.id,
+            triggerKey: triggerData.triggerKey,
+            action: triggerData.action,
+            source: triggerData.source,
+            title: triggerData.title,
+            ok,
+            reason
+        });
 
         // Check OBS connected
         if (!obsConnectedRef.current) {
@@ -143,34 +154,44 @@ const Scheduler = () => {
             logWarn('SCHEDULER_SOURCE_NOT_FOUND', LogCategory.SCHEDULER,
                 { source: triggerData.source, knownSources },
                 `[FRONTEND] ✗ Source "${triggerData.source}" not found in OBS`);
+            report(false, reason);
             return;
         }
 
-        // All checks pass — execute
+        // All checks pass — execute, and wait for OBS's own RequestResponse before
+        // treating this as a real success (not just "we sent the command").
         logInfo('SCHEDULER_TRIGGER_EXECUTING', LogCategory.SCHEDULER,
             { ...triggerData, executingAt: now.toISOString() },
             `[FRONTEND] Executing: ${triggerData.action} ${triggerData.source}`);
 
         const targetVisibility = triggerData.action === 'show';
-        setSourceVisibility(triggerData.source, targetVisibility, 'scheduler');
+        const result = await setSourceVisibilityConfirmed(triggerData.source, targetVisibility, 'scheduler');
 
         pushTriggerLog({
             time: now,
             source: triggerData.source,
             action: triggerData.action,
             title: triggerData.title,
-            ok: true,
-            reason: null
+            ok: result.ok,
+            reason: result.ok ? null : result.reason
         });
 
-        logSchedulerTrigger(
-            triggerData.id,
-            triggerData.time,
-            triggerData.action,
-            triggerData.source,
-            triggerData.title
-        );
-    }, [setSourceVisibility, pushTriggerLog]);
+        if (result.ok) {
+            logSchedulerTrigger(
+                triggerData.id,
+                triggerData.time,
+                triggerData.action,
+                triggerData.source,
+                triggerData.title
+            );
+        } else {
+            logWarn('SCHEDULER_TRIGGER_OBS_REJECTED', LogCategory.SCHEDULER,
+                { ...triggerData, reason: result.reason },
+                `[FRONTEND] ✗ OBS did not confirm: ${triggerData.action} ${triggerData.source} — ${result.reason}`);
+        }
+
+        report(result.ok, result.reason);
+    }, [setSourceVisibilityConfirmed, pushTriggerLog]);
 
     // Handle trigger from server - execute OBS action (or queue if OBS is disconnected)
     const handleServerTrigger = useCallback((triggerData) => {
@@ -197,6 +218,15 @@ const Scheduler = () => {
                 status: 'skipped',
                 skipReason: 'Live Player Active'
             }, ...prev].slice(0, 20));
+            reportTriggerResult({
+                id: triggerData.id,
+                triggerKey: triggerData.triggerKey,
+                action: triggerData.action,
+                source: triggerData.source,
+                title: triggerData.title,
+                ok: false,
+                reason: 'Live Player is active/visible'
+            });
             return;
         }
 

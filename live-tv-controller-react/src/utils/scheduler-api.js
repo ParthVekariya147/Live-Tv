@@ -180,6 +180,29 @@ export const cancelScheduleSkip = async (id) => {
 };
 
 /**
+ * Report whether a scheduler-fired trigger actually executed (confirmed by OBS)
+ * or failed/was skipped. The server holds the trigger's push notification until
+ * this arrives (or times out), so it only ever notifies once the real outcome is known.
+ * Sent over the live WebSocket when available; falls back to REST so a dropped
+ * WS connection can't silently swallow the report.
+ */
+export const reportTriggerResult = async (payload) => {
+    if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+        wsConnection.send(JSON.stringify({ type: 'TRIGGER_RESULT', data: payload }));
+        return;
+    }
+    try {
+        await fetch(`${API_BASE}/api/scheduler/trigger-result`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+    } catch (error) {
+        console.error('Error reporting trigger result:', error);
+    }
+};
+
+/**
  * Get next pending triggers
  */
 export const getNextTriggers = async (count = 5) => {
@@ -357,6 +380,7 @@ export default {
     toggleSchedule,
     importSchedules,
     getNextTriggers,
+    reportTriggerResult,
     connectWebSocket,
     disconnectWebSocket,
     addWsListener,

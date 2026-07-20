@@ -35,6 +35,11 @@
     // Store current start/end seconds in variables (not from localStorage on each play)
     let currentStartSeconds = 0;
     let currentEndSeconds = null;
+    // Skip sections (from "setSkipRanges" command): when playback enters
+    // [start, end) of any section it seeks ahead to that section's end, so the
+    // section is never shown. end === Infinity means "finish the video there"
+    // (keyword was the last timestamp). Reset on every loadVideo.
+    let skipRanges = []; // sorted [{ start, end }]
     let isLoadingVideo = false; // Flag to prevent videoEnded during loading
     let lastLoadedVideoId = null; // Track last loaded video to prevent duplicate ended events
 
@@ -150,11 +155,38 @@
     function startDurationTimer(playerInstance, startSec, endSec) {
       clearDurationTimer(); // Clear any existing timer
 
-      if (endSec !== null && endSec !== undefined && endSec > 0) {
+      const hasEnd = endSec !== null && endSec !== undefined && endSec > 0;
+      // Run the watcher when there is an end time OR skip sections to enforce.
+      // Skip bounds are read from the global each tick so a setSkipRanges that
+      // arrives while already playing takes effect without restarting the timer.
+      if (hasEnd || skipRanges.length > 0) {
         durationTimer = setInterval(() => {
           const currentTime = playerInstance.getCurrentTime();
+          // Inside a skip section → jump over it, never show it
+          for (const range of skipRanges) {
+            if (currentTime >= range.start && currentTime < range.end) {
+              // Infinity = keyword was the last timestamp: finish the video here,
+              // exactly like reaching the end time
+              if (range.end === Infinity) {
+                console.log(
+                  `DelayLivePlayer: Reached last-chapter skip at ${range.start}s. Finishing video.`
+                );
+                reportEvent("videoEnded", {
+                  videoId: playerInstance.getVideoData().video_id,
+                });
+                playerInstance.pauseVideo();
+                clearDurationTimer();
+                return;
+              }
+              console.log(
+                `DelayLivePlayer: Skipping section ${range.start}s → ${range.end}s.`
+              );
+              playerInstance.seekTo(range.end, true);
+              return;
+            }
+          }
           // If current time exceeds endSeconds, report to controller and pause
-          if (currentTime >= endSec) {
+          if (hasEnd && currentTime >= endSec) {
             console.log(
               `DelayLivePlayer: Reached end time ${endSec}. Reporting 'videoEnded' to controller.`
             );
@@ -219,6 +251,9 @@
                   // Store times in variables
                   currentStartSeconds = startSeconds;
                   currentEndSeconds = endSeconds;
+                  // New load clears any previous skip sections — the controller
+                  // re-sends setSkipRanges for the new video if needed
+                  skipRanges = [];
                   isLoadingVideo = true; // Set loading flag
                   lastLoadedVideoId = videoId;
 
@@ -239,6 +274,34 @@
                   }
                 } else {
                   console.warn("DelayLivePlayer: No videoId provided for loadVideo command.");
+                }
+                break;
+              case "setSkipRanges":
+              case "setSkipRange": // legacy single-range form (skip bounds in startSeconds/endSeconds)
+                {
+                  // Preferred form: commandData.skipRanges = [{ start, end }, ...]
+                  // where end = null/0 means "finish the video at start" (last timestamp).
+                  const rawRanges = Array.isArray(commandData.skipRanges)
+                    ? commandData.skipRanges
+                    : [{ start: commandData.startSeconds, end: commandData.endSeconds }];
+                  skipRanges = [];
+                  for (const raw of rawRanges) {
+                    const start = parseInt(raw.start);
+                    const noEnd = raw.end === null || raw.end === undefined || raw.end === 0;
+                    const end = noEnd ? Infinity : parseInt(raw.end);
+                    if (!isNaN(start) && start >= 0 && (end === Infinity || (!isNaN(end) && end > start))) {
+                      skipRanges.push({ start, end });
+                    }
+                  }
+                  skipRanges.sort((a, b) => a.start - b.start);
+                  console.log(
+                    "DelayLivePlayer: Skip sections set:",
+                    skipRanges.map((r) => `${r.start}s→${r.end === Infinity ? "finish" : r.end + "s"}`).join(", ") || "(none)"
+                  );
+                  // Ensure the watcher is running (it may not be if no end time was set)
+                  if (player && !durationTimer && skipRanges.length > 0) {
+                    startDurationTimer(player, currentStartSeconds, currentEndSeconds);
+                  }
                 }
                 break;
               case "play":

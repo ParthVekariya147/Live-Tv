@@ -1,6 +1,9 @@
-# SMK TV — Live TV Controller
+# SMK TV — Live TV Controller (deep technical reference)
 
-A full-stack desktop application (React + Express, packaged as a Windows EXE via `pkg`) for operating a religious broadcast channel (SMK TV / Swaminarayan). The app controls OBS Studio sources, manages video playlists, monitors YouTube live streams, schedules automated source-switching events, and keeps structured logs — all from a single browser-based UI served locally.
+A full-stack desktop application (React + Express, packaged as a Windows EXE via `pkg`) for operating a religious broadcast channel (SMK TV / Swaminarayan). The app controls OBS Studio sources, manages video playlists, monitors YouTube live streams, schedules automated source-switching events, sends push notifications to phones, and keeps structured logs — all from a single browser-based UI served locally.
+
+> This is the deep-dive for the controller app. Companions at the repo root:
+> **[../TROUBLESHOOTING.md](../TROUBLESHOOTING.md)** (symptom → fix), **[../FEATURES-REPORT.md](../FEATURES-REPORT.md)** (feature-by-feature overview), **[../COMMANDS.md](../COMMANDS.md)** (ops commands).
 
 ---
 
@@ -11,50 +14,49 @@ A full-stack desktop application (React + Express, packaged as a Windows EXE via
 3. [Running the App](#3-running-the-app)
 4. [OBS Integration](#4-obs-integration)
 5. [Player System](#5-player-system)
-   - [Loop Player](#loop-player)
-   - [Live Player](#live-player)
-   - [Delay Live Player](#delay-live-player)
-   - [Local PC Player](#local-pc-player)
 6. [Scheduler System](#6-scheduler-system)
 7. [Monitor System](#7-monitor-system)
-   - [Live Monitor (MonitorManager)](#live-monitor-monitormanager)
-   - [Katha Monitor](#katha-monitor)
-   - [Upcoming Event Monitor](#upcoming-event-monitor)
-8. [Settings & Backup System](#8-settings--backup-system)
-9. [Log System](#9-log-system)
-10. [Express Server & REST API](#10-express-server--rest-api)
-11. [WebSocket Architecture](#11-websocket-architecture)
-12. [State Management](#12-state-management)
-13. [LocalStorage Keys](#13-localstorage-keys)
-14. [Build & Packaging](#14-build--packaging)
-15. [Data & File Directories](#15-data--file-directories)
-16. [Key Technical Decisions](#16-key-technical-decisions)
+8. [Push Notification System](#8-push-notification-system)
+9. [Settings & Backup System](#9-settings--backup-system)
+10. [Log System](#10-log-system)
+11. [Express Server & REST API](#11-express-server--rest-api)
+12. [WebSocket Architecture](#12-websocket-architecture)
+13. [State Management](#13-state-management)
+14. [LocalStorage Keys](#14-localstorage-keys)
+15. [Build & Packaging](#15-build--packaging)
+16. [Data & File Directories](#16-data--file-directories)
+17. [Key Technical Decisions](#17-key-technical-decisions)
 
 ---
 
 ## 1. High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  Browser (React UI at http://localhost:3003)         │
-│                                                      │
-│  OBSControlPanel  PlayerManager  Scheduler           │
-│  MonitorManager   KathaMonitor   LogViewer           │
-│  SettingsBackup                                      │
-└────────────────────┬────────────────────────────────┘
-                     │  REST API + WebSocket (/ws)
-┌────────────────────▼────────────────────────────────┐
-│  Express Server (server.cjs)  port 3003 (EXE)       │
-│                               port 3004 (dev)        │
-│                                                      │
-│  SchedulerService  StateService  BackupService       │
-│  Video Scan API    File Proxy    Logs API            │
-└──────┬─────────────────────────────────────┬────────┘
-       │ OBS WebSocket (port 4455)            │ File system
-       ▼                                      ▼
-  OBS Studio                          data/, logs/,
-  (scene source visibility,           videos/, backups/,
-   stream/record/virtualcam)          live_recordings/
+┌──────────────────────────────────────────────────────────┐
+│  Browser (React UI at http://localhost:3004)             │
+│                                                          │
+│  OBSControlPanel  PlayerManager  Scheduler               │
+│  MonitorManager   KathaMonitor   LogViewer               │
+│  SettingsBackup   NotificationSettings                   │
+└───────────────────┬──────────────────────────────────────┘
+                    │  REST API + WebSocket (/ws)
+┌───────────────────▼──────────────────────────────────────┐
+│  Express Server (server.cjs)                             │
+│    dev: port 3005 (behind Vite proxy on 3004)            │
+│    prod/EXE: port 3004 · HTTPS: port 3443 (/setup)       │
+│                                                          │
+│  SchedulerService  StateService   BackupService          │
+│  NotificationService (FCM)        TokenStore             │
+│  CertManager / IPDetector / TunnelManager                │
+│  Video Scan API    File Proxy     Logs API               │
+└──────┬────────────────────────────────────────┬──────────┘
+       │ OBS WebSocket (port 4455)              │ File system
+       ▼                                        ▼
+  OBS Studio                            data/, logs/, videos/,
+  (scene source visibility,             backups/, live_recordings/
+   stream/record/virtualcam)
+       ▲
+       │ (frontend owns this connection too — OBSContext.jsx)
 ```
 
 **Communication patterns:**
@@ -62,10 +64,11 @@ A full-stack desktop application (React + Express, packaged as a Windows EXE via
 | From → To | Protocol |
 |-----------|----------|
 | React UI → Express API | REST (fetch) |
-| React UI ↔ Express | WebSocket `/ws` |
-| Express → OBS | OBS WebSocket v5 (port 4455) |
-| React UI → OBS | OBS WebSocket v5 (via OBSContext) |
-| React ↔ OBS Browser Sources | `localStorage` storage events |
+| React UI ↔ Express | WebSocket `/ws` (server pushes + `TRIGGER_RESULT` reports back up) |
+| React UI → OBS | OBS WebSocket v5, port 4455 (via OBSContext — the **frontend**, not the server, talks to OBS) |
+| React ↔ OBS Browser Sources | `localStorage` storage events (same origin) |
+| Express → Phones | FCM push (Firebase Admin SDK) |
+| React UI → YouTube data | `live-tv-api` on port 3000 (separate service; see repo root) |
 
 ---
 
@@ -73,673 +76,424 @@ A full-stack desktop application (React + Express, packaged as a Windows EXE via
 
 ```
 live-tv-controller-react/
-├── server.cjs              # Express server (entry point for EXE)
-├── scheduler-service.cjs   # Server-side scheduler (1-second tick loop)
-├── state-service.cjs       # Persistent key-value state store
-├── package.json
-├── vite.config.js          # Vite dev config (proxies /api, /videos, /ws → port 3004)
+├── server.cjs                # Express + WebSocket + HTTPS server (entry point)
+├── scheduler-service.cjs     # Server-side scheduler (1-second tick loop)
+├── state-service.cjs         # Persistent key-value state store (data/app-state.json)
+├── notification-service.cjs  # FCM push: templates, batching, retry, history
+├── token-store.cjs           # Atomic store for FCM device tokens (data/fcm-tokens.json)
+├── cert-manager.cjs          # Self-signed SSL cert generation (SANs = all LAN IPs)
+├── ip-detector.cjs           # Enumerates LAN IPs for cert + setup URLs
+├── tunnel-manager.cjs        # localtunnel wrapper: connect, health-poll, auto-reconnect
+├── generate-public-assets.cjs# Pre-pkg step: embeds public/ into public-assets.cjs
+├── public-assets.cjs         # GENERATED — public/ files as an in-memory module for the EXE
+├── vite.config.js            # Dev config: UI on 3004, proxies /api /videos /ws → 3005
+├── package.json              # v1.8.x — note firebase-admin pinned to ^12.7.0 (pkg compat)
 │
 ├── src/
-│   ├── App.jsx             # Root layout, global storage event listeners
-│   ├── main.jsx
+│   ├── App.jsx               # Root layout, global storage event listeners
+│   ├── main.jsx              # React root + FCM init
+│   ├── firebase-config.js    # Browser-side Firebase app init (VITE_FIREBASE_* env)
+│   ├── services/fcm.js       # Permission, token registration, foreground onMessage
 │   ├── context/
-│   │   └── OBSContext.jsx  # OBS WebSocket client, source state, stream/record controls
+│   │   └── OBSContext.jsx    # OBS WS client, source state, confirmed-request support
 │   ├── components/
-│   │   ├── OBSControlPanel.jsx     # Top bar: stream, record, virtual cam, auto-record
-│   │   ├── PlayerManager.jsx       # Renders all 4 player cards in a row
-│   │   ├── LoopPlayerCard.jsx      # YouTube playlist looper
-│   │   ├── LivePlayerCard.jsx      # YouTube live stream player + recording manager
-│   │   ├── DelayPlayerCard.jsx     # YouTube video with custom start/end window
-│   │   ├── LocalPlayerCard.jsx     # Local MP4 playlist with drag-drop & auto-scan
-│   │   ├── MonitorManager.jsx      # Two YouTube channel live monitors
-│   │   ├── MonitorCard.jsx         # Single channel monitor card
-│   │   ├── KathaMonitor.jsx        # Katha video detector (via local proxy API)
-│   │   ├── UpcomingEventMonitor.jsx# Scheduled stream countdown monitor
-│   │   ├── Scheduler.jsx           # Schedule CRUD + WebSocket-driven trigger handler
-│   │   ├── LogViewer.jsx           # Collapsible log browser with filter/search/export
-│   │   ├── SettingsBackup.jsx      # JSON export/import + server-side backup management
-│   │   └── common/
-│   │       ├── PlayerControlBtn.jsx
-│   │       └── ThumbnailLoader.jsx
-│   ├── hooks/
-│   │   ├── useAppState.js          # Server state API hook
-│   │   └── useVideoInfo.js         # YouTube oEmbed title + thumbnail fetch
+│   │   ├── OBSControlPanel.jsx      # Top bar: stream, record, virtual cam, auto-record
+│   │   ├── PlayerManager.jsx        # Renders the 4 player cards
+│   │   ├── LoopPlayerCard.jsx       # YouTube playlist looper (+ txt/csv/xlsx import)
+│   │   ├── LivePlayerCard.jsx       # YouTube live player + yt-dlp recording manager
+│   │   ├── DelayPlayerCard.jsx      # Windowed playback + keyword-based section skip
+│   │   ├── LocalPlayerCard.jsx      # Local file playlist with drag-drop & auto-scan
+│   │   ├── MonitorManager.jsx / MonitorCard.jsx   # YouTube channel live monitors
+│   │   ├── KathaMonitor.jsx         # Katha video detector (Mangla Charan timestamp)
+│   │   ├── UpcomingEventMonitor.jsx # Scheduled stream countdown
+│   │   ├── Scheduler.jsx            # Schedule CRUD + trigger execution + result reporting
+│   │   ├── NotificationSettings.jsx # Devices, per-event toggles, QR pairing, test send
+│   │   ├── LogViewer.jsx            # Log browser with filter/search/export
+│   │   ├── SettingsBackup.jsx       # JSON export/import + server-side backups
+│   │   ├── PreviewBox.jsx, BuildFooter.jsx
+│   │   └── common/  (PlayerControlBtn, ThumbnailLoader, TimePickerAMPM)
+│   ├── hooks/    (useAppState.js, useVideoInfo.js)
 │   └── utils/
-│       ├── core-utils.js           # Time formatters, sendPlayerCommand, YouTube parsers
-│       ├── logger.js               # REST-backed log write/read/filter
-│       ├── scheduler-api.js        # REST wrappers + WebSocket client for scheduler
-│       ├── state-api.js            # REST wrappers for StateService
-│       └── usePlayerHooks.js       # usePlayerTime hook (localStorage time events)
+│       ├── core-utils.js     # Time formatters, sendPlayerCommand(+extras), YT parsers
+│       ├── logger.js         # REST-backed structured logging
+│       ├── scheduler-api.js  # REST wrappers + WS client + reportTriggerResult()
+│       ├── state-api.js      # REST wrappers for StateService
+│       └── usePlayerHooks.js # usePlayerTime hook (localStorage time events)
 │
-├── public/                         # Served as static files; opened as OBS Browser Sources
-│   ├── LoopPlayer.html             # YouTube IFrame API looper
-│   ├── LivePlayer.html             # YouTube IFrame API live viewer
-│   ├── DelayLive.html              # YouTube IFrame API (windowed segment)
-│   ├── LocalPCPlayer.html          # HTML5 <video> element player (local files)
-│   └── obs-auto-setup.html         # OBS auto-configuration helper
+├── public/                   # Static files; player pages open as OBS Browser Sources
+│   ├── LoopPlayer.html · LivePlayer.html · DelayLive.html · LocalPCPlayer.html
+│   ├── obs-auto-setup.html   # OBS auto-configuration helper
+│   ├── setup.html            # Phone notification-setup page (served at /setup)
+│   ├── firebase-messaging-sw.js  # Plain service worker: background push handler
+│   └── manifest.json, icon-192.png, icon-512.png
 │
-├── data/                           # Runtime data (created next to EXE in production)
-│   └── schedules.json
-├── logs/                           # Monthly log files (logs-YYYY-MM.json)
-├── videos/                         # Default video folder scanned by Local Player
-├── live_recordings/                # Recordings saved by LivePlayerCard file manager
-└── backups/                        # Server-side settings backups
+├── sample-files/             # Playlist import templates (.txt / .xlsx)
+├── data/                     # schedules.json, app-state.json, fcm-tokens.json,
+│                             # notification-history.json, ssl-*.pem, ssl-meta.json
+├── logs/                     # Monthly log files (logs-YYYY-MM.json)
+├── videos/                   # Default video folder scanned by Local Player
+├── live_recordings/          # yt-dlp recordings managed by LivePlayerCard
+└── backups/                  # Server-side settings backups (+ auto_backup/)
 ```
+
+> ⚠ Changes under `public/` do **not** reach a built EXE until you rebuild — the EXE serves those files from the generated `public-assets.cjs`, not from disk. See [§15](#15-build--packaging).
 
 ---
 
 ## 3. Running the App
 
-### Development
+### Development (from repo root)
 
 ```bash
-# Terminal 1 — Express API + WebSocket server (port 3004)
-npm run dev:api
-
-# Terminal 2 — Vite dev server (port 3003, proxies /api /videos /ws → 3004)
-npm run dev
+node smk.cjs dev     # or npm run dev at the root
 ```
 
-Open `http://localhost:3003` in a browser.
+This starts the Express API on **3005** and Vite on **3004** (plus `live-tv-api` on 3000). Open `http://localhost:3004`. The Vite proxy sends `/api/*`, `/videos/*`, and WebSocket `/ws` to Express on 3005, so dev and production have identical URLs.
 
-> The Vite proxy ensures `/api/*`, `/videos/*`, and WebSocket `/ws` all reach the Express server on port 3004, so both dev and EXE have identical behaviour.
+Manually (two terminals inside this folder): `npm run dev:api` (Express :3005) + `npm run dev` (Vite :3004).
 
-### Production (EXE)
+### Production
 
-```bash
-npm run build:exe
-```
+- **PM2:** `node smk.cjs start` at the root — `smk-controller` runs `server.cjs` on `CONTROLLER_PORT` (default **3004**), `smk-api` runs the YouTube service on 3000.
+- **EXE:** `npm run build:exe` at the **root** (see [§15](#15-build--packaging)) → `windows/exe/SMK TV <N>.exe`. The exe serves UI + API + WS on port 3004 and creates `data/`, `logs/`, `videos/`, `live_recordings/`, `backups/` next to itself on first run. It reads `.env` from **next to the exe** (auto-synced from the root `.env` at build time).
 
-This runs `vite build` (outputs to `dist/`) then `pkg . --targets node18-win-x64 --output live-tv-controller.exe`. The EXE bundles the server and the built React app. On launch it listens on **port 3003** and serves the UI at `http://localhost:3003`.
+In every mode the browser-facing port is **3004**, so OBS Browser Source URLs never change.
 
-Create the following folders **next to the EXE** (they are created automatically on first run if missing):
-
-```
-live-tv-controller.exe
-data/            ← schedules + server state
-logs/            ← monthly log files
-videos/          ← default local video folder
-live_recordings/ ← OBS recording file manager
-backups/         ← automatic + manual settings backups
-```
+An HTTPS server also starts on `HTTPS_PORT` (default **3443**) with a self-signed cert covering all LAN IPs — needed only for the phone notification setup page (`/setup`), because Web Push requires a secure context.
 
 ---
 
 ## 4. OBS Integration
 
-**Connection:** OBSContext.jsx connects to OBS Studio via the OBS WebSocket v5 protocol (`ws://localhost:4455` by default). Host and port are configurable through the Settings panel in OBSControlPanel and persisted in localStorage under `obsSettings`.
+**Connection:** `OBSContext.jsx` connects **from the browser** to OBS Studio via OBS WebSocket v5 (`ws://localhost:4455` by default). Host/port configurable in the Settings panel, persisted in `localStorage['obsSettings']`. Auto-reconnect with exponential back-off (5 s → 60 s).
 
-**Scene layout:** The app assumes a single OBS scene named `"Scene"` containing these sources:
+**Scene layout:** a single OBS scene named `"Scene"` containing sources managed by name:
 
 | OBS Source Name | Purpose |
 |----------------|---------|
 | `Loop Player`  | Background YouTube loop (always-on fallback) |
 | `Live Player`  | YouTube live stream |
-| `Delay Live`   | YouTube video played from a specific timestamp |
-| `Local Player` | Local MP4/MKV/AVI playlist |
-| `OrdaChesta`   | Additional source (toggled manually) |
+| `Delay Live`   | YouTube video played in a custom time window |
+| `Local Player` | Local video playlist |
+| `OrdaChesta`   | Additional source (hidden from the Scheduler's source dropdown) |
 
-**Source visibility** is controlled via `SetSceneItemEnabled` OBS requests. OBSContext polls (`GetSceneItemList`, `GetStreamStatus`, `GetRecordStatus`, `GetVirtualCamStatus`) every 1 second and reacts to OBS WebSocket events for real-time state.
+**Source visibility** uses `SetSceneItemEnabled`. OBSContext polls `GetSceneItemList` / `GetStreamStatus` / `GetRecordStatus` / `GetVirtualCamStatus` every second and reacts to OBS events. **Exclusivity:** turning one managed source ON turns the others OFF; hiding the last visible source falls back to Loop Player.
 
-**Auto-reconnect:** OBSContext uses exponential back-off (5 s → 60 s max) to reconnect if OBS disconnects.
+**Two request modes:**
 
-**Controls in OBSControlPanel:**
-- Start/Stop Stream (`ToggleStream`)
-- Start/Stop Recording (`StartRecord` / `StopRecord`)
-- Toggle Virtual Camera (`ToggleVirtualCam`)
-- Auto-Record toggle — automatically starts recording when Live Player becomes visible, stops when it hides
-- Live ↔ Loop quick-swap button
-- OBS connection settings (host/port)
+- `sendRequest(type, data)` — fire-and-forget; used by all normal UI interactions.
+- `sendRequestConfirmed(type, data, timeoutMs=5000)` — tracks the request by `requestId` and resolves `{ ok, reason }` from OBS's own op-7 `RequestResponse` (or a timeout). `setSourceVisibilityConfirmed(source, visible)` builds on this and is used by the scheduler's confirm-before-notify flow ([§6](#6-scheduler-system)); its companion "turn the others off" calls remain fire-and-forget.
+
+**OBSControlPanel:** Start/Stop Stream, Start/Stop Record (OBS's own recorder — distinct from the Live Player's yt-dlp recording), Toggle Virtual Cam, Auto-Record toggle, Live↔Loop quick swap, connection settings, and a playback health check (waits up to 8 s for a `timeUpdate` storage event after a switch; shows a warning ring if the player isn't actually playing).
 
 ---
 
 ## 5. Player System
 
-Each player card in React communicates with its paired OBS Browser Source HTML page via `localStorage` events. The React card writes a command to a known localStorage key; the HTML page reads it via the `storage` event listener.
-
-### Communication Pattern
+Each React player card communicates with its paired OBS Browser Source HTML page via `localStorage` events:
 
 ```
 React PlayerCard  →  localStorage.setItem(key, JSON.stringify(command))
-                      (key removed after 100 ms to allow re-fire)
-        ↓
-OBS Browser Source HTML  ←  window.addEventListener('storage', ...)
+                     (key removed after 100 ms so the same command can re-fire)
+        ↓ storage event (same-origin tabs share localStorage)
+OBS Browser Source HTML  →  YouTube IFrame API / <video> element
 ```
 
-Reverse direction (HTML → React) uses the same pattern with a separate event key.
+`sendPlayerCommand(playerKey, command, videoId, startSeconds, endSeconds, videoPath, extras)` in `core-utils.js` builds the command object; the trailing `extras` object is merged in for commands with non-standard payloads (currently the Delay player's `setSkipRanges`).
 
----
+### Loop Player — `LoopPlayerCard.jsx` + `public/LoopPlayer.html`
+Comma-separated YouTube ID playlist looped forever (the always-on fallback source). Auto-advances on `videoEnded`, jump-to-index, play/pause/stop/next/prev, oEmbed title/thumbnail. Playlist import from `.txt`/`.csv`/`.xlsx` (SheetJS; templates in `sample-files/`). Keys: `loopPlayerEvent`, `loopPlayerState`.
 
-### Loop Player
+### Live Player — `LivePlayerCard.jsx` + `public/LivePlayer.html`
+Plays the on-air YouTube stream. The Live Monitor can auto-populate the video ID on a title match. Auto-record spawns a **yt-dlp subprocess server-side** (`/api/recording/*`) that downloads the actual YouTube stream to `live_recordings/`; it auto-starts/stops with source visibility (guarded by `wasAutoStarted` so manual recordings aren't killed) and is stopped via `navigator.sendBeacon` on page unload. In production, `yt-dlp.exe` must sit next to the EXE. On video end → switches OBS back to Loop Player. Keys: `livePlayerEvent`, `livePlayerState`, `liveAutoRecord`.
 
-**File:** `LoopPlayerCard.jsx` + `public/LoopPlayer.html`
+### Delay Live Player — `DelayPlayerCard.jsx` + `public/DelayLive.html`
+Plays a video from Start Time to End Time (HH:MM:SS). On end → hides itself; falls back to Loop Player if Live Player isn't visible.
 
-**Purpose:** Plays a list of YouTube video IDs in sequence, looping forever. This is the background / fallback source always running in OBS.
+**Keyword skip:** with "Skip section by keyword" enabled, Load & Play also fetches the video description from `live-tv-api` (`/api/video-description`) in the background, scans description lines carrying a `H:MM(:SS)` timestamp for the comma-separated keywords (case-insensitive, both "12:34 Kirtan" and "Kirtan 12:34" line orders), and builds one skip range per keyword: from that timestamp to the *next* timestamp in the description (`end = null` ⇒ keyword was the last timestamp ⇒ finish the video there). Ranges are merged/sorted (`findKeywordSkipRanges`) and sent with `setSkipRanges`; the HTML player's 1-second watcher seeks over any range it enters. All best-effort: fetch failure or no match ⇒ full video plays and the status line explains. `loadVideo` clears ranges player-side; the card re-sends them (kept in `skipRangeRef`) when resuming. Keys: `delayLivePlayerEvent`, `delayPlayerState` (now includes `keywordSkipEnabled`, `skipKeyword`).
 
-**Features:**
-- Comma-separated YouTube ID list input
-- Auto-advances to next video when current ends (`videoEnded` storage event)
-- Jump-to-index button
-- Play / Pause / Stop / Next / Prev controls
-- Playback state persisted to `localStorage['loopPlayerState']`
-- Thumbnail and title loaded from YouTube oEmbed API
-
-**LocalStorage key:** `loopPlayerEvent` (command), `loopPlayerState` (saved state)
-
----
-
-### Live Player
-
-**File:** `LivePlayerCard.jsx` + `public/LivePlayer.html`
-
-**Purpose:** Plays a YouTube live stream (or any YouTube video ID). Intended to be the primary on-air source.
-
-**Features:**
-- Single video ID input with auto-play
-- Priority mode: `matchSearchTerms` — the Live Monitor can auto-populate the video ID when it finds a matching live stream
-- Auto-record integration: mirrors the Auto-Record toggle in OBSControlPanel (shared via `localStorage['liveAutoRecord']`)
-- Recording file manager — lists files in `live_recordings/`, shows file size, allows deletion
-- Auto-delete: keeps only N most recent recordings (configurable)
-- Polling `/api/recordings/list` and `/api/recordings/delete`
-- On video end → automatically switches OBS to Loop Player
-
-**LocalStorage key:** `livePlayerEvent`, `livePlayerState`, `liveAutoRecord`
-
----
-
-### Delay Live Player
-
-**File:** `DelayPlayerCard.jsx` + `public/DelayLive.html`
-
-**Purpose:** Plays a YouTube video from a specific start time to a specific end time — used to broadcast a pre-recorded or live-delayed segment with a custom window.
-
-**Features:**
-- Video ID + Start time (HH:MM:SS) + End time inputs
-- Plays from `startTime` and pauses/ends at `endTime`
-- On video end → hides Delay Live; if Live Player is not visible switches to Loop Player
-- Thumbnail + title via oEmbed
-- Playback state persisted to `localStorage['delayPlayerState']`
-
-**LocalStorage key:** `delayLivePlayerEvent`, `delayPlayerState`
-
----
-
-### Local PC Player
-
-**File:** `LocalPlayerCard.jsx` + `public/LocalPCPlayer.html`
-
-**Purpose:** Plays a locally-stored video playlist (MP4, MKV, AVI, MOV, WEBM, WMV). Designed for Katha and pre-recorded content.
-
-**Features:**
-
-| Feature | Details |
-|---------|---------|
-| **Auto-scan default folder** | Scans `videos/` next to EXE via `GET /api/videos/scan` |
-| **Custom folder scan** | Enter any Windows path → `POST /api/videos/scan-folder` → returned as `/api/videos/serve?path=` URLs (never raw `file://`) |
-| **Drag-drop from Windows Explorer** | Creates blob URLs in the browser |
-| **File picker** | `showOpenFilePicker` or fallback `<input type="file">` |
-| **Manual path input** | Type any path; Windows absolute paths are routed via `/api/videos/serve?path=` proxy |
-| **Playlist reorder** | Drag rows up/down to reorder |
-| **Per-item enable/disable** | Toggle each video ON/OFF; disabled videos are skipped automatically |
-| **Proactive skip** | A `useEffect([playlist, currentIndex])` detects disabled current video and jumps immediately, without waiting for `videoEnded` |
-| **Per-item play button** | Click to jump directly to any item |
-| **Start / End time per video** | Uses H:MM format (hours:minutes, no seconds) |
-| **End action per day** | Per day-of-week: when playlist ends, switch to a named OBS source |
-| **Scheduler integration** | WebSocket triggers `local_player_start`, `local_player_stop`, `local_player_next` |
-| **State persistence** | Playlist paths, index, play state saved to localStorage (blob: URLs cleared on save) |
-
-**File proxy endpoint:** All local video files (from custom folder or typed paths) are served via:
-```
-GET /api/videos/serve?path=<encoded-absolute-path>
-```
-This supports HTTP range requests for seeking. Browsers can load these via `http://` without `file://` CORS restrictions.
-
-**Time format:** Start/End fields accept `H:MM` (e.g. `1:30` = 1 hour 30 min). Display shows `HH:MM` (no seconds).
-
-**LocalStorage key:** `localPCPlayerEvent`, `localPCPlayerState`, `localPCPlayerEndActions`
+### Local PC Player — `LocalPlayerCard.jsx` + `public/LocalPCPlayer.html`
+Local video playlist (mp4/mkv/avi/mov/webm/wmv). Auto-scans `videos/` (`GET /api/videos/scan`), scans any custom folder (`POST /api/videos/scan-folder`), drag-drop, file picker, manual paths, drag-to-reorder, per-item enable/disable with proactive skip, per-item start/end trim (`H:MM` format), per-day-of-week end action. All local files stream through `GET /api/videos/serve?path=` (HTTP Range support, no `file://`). Scheduler can trigger `local_player_start/stop/next` via WebSocket. Keys: `localPCPlayerEvent`, `localPCPlayerState`, `localPCPlayerEndActions`.
 
 ---
 
 ## 6. Scheduler System
 
-The scheduler runs **server-side** in `scheduler-service.cjs`, not in the browser. This ensures triggers fire reliably even if the browser tab is minimized or hidden.
-
-### Server Side (scheduler-service.cjs)
+Runs **server-side** in `scheduler-service.cjs` (1-second tick) so triggers fire even with the browser minimized. Persists to `data/schedules.json`.
 
 | Feature | Detail |
 |---------|--------|
-| **Tick interval** | 1 second — checks all schedules on each tick |
-| **Persistence** | `data/schedules.json` |
-| **Recurrence types** | `daily`, `weekly` (specific days), `once` |
-| **Catch-up on restart** | If a schedule's `lastTriggered` is before the current expected window, it fires immediately on startup |
-| **Deduplication** | `lastTriggered` timestamp prevents double-firing within the same minute |
-| **Skip a day** | Individual schedules can be marked to skip the next occurrence |
-| **Cancel skip** | Remove a pending skip |
-| **Retry on failure** | Up to 3 retries with 5-second delay |
-| **Alert system** | Generates alerts for missed triggers; broadcasts to WebSocket clients |
-| **Execution history** | Keeps last 100 executions |
-| **Health tracking** | `totalTriggers`, `totalMissed`, `totalSkipped`, `totalRetries` counters |
+| Recurrence | `daily`, `weekly`, specific `days`, `once` |
+| Catch-up on restart | Missed windows fire immediately on startup |
+| Deduplication | `lastTriggered` prevents double-firing in the same minute |
+| Skip next occurrence / cancel skip | Per schedule |
+| Retry on failure | 3 retries, 5 s delay; then alert |
+| Alerts, history, health | Broadcast over WS; last 100 executions; `totalTriggers/Missed/Skipped/Retries` |
 
-### Schedule Object
+**Actions:** `show` / `hide` (OBS source visibility, executed by the frontend), `local_player_start` / `local_player_stop` / `local_player_next` (Local PC Player), `katha_refresh` / `katha_player` (registered and handled by KathaMonitor).
 
-```json
-{
-  "id": "uuid",
-  "title": "Morning Live",
-  "time": "07:30",
-  "source": "Live Player",
-  "action": "show",
-  "recurrence": "daily",
-  "days": [1, 2, 3, 4, 5],
-  "enabled": true,
-  "lastTriggered": "2026-06-13T07:30:00.000Z",
-  "skipNextOccurrence": false
-}
+### Trigger execution & confirm-before-notify
+
+`show`/`hide` actions are executed by **`Scheduler.jsx` in the browser** — the frontend owns the OBS connection. Since July 2026 the flow confirms before notifying:
+
+```
+scheduler-service tick → server broadcasts SCHEDULER_TRIGGER over /ws
+  server: action is show/hide?  → hold the push, awaitTriggerConfirmation() (130 s timer)
+                       else     → push SCHEDULER_TRIGGER notification immediately
+
+Scheduler.jsx receives the trigger:
+  OBS disconnected  → queue (replayed on reconnect, expires after 2 min) or report failure
+  Live Player active → skip; report { ok:false, reason:'Live Player is active' }
+  source not found   → report failure
+  otherwise → await setSourceVisibilityConfirmed()  ← waits for OBS's op-7 RequestResponse
+            → reportTriggerResult({ id, triggerKey, ok, reason, ... })
+              (WS 'TRIGGER_RESULT' message, REST POST /api/scheduler/trigger-result fallback)
+
+server handleTriggerResult():
+  ok    → push SCHEDULER_TRIGGER   ("<title> ran")
+  !ok   → push SCHEDULER_TRIGGER_FAILED with the concrete reason
+  no report within 130 s → push SCHEDULER_TRIGGER_FAILED
+         ("No confirmation from the app… closed, backgrounded, or OBS unreachable")
 ```
 
-### Actions
+The 130 s server timeout deliberately exceeds the frontend's 2-minute trigger-replay window (`OBS_TRIGGER_EXPIRY_MS`) so a late success report can't contradict an already-sent failure push.
 
-| Action | Effect |
-|--------|--------|
-| `show` | Makes OBS source visible |
-| `hide` | Hides OBS source |
-| `local_player_start` | Sends start command to Local PC Player |
-| `local_player_stop` | Sends stop command to Local PC Player |
-| `local_player_next` | Advances Local PC Player to next video |
-
-### React Side (Scheduler.jsx + scheduler-api.js)
-
-- Connects to WebSocket `/ws` for real-time trigger events and schedule list sync
-- Handles `SCHEDULER_TRIGGER` → executes OBS visibility change or local player command
-- Handles `SCHEDULER_TICK` → updates countdown timers
-- Pending OBS triggers are queued if OBS is disconnected and replayed when reconnected (2-minute expiry)
-- Time input: `type="text"` with auto-colon insertion (no AM/PM browser segments); validated and zero-padded before saving
+**UI details:** time input is `type="text"` with auto-colon insertion and `normalizeTime()` zero-padding (native `<input type="time">` shows un-hideable AM/PM segments on Windows Chrome); `SCHEDULER_TICK` (every second) drives countdowns and includes next-trigger info for **all** schedules.
 
 ---
 
 ## 7. Monitor System
 
-### Live Monitor (MonitorManager)
+### Live Monitor — `MonitorManager.jsx`, `MonitorCard.jsx`
+Watches two YouTube channels (Swaminarayan `UC7HQ3mzdsyvLU0Y7a2t3N7A`, Swaminarayan Bhagwan `UCQXWP4gEdEwlb6vodwrU75A`) for live/upcoming streams via `live-tv-api` (port 3000), polling every 30 s. Handles both `videoRenderer` and `lockupViewModel` data formats; saved search terms auto-load a matching stream into the Live Player; countdowns to scheduled starts. State: `savedSearchTitles1/2`, `liveSelectedChannelId`.
 
-**Files:** `MonitorManager.jsx`, `MonitorCard.jsx`
+### Katha Monitor — `KathaMonitor.jsx`
+Finds today's/yesterday's Katha upload, fetches its description via `/api/video-description` to regex-extract the Mangla Charan timestamp, and loads the video pre-seeked with one click. Also owns the scheduler actions `katha_refresh` / `katha_player`. (The description endpoint is cached and rate-limit-hardened server-side — see `../TROUBLESHOOTING.md` §5.)
 
-Monitors two YouTube channels for live or upcoming streams. Uses a local proxy API (`http://localhost:3000/api/...`) to fetch channel pages (avoids CORS). Polls every 30 seconds.
-
-**Channels supported:**
-- Swaminarayan (`UC7HQ3mzdsyvLU0Y7a2t3N7A`)
-- Swaminarayan Bhagwan (`UCQXWP4gEdEwlb6vodwrU75A`)
-
-**Features:**
-- Detects both legacy `videoRenderer` format and new `lockupViewModel` (richGridRenderer) format from YouTube's internal data
-- Filters by channel name via oEmbed verification
-- Search term matching — each monitor has saved search terms; auto-loads a matching live video into the Live Player card
-- Countdown timer to scheduled stream start
-- One-click load into Live Player / Delay Player
-
-**Saved state:** `savedSearchTitles1`, `savedSearchTitles2`, `liveSelectedChannelId` in localStorage.
+### Upcoming Event Monitor — `UpcomingEventMonitor.jsx`
+Countdown display for scheduled/premiere streams, sharing Live Monitor data.
 
 ---
 
-### Katha Monitor
+## 8. Push Notification System
 
-**File:** `KathaMonitor.jsx`
+**Files:** `notification-service.cjs`, `token-store.cjs`, `public/setup.html`, `public/firebase-messaging-sw.js`, `src/services/fcm.js`, `src/firebase-config.js`, `src/components/NotificationSettings.jsx`, plus `cert-manager.cjs` / `ip-detector.cjs` / `tunnel-manager.cjs` for reachability.
 
-Monitors a YouTube channel for Katha (religious discourse) videos uploaded today or yesterday. Fetches video descriptions via `http://localhost:3000/api/video-description?videoId=` to extract the Mangla Charan timestamp.
-
-**Features:**
-- Filter modes: `today`, `yesterday`, `auto` (today if available, else yesterday)
-- Extracts `Mangla Charan` / `Katha` timestamps from video description using regex
-- Countdown to Mangla Charan time
-- One-click load into Loop Player or Live Player with the Mangla Charan timestamp as `startTime`
-- Filters by description content (not title) to find valid Katha videos
+- **Register a phone:** open `/setup` (QR + URLs from `GET /api/notifications/setup-url` — prefers the tunnel URL *after live-verifying it*, else LAN HTTPS `:3443`). The page obtains an FCM token and `POST /api/notifications/register`s it → `data/fcm-tokens.json` (atomic writes, capped by `MAX_FCM_TOKENS`).
+- **Send:** `notificationService.send(event, data)` — template lookup (`SCHEDULER_TRIGGER`, `SCHEDULER_TRIGGER_FAILED`, `SCHEDULER_ALERT`, `RECORDING_*`, `BACKUP_COMPLETED`, `MEMORY_WARNING`, `MONITOR_LIVE`), per-event preference check, `sendEachForMulticast` in 500-token chunks, auto-prune dead tokens, optional history (`NOTIFICATION_HISTORY=true`). Failed sends keep FCM's error **code and message**; `sendTest()` throws on rejection so the UI never shows a false success.
+- **Receive:** `firebase-messaging-sw.js` is a plain service worker (no gstatic dependency) handling the background `push` event; `src/services/fcm.js` handles foreground messages.
+- **Delete a device:** `DELETE /api/notifications/register` accepts `{ token }` or `{ deviceId }` — the in-app device list only knows ids (tokens are never exposed by `/devices`), and the row is removed only after the server confirms.
+- **Tunnel:** `tunnel-manager.cjs` starts localtunnel, writes `TUNNEL_URL` into the root `.env`, health-polls `<url>/setup` every 45 s (2 misses ⇒ reconnect), and exports `checkTunnelHealth` / `forceReconnect` for the setup-url route.
+- **Env:** `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` (missing ⇒ sends are skipped with a warning, never a crash). `firebase-admin` is pinned to `^12.7.0` for `pkg` compatibility.
 
 ---
 
-### Upcoming Event Monitor
-
-**File:** `UpcomingEventMonitor.jsx`
-
-Displays scheduled (premiere / upcoming) YouTube streams with a live countdown clock to their start time. Shares data with MonitorManager.
-
----
-
-## 8. Settings & Backup System
+## 9. Settings & Backup System
 
 **File:** `SettingsBackup.jsx`
 
-### Manual JSON Export / Import
-
-Export bundles:
-- All server state (from `GET /api/settings/export`)
-- All localStorage keys (loopPlayer, livePlayer, delayPlayer, localPCPlayer, monitors, etc.)
-- Scheduler schedules
-
-The downloaded file is a single `.json` which can be imported on another machine or after a fresh install.
-
-> **Technical note:** The download uses `document.body.appendChild(a)` → `a.click()` → `document.body.removeChild(a)` → `setTimeout(URL.revokeObjectURL, 1000)` to ensure the browser initiates the download before the blob is revoked.
-
-Import restores server state via `POST /api/settings/import` and writes localStorage keys directly.
-
-### Server-Side Backups
-
-Automatic and manual backups are stored in the `backups/` folder as JSON files. Managed via:
-
-| Endpoint | Action |
-|----------|--------|
-| `GET /api/backups/list` | List all backup files with metadata |
-| `POST /api/backups/save` | Create a manual backup |
-| `POST /api/backups/restore/:filename` | Restore from a specific backup |
-| `DELETE /api/backups/:filename` | Delete a backup |
-| `GET /api/backups/auto-settings` | Get auto-backup schedule |
-| `PUT /api/backups/auto-settings` | Set auto-backup schedule |
-
-Auto-backup modes: every N hours, every N days, or on a specific day of the week.
+- **Export/Import:** one `.json` bundling server state (`GET /api/settings/export`), all relevant localStorage keys, and schedules; restored via `POST /api/settings/import`. Before export/backup the server broadcasts `FLUSH_STATE_FOR_BACKUP` so player cards flush their latest state.
+- **Server-side backups:** automatic + manual JSON files in `backups/` via the `/api/backup/*` endpoints ([§11](#11-express-server--rest-api)). Auto-backup: every N hours/days or a weekday.
+- The Express JSON body limit is **100 MB** — imports with 50k+ playlist entries used to 413 against the 100 kb default.
 
 ---
 
-## 9. Log System
+## 10. Log System
 
-**Files:** `src/utils/logger.js`, `LogViewer.jsx`
+**Files:** `src/utils/logger.js`, `LogViewer.jsx`. Monthly server files `logs/logs-YYYY-MM.json`.
 
-Logs are stored as monthly JSON files on the server: `logs/logs-YYYY-MM.json`.
-
-### Log Entry Shape
-
-```json
-{
-  "id": "1749876543210-abc12def",
-  "timestamp": "2026-06-13T10:30:00.000+05:30",
-  "date": "13 Jun 2026",
-  "time": "10:30:00",
-  "dayName": "Saturday",
-  "level": "info",
-  "type": "SOURCE_CHANGE",
-  "category": "obs",
-  "message": "Switched to Live Player",
-  "data": { ... }
-}
-```
-
-### Log Categories
-
-| Category | What it captures |
-|----------|-----------------|
-| `obs` | OBS source visibility changes, connection events |
-| `video` | Video load, play, end, error events |
-| `scheduler` | Schedule triggers, alerts, missed triggers |
-| `monitor` | Live monitor refresh, video found events |
-| `katha` | Katha video refresh, load events |
-| `system` | Server startup, errors |
-
-### LogViewer Features
-
-- Pagination (50 entries per page)
-- Filter by month, category, type, text search
-- Bulk select + delete
-- Individual log expansion for full `data` object
-- Auto-refresh toggle
-- CSV export
+Entry shape: `{ id, timestamp, date, time, dayName, level, type, category, message, data }`. Categories: `obs`, `video`, `scheduler`, `monitor`, `katha`, `system`. LogViewer: pagination (50/page), month/category/type/text filters, bulk delete, CSV export, auto-refresh. Useful trigger-debugging types: `SCHEDULER_TRIGGER_EXECUTING`, `SCHEDULER_TRIGGER_OBS_REJECTED`, `SCHEDULER_SOURCE_NOT_FOUND`.
 
 ---
 
-## 10. Express Server & REST API
+## 11. Express Server & REST API
 
-**File:** `server.cjs`  
-**Port:** 3003 (EXE) / 3004 (dev)
+**File:** `server.cjs` · Ports: 3005 (dev) / 3004 (prod & EXE) / 3443 (HTTPS)
 
 ### Video API
-
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/videos/scan` | GET | List MP4/MKV/etc. in the default `videos/` folder |
-| `/api/videos/scan-folder` | POST | List video files in any absolute folder path (body: `{ folderPath }`) |
-| `/api/videos/root-folder` | GET | Return the path of the default videos folder |
-| `/api/videos/serve` | GET | Stream any local video file by path (`?path=`) with HTTP range support |
+| `/api/videos/scan` | GET | List videos in the default `videos/` folder |
+| `/api/videos/scan-folder` | POST | List videos in any absolute folder (`{ folderPath }`) |
+| `/api/videos/root-folder` | GET | Path of the default videos folder |
+| `/api/videos/serve` | GET | Stream a local file by `?path=` with HTTP Range support |
 
 ### Scheduler API
-
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/scheduler/status` | GET | Health and running state |
-| `/api/scheduler/start` | POST | Start the tick loop |
-| `/api/scheduler/stop` | POST | Stop the tick loop |
-| `/api/schedules` | GET | All schedules |
-| `/api/schedules` | POST | Add schedule |
-| `/api/schedules/:id` | PUT | Update schedule |
-| `/api/schedules/:id` | DELETE | Delete schedule |
-| `/api/schedules/:id/toggle` | POST | Enable/disable schedule |
-| `/api/schedules/:id/fire` | POST | Fire a schedule immediately |
-| `/api/schedules/:id/skip` | POST | Skip next occurrence |
-| `/api/schedules/:id/cancel-skip` | POST | Cancel pending skip |
-| `/api/schedules/import` | POST | Bulk replace all schedules |
+| `/api/scheduler/status` · `/health` · `/history` · `/retries` | GET | State, health counters, execution history, retry queue |
+| `/api/scheduler/start` · `/stop` | POST | Control the tick loop |
+| `/api/scheduler/next` | GET | Upcoming triggers |
+| `/api/scheduler/trigger-result` | POST | REST fallback for reporting a trigger's confirmed outcome (normally sent as WS `TRIGGER_RESULT`) |
+| `/api/scheduler/alerts` | GET / DELETE | Unacknowledged alerts / clear all |
+| `/api/scheduler/alerts/:id/acknowledge` | POST | Acknowledge one alert |
+| `/api/scheduler/backup` | POST | Snapshot schedules |
+| `/api/schedules` | GET / POST / PUT | List / add / bulk-replace |
+| `/api/schedules/:id` | PUT / DELETE | Update / delete |
+| `/api/schedules/:id/toggle` · `/fire` · `/skip-day` · `/cancel-skip` | POST | Enable-disable / fire now / skip next / cancel skip |
 
-### State API
-
-Persistent server-side key-value store backed by a JSON file in `data/`.
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/state` | GET | Get all state |
-| `/api/state/:key` | GET | Get a single key |
-| `/api/state/:key` | PUT | Set a key |
-| `/api/state/:key` | PATCH | Merge into object key |
-| `/api/state/:key` | DELETE | Delete a key |
-| `/api/state/import` | POST | Bulk import from localStorage |
-| `/api/state/reset` | POST | Reset to defaults |
+### State API (`state-service.cjs` → `data/app-state.json`)
+| Endpoint | Method |
+|----------|--------|
+| `/api/state` | GET (all) |
+| `/api/state/:key` | GET / PUT / PATCH / DELETE (keys may contain `/` — route uses `:key(*)`) |
+| `/api/state/import` · `/api/state/reset` | POST |
 
 ### Settings API
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/settings/export` | GET | Full settings JSON (state + schedules) |
-| `/api/settings/import` | POST | Restore settings |
+`GET /api/settings/export` · `POST /api/settings/import`
 
 ### Logs API
-
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/logs` | GET | Paginated logs with filters |
-| `/api/logs` | POST | Write a log entry |
-| `/api/logs/months` | GET | Available log month keys |
-| `/api/logs/:yearMonth` | DELETE | Delete all logs for a month |
-| `/api/logs` | DELETE | Clear all logs |
+| `/api/log` | POST | Write one entry |
+| `/api/logs` | GET / DELETE | Paginated+filtered read / clear all |
+| `/api/logs/months` | GET | Available month keys |
+| `/api/logs/:id` | DELETE | Delete one entry |
 
-### Recordings API
-
+### Recording API (yt-dlp live-stream recorder)
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/recordings/list` | GET | List files in `live_recordings/` |
-| `/api/recordings/delete` | DELETE | Delete a recording file |
+| `/api/recording/start` · `/stop` | POST | Spawn / stop the yt-dlp subprocess |
+| `/api/recording/status` | GET | Polled ~2 s by the UI |
+| `/api/recording/list` | GET | Files in `live_recordings/` |
+| `/api/recording/:filename` | DELETE | Delete a recording |
+| `/api/recording/settings` | GET / PUT | Auto-delete-after-N-files etc. |
+| `/api/recording/open-folder` · `/folder-path` | POST / GET | Explorer helpers |
 
 ### Backup API
-
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/backups/list` | GET | All backup files |
-| `/api/backups/save` | POST | Create backup |
-| `/api/backups/restore/:filename` | POST | Restore backup |
-| `/api/backups/:filename` | DELETE | Delete backup |
-| `/api/backups/auto-settings` | GET/PUT | Auto-backup configuration |
+| `/api/backup/manual` | POST | Create manual backup |
+| `/api/backup/list` · `/status` · `/download` | GET | Enumerate / status / download |
+| `/api/backup/restore` | POST | Restore a backup |
+| `/api/backup/auto-settings` | GET / PUT | Auto-backup schedule |
+| `/api/backup/open-folder` | POST | Open `backups/` in Explorer |
+
+### Notifications API
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/setup` | GET | Phone registration page (`setup.html`) |
+| `/firebase-messaging-sw.js` | GET | Service worker (served at origin root) |
+| `/api/notifications/register` | POST / DELETE | Register token / remove by `token` **or** `deviceId` |
+| `/api/notifications/devices` | GET | Registered devices (tokens excluded) |
+| `/api/notifications/test` · `/test-device` | POST | Test push to raw token / registered device id |
+| `/api/notifications/settings` | GET / PUT | Per-event on/off preferences |
+| `/api/notifications/history` | GET | Send history |
+| `/api/notifications/setup-url` | GET | QR + URL(s); live-verifies the tunnel first |
+| `/api/notifications/status` | GET | Firebase initialized? device count? |
+
+### OBS status relay
+`POST /api/obs/status` / `GET /api/obs/status` — frontend reports OBS connection state so server-side features can read it.
 
 ---
 
-## 11. WebSocket Architecture
+## 12. WebSocket Architecture
 
-The Express server maintains a WebSocket server at `/ws` using the `ws` package.
+WebSocket server at `/ws` (`ws` package), same port as HTTP.
 
-### Server → Client Messages
+### Server → Client
+| Type | When |
+|------|------|
+| `SCHEDULER_TICK` | Every second — `{ nextTriggers (all schedules), serverTime, isRunning, schedulesCount }` |
+| `SCHEDULER_TRIGGER` | A schedule fires (frontend executes OBS/player actions) |
+| `SCHEDULER_STATUS` · `SCHEDULES_UPDATED` · `SCHEDULER_ALERT(S)` | Status / CRUD sync / alerts |
+| `STATE_SYNC` (on connect) · `STATE_CHANGE` | Server state |
+| `RECORDING_EVENT` · `RECORDING_STATUS` | yt-dlp recorder output / state |
+| `FLUSH_STATE_FOR_BACKUP` | Right before a backup/export snapshot |
 
-| Message Type | When | Payload |
-|-------------|------|---------|
-| `SCHEDULER_TICK` | Every 1 second | `{ nextTriggers, serverTime, isRunning, schedulesCount }` |
-| `SCHEDULER_TRIGGER` | When a schedule fires | `{ id, action, source, title, ... }` |
-| `SCHEDULER_STATUS` | On WS connect | Current scheduler status |
-| `SCHEDULES_UPDATED` | After any schedule change | `{ schedules: [...] }` |
-| `SCHEDULER_ALERT` | On missed/failed trigger | Alert object |
-| `SCHEDULER_ALERTS` | On WS connect (if unacknowledged) | `{ alerts: [...] }` |
-| `STATE_SYNC` | On WS connect | Full server state |
-| `STATE_CHANGE` | On state mutation | `{ type, key, value }` |
+### Client → Server
+| Type | Purpose |
+|------|---------|
+| `TRIGGER_RESULT` | Confirmed outcome of a show/hide trigger (`{ id, triggerKey, ok, reason, action, source, title }`) — REST fallback: `POST /api/scheduler/trigger-result` |
 
-### Client Usage
-
-- **Scheduler.jsx** — receives `SCHEDULER_TRIGGER` and executes OBS actions or player commands; receives `SCHEDULER_TICK` for countdown timers
-- **LocalPlayerCard.jsx** — receives `SCHEDULER_TRIGGER` with `local_player_start / stop / next` actions
-- All components reconnect automatically with exponential back-off (1 s → 30 s)
-
-### Dev Note
-
-In development, Vite proxies `/ws` to `ws://localhost:3004` so `window.location.host` (which Vite serves on port 3003) connects to the correct Express WebSocket server.
+All client components reconnect with exponential back-off (1 s → 30 s). In dev, Vite proxies `/ws` to 3005 so `window.location.host` works unchanged.
 
 ---
 
-## 12. State Management
+## 13. State Management
 
-### React State (in-memory)
+- **React state:** each card uses `useState` + mirror `useRef`s to avoid stale closures in storage-event listeners, WS handlers, and timers.
+- **localStorage:** per-player UI state, saved on change, loaded on mount (survives refresh).
+- **Server state (`state-service.cjs`):** JSON-backed key-value store for settings that must survive restarts and be shared across browsers (OBS settings, player configs mirrored via `setStateValue`).
+- **Schedules:** `data/schedules.json` via SchedulerService.
 
-Each player card manages its own state via `useState` + `useRef` pairs. Refs are used alongside state to prevent stale closures in:
-- `storage` event listeners (added once at mount)
-- WebSocket message handlers
-- `setTimeout` / `setInterval` callbacks
-- `advanceToNext` logic (reads `playlistRef`, `currentIndexRef`, `isPlayingRef`, etc.)
-
-### localStorage (browser persistence)
-
-Player state (current video, playlist, play/pause/stop flags) is saved to localStorage on every relevant state change. Loaded on mount. This survives page refresh within the same browser session.
-
-### Server State (StateService)
-
-`state-service.cjs` provides a persistent JSON-backed key-value store for settings that need to survive EXE restarts and be shared across browser sessions:
-- OBS connection settings
-- Player configuration that needs server-level persistence
-
-### Scheduler State
-
-Schedules are persisted in `data/schedules.json` by SchedulerService and reloaded on server restart.
+All server-side JSON stores use atomic writes: write `.tmp` → validate → rename old to `.bak` → rename `.tmp` in.
 
 ---
 
-## 13. LocalStorage Keys
+## 14. LocalStorage Keys
 
 | Key | Owner | Content |
 |-----|-------|---------|
-| `loopPlayerState` | LoopPlayerCard | `{ playlist, currentIndex, isPlaying, isMuted, isStopped }` |
-| `loopPlayerEvent` | LoopPlayer ↔ LoopPlayer.html | Player commands |
-| `livePlayerState` | LivePlayerCard | `{ videoId, isPlaying, isMuted, isStopped }` |
-| `livePlayerEvent` | LivePlayer ↔ LivePlayer.html | Player commands |
-| `delayPlayerState` | DelayPlayerCard | `{ videoId, startTime, endTime, ... }` |
-| `delayLivePlayerEvent` | DelayPlayer ↔ DelayLive.html | Player commands |
-| `localPCPlayerState` | LocalPlayerCard | `{ playlist, currentIndex, isPlaying, isMuted, isStopped }` |
-| `localPCPlayerEvent` | LocalPlayer ↔ LocalPCPlayer.html | Player commands |
-| `localPCPlayerEndActions` | LocalPlayerCard | `[null, null, ..., null]` (7 days) |
-| `obsSettings` | OBSContext | `{ host, port }` |
-| `obsActiveSource` | OBSContext | Last active source name |
+| `loopPlayerState` / `loopPlayerEvent` | Loop Player | `{ playlist, currentIndex, isPlaying, isMuted, isStopped }` / commands |
+| `livePlayerState` / `livePlayerEvent` | Live Player | `{ videoId, isPlaying, isMuted, isStopped }` / commands |
+| `delayPlayerState` / `delayLivePlayerEvent` | Delay Player | `{ videoId, startTime, endTime, isPlaying, isMuted, isStopped, keywordSkipEnabled, skipKeyword }` / commands (incl. `setSkipRanges`) |
+| `localPCPlayerState` / `localPCPlayerEvent` / `localPCPlayerEndActions` | Local Player | playlist state / commands / per-day end actions |
+| `obsSettings` / `obsActiveSource` | OBSContext | `{ host, port }` / last active source |
 | `liveAutoRecord` | OBSControlPanel + LivePlayerCard | `true / false` |
-| `liveMonitorEnabled1` | App | Monitor 1 show/hide |
-| `liveMonitorEnabled2` | App | Monitor 2 show/hide |
-| `savedSearchTitles1` | MonitorManager | Search terms for monitor 1 |
-| `savedSearchTitles2` | MonitorManager | Search terms for monitor 2 |
-| `liveSelectedChannelId` | MonitorManager | Selected YouTube channel |
+| `liveMonitorEnabled1/2`, `savedSearchTitles1/2`, `liveSelectedChannelId` | Monitors | visibility / search terms / channel |
+| `fcm_permission_status`, `fcm_token` | fcm.js | push permission + token cache |
 
 ---
 
-## 14. Build & Packaging
+## 15. Build & Packaging
 
-### Scripts
+### The real pipeline (repo root)
 
 ```bash
-npm run dev          # Vite dev server on port 3003
-npm run dev:api      # Express server on port 3004
-npm run build        # Vite production build → dist/
-npm run build:exe    # build + pkg → live-tv-controller.exe
+npm run build:exe        # = node build.cjs   (also: node smk.cjs exe)
 ```
 
-### pkg Configuration
+`build.cjs` steps:
+1. **Sync `.env` → `windows/exe/.env`** — the packaged exe loads env from next to `process.execPath`, not the repo root. (This copy once drifted and silently shipped builds without Firebase credentials.)
+2. `vite build` in this folder → `dist/`.
+3. esbuild-bundle `live-tv-api/server.js` (ESM) → `live-tv-api/.bundle.cjs` (CJS) so `pkg` can include it.
+4. `pkg` (root `package.json` config, `node20-win-x64`, `--no-bytecode --public`) → auto-numbered `windows/exe/SMK TV <N>.exe`; the final move retries 5× with a copy+delete fallback for OneDrive/antivirus `EBUSY`/`EPERM` locks.
 
-```json
-{
-  "pkg": {
-    "assets": ["dist/**/*"],
-    "outputPath": "."
-  }
-}
-```
+(This folder's own `npm run build:exe` produces a standalone `live-tv-controller.exe` of just the controller — the root pipeline is the one used for releases.)
 
-The `dist/` folder (React build output) is bundled as assets into the EXE. The server detects the EXE context via `process.pkg`:
+### public/ assets inside the EXE
+
+`pkg`'s glob-based asset bundling proved unreliable for `public/`, so `generate-public-assets.cjs` embeds every `public/` file (base64 for binaries) into the generated module `public-assets.cjs`; `server.cjs` `require()`s it and serves those files from memory when `process.pkg` is set. **Consequence:** editing anything in `public/` requires a rebuild to affect the exe.
+
+### Port / path detection in server.cjs
 
 ```js
-const PORT = process.env.PORT || (process.pkg ? 3003 : 3004);
-const dataDir = process.pkg
-    ? path.join(path.dirname(process.execPath), 'data')
-    : path.join(__dirname, 'data');
+const PORT = process.env.PORT || (process.pkg
+    ? (process.env.CONTROLLER_PORT || 3004)      // production / EXE
+    : (process.env.CONTROLLER_DEV_PORT || 3005)); // dev API behind Vite
 ```
 
-All runtime directories (`data`, `logs`, `videos`, `live_recordings`, `backups`) use `path.dirname(process.execPath)` as the base when running as EXE, so they live next to the EXE file and are writable.
+All runtime directories resolve against `path.dirname(process.execPath)` under `pkg`, so they live next to the exe and are writable.
 
-### Vite Config
+### Vite dev proxy (`vite.config.js`)
 
-```js
-server: {
-  port: 3003,
-  proxy: {
-    '/api':    { target: 'http://localhost:3004', changeOrigin: true },
-    '/videos': { target: 'http://localhost:3004', changeOrigin: true },
-    '/ws':     { target: 'ws://localhost:3004', ws: true, changeOrigin: true },
-  }
-}
-```
-
-The proxy makes all three paths (REST, static video files, WebSocket) reach Express in dev mode, giving identical behaviour to the EXE build.
+UI on `VITE_DEV_PORT` (3004); `/api`, `/videos`, `/ws` proxied to `CONTROLLER_DEV_PORT` (3005). Vite also injects `__APP_VERSION__`, `__BUILD_TIME__`, `__GIT_COMMIT__` (shown by `BuildFooter.jsx`) and loads env from the repo root (`envDir`).
 
 ---
 
-## 15. Data & File Directories
+## 16. Data & File Directories
 
-| Directory | Purpose | EXE Location | Dev Location |
+| Directory | Purpose | EXE location | Dev location |
 |-----------|---------|--------------|--------------|
-| `data/` | `schedules.json`, server state JSON | Next to EXE | `live-tv-controller-react/data/` |
-| `logs/` | `logs-YYYY-MM.json` monthly log files | Next to EXE | `live-tv-controller-react/logs/` |
-| `videos/` | Default local video folder (scanned by Local Player) | Next to EXE | `live-tv-controller-react/videos/` |
-| `live_recordings/` | OBS recording files managed by LivePlayerCard | Next to EXE | `live-tv-controller-react/live_recordings/` |
-| `backups/` | Settings backup JSON files | Next to EXE | `live-tv-controller-react/backups/` |
+| `data/` | schedules, app state, FCM tokens, notification history, SSL cert/key/meta | Next to EXE | `live-tv-controller-react/data/` |
+| `logs/` | `logs-YYYY-MM.json` | Next to EXE | `live-tv-controller-react/logs/` |
+| `videos/` | Default Local Player scan folder | Next to EXE | `live-tv-controller-react/videos/` |
+| `live_recordings/` | yt-dlp recordings | Next to EXE | `live-tv-controller-react/live_recordings/` |
+| `backups/` | Settings backups (+ `auto_backup/`) | Next to EXE | `live-tv-controller-react/backups/` |
 
 ---
 
-## 16. Key Technical Decisions
+## 17. Key Technical Decisions
 
-### localStorage as IPC between React and OBS Browser Sources
-
-OBS Browser Sources run their HTML pages in Chromium. When both the React app and the OBS browser source are opened from the same origin (`http://localhost:3003`), they share `localStorage`. A storage event on one tab fires on all other tabs/windows with the same origin — giving zero-latency IPC without any additional server round-trip.
-
-Commands are written then deleted after 100 ms to allow the same command to be fired again without the storage event being suppressed (browsers suppress events when the value hasn't changed).
-
-### Server-side Scheduler vs Browser Timers
-
-Browser `setTimeout`/`setInterval` are throttled when the tab is hidden (Chrome throttles to 1 Hz minimum). A schedule set for 07:30 would miss its window if the browser is minimized. The server-side 1-second tick loop in `scheduler-service.cjs` runs independently of browser tab visibility, ensuring schedules always fire on time.
-
-### File Proxy for Local Videos
-
-Windows absolute paths (`C:\...`) cannot be loaded from `http://` origins via `file://` URLs due to browser CORS restrictions. All local video files are served through:
-
-```
-GET /api/videos/serve?path=<URL-encoded-absolute-path>
-```
-
-This endpoint supports HTTP `Range` headers, which the `<video>` element requires for seeking. The Express server streams the file directly from disk, so no memory buffering occurs.
-
-### Stale Closure Prevention
-
-All async callbacks (storage event listeners, WebSocket handlers, timeouts) that need current React state use either:
-1. **Refs** — `playlistRef`, `currentIndexRef`, `isPlayingRef` — kept in sync by `useEffect` pairs
-2. **Functional state updates** — `setPlaylist(prev => ...)` — always receives the current state regardless of when the closure was created
-
-This prevents the classic React stale closure bug where event handlers read old state values.
-
-### Time Format: H:MM for Local Player
-
-The Local Player uses `H:MM` (hours:minutes, no seconds) for start/end times to match how broadcast operators think about long-form content. `timeHMToSeconds` parses this format (and also H:MM:SS for precision). `secondsToHM` formats display output as `HH:MM`.
-
-Other players use `HH:MM:SS` (`timeToSeconds` / `secondsToHMS`) for YouTube segment precision.
-
-### Scheduler Time Input
-
-The browser's native `<input type="time">` shows AM/PM segments on Windows Chrome that can't be removed via CSS. The Scheduler uses `<input type="text" maxLength={5}>` with an auto-colon insertion handler and a `normalizeTime()` validator that zero-pads and range-checks before saving (`"9:5"` → `"09:05"`).
+- **localStorage as IPC** between React and OBS Browser Sources: same-origin tabs share localStorage and `storage` events fire instantly on the other tabs — zero-latency, server-free. Commands are deleted 100 ms after writing so identical commands can re-fire (browsers suppress events for unchanged values).
+- **Server-side scheduler** because hidden-tab browser timers throttle to ~1 Hz and would miss time-of-day triggers.
+- **Confirm-before-notify** for show/hide triggers: the timer matching is *not* success. Only the frontend knows whether OBS was connected, the source existed, and OBS acknowledged the change — so the push notification waits for that confirmation (or times out into an explicit failure push). A silent no-op never reads as a successful run.
+- **File proxy for local videos** (`/api/videos/serve?path=`): browsers block `file://` from an `http://` origin, and the proxy adds HTTP Range support required for `<video>` seeking.
+- **Plain service worker (not the Firebase JS SDK)** for background push, so delivery doesn't depend on `gstatic.com`.
+- **Self-signed cert with all LAN IPs as SANs** so any device on the LAN can open `/setup` at whatever IP it sees the server at; the tunnel provides a trusted-cert alternative and both are health-verified before being offered.
+- **`require()`-embedded public assets** (`public-assets.cjs`) instead of `pkg` asset globs — `pkg` always bundles what's reachable via `require()`.
+- **Stale-closure prevention:** mirror refs (`playlistRef`, `isPlayingRef`, …) plus functional `setState(prev => …)` in all async callbacks.
+- **Time formats:** Local Player uses `H:MM` (how operators think about long-form content); other players use `HH:MM:SS` (`timeToSeconds` / `secondsToHMS`). Scheduler time input is a text field with auto-colon + `normalizeTime()` because Windows Chrome's `<input type="time">` AM/PM segments can't be hidden.
+- **No database:** every store is an atomic-write JSON file with `.bak` recovery — right-sized for a single-operator tool.
+- **`express.json({ limit: '100mb' })`** — large playlist imports/backups exceeded the 100 kb default and were silently 413-dropped.

@@ -1,68 +1,53 @@
-# Live TV Controller
+# SMK TV — Live TV Controller
 
-A live TV controller dashboard with YouTube API integration, scheduler, OBS control, and a React UI.
+A live TV broadcast controller for a religious YouTube channel: OBS source switching, four video players, YouTube live/Katha monitors, a server-side scheduler, push notifications to phones (FCM), and a React dashboard — packaged as a single Windows EXE.
+
+---
+
+## Documentation Map — where to look
+
+| Question | Read this |
+|---|---|
+| "Something is broken — how do I fix it?" | **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** — symptom → cause → fix, with file references |
+| "What does feature X do and where is its code?" | **[FEATURES-REPORT.md](FEATURES-REPORT.md)** — every feature, how it works, which files |
+| "How is the controller app architected?" | **[live-tv-controller-react/PROJECT.md](live-tv-controller-react/PROJECT.md)** — deep technical reference: REST API, WebSocket, state, build |
+| "What command starts/stops/builds things?" | **[COMMANDS.md](COMMANDS.md)** — ops cheat sheet (ports, PM2, kill commands) |
+| "How do I deploy the YouTube data API?" | **[live-tv-api/DEPLOY.md](live-tv-api/DEPLOY.md)** |
+| Push notifications — original design docs | [FCM-PUSH-NOTIFICATIONS.md](FCM-PUSH-NOTIFICATIONS.md), [FCM-PARALLEL-PLAN.md](FCM-PARALLEL-PLAN.md) (historical; current behavior is in FEATURES-REPORT §8) |
 
 ---
 
 ## Requirements
 
 - **Node.js v18+** — https://nodejs.org
+- **OBS Studio** with the WebSocket server enabled (Tools → WebSocket Server Settings), for source switching
 
 ---
 
 ## Installation
 
-Clone the repo and run **one command** to install all dependencies:
-
 ```bash
 git clone https://github.com/ParthVekariya147/Live-Tv.git
 cd Live-Tv
-npm run install:all
+npm run install:all     # installs root + live-tv-api + live-tv-controller-react
 ```
 
-Then build the React app:
-
-```bash
-npm run build
-```
+Copy `.env.example` to `.env` and fill in what you use (Firebase credentials for push notifications, ports if non-default). One shared `.env` at the repo root drives all services.
 
 ---
 
 ## Run
 
-Start all services with **one command**:
+Everything goes through the SMK CLI (`node smk.cjs`, or the equivalent npm scripts):
 
 ```bash
-npm start
+npm run dev      # Development: Vite UI on :3004 + Express API on :3005 + YouTube API on :3000
+npm start        # Production: both services under PM2 (UI+API on :3004, YouTube API on :3000)
+npm run stop     # Stop everything and free the ports
+npm run build:exe  # Build the Windows EXE → windows/exe/SMK TV <N>.exe
 ```
 
-Then open your browser at:
-
-```
-http://localhost:3004
-```
-
-Terminal will show:
-
-```
-╔══════════════════════════════════════════════════╗
-║           LIVE TV CONTROLLER — RUNNING           ║
-╠══════════════════════════════════════════════════╣
-║  Frontend (Dashboard)  →  http://localhost:3004  ║
-║  YouTube API           →  http://localhost:3000  ║
-║  Controller API        →  http://localhost:3004/api ║
-║  WebSocket             →  ws://localhost:3004/ws ║
-╚══════════════════════════════════════════════════╝
-```
-
----
-
-## Services
-
-| Service | URL | Description |
-|---|---|---|
-| Live TV API | http://localhost:3000 | YouTube live stream data |
-| Controller + UI | http://localhost:3004 | Main dashboard |
+Open **http://localhost:3004** in your browser.
 
 ---
 
@@ -70,62 +55,42 @@ Terminal will show:
 
 | Port | Purpose |
 |---|---|
-| 3000 | YouTube API proxy (`live-tv-api`) |
-| 3004 | React UI + Scheduler + WebSocket (`live-tv-controller-react`) |
+| 3000 | YouTube data API (`live-tv-api`) — live streams, Katha videos, video descriptions |
+| 3004 | Dashboard UI + Controller API + WebSocket (Vite in dev, Express in production/EXE) |
+| 3005 | Controller Express API, **dev mode only** (Vite proxies `/api`, `/videos`, `/ws` to it) |
+| 3443 | HTTPS (self-signed) — phone notification setup page `/setup` |
+
+---
+
+## Repo Layout
+
+```
+Live-Tv/
+├── live-tv-api/                YouTube data service (port 3000) — Piped → scrape → RSS waterfall
+├── live-tv-controller-react/   Main app: React UI + Express + WebSocket + scheduler + notifications
+├── smk.cjs                     CLI entry point (dev/build/exe/start/stop/install/status/logs)
+├── build.cjs                   Windows EXE build pipeline (→ windows/exe/)
+├── ecosystem.config.cjs        PM2 process definitions (smk-api, smk-controller)
+├── env-loader.cjs              Shared .env loader for all services
+└── windows/ , mac/             Double-clickable launcher scripts; windows/exe/ holds built EXEs
+```
 
 ---
 
 ## Data Sources & API
 
-The frontend always calls the **local API at `http://localhost:3000`** — no YouTube API key is required anywhere in this project.
+The frontend never talks to YouTube directly and **no YouTube API key is required**. All YouTube data comes through the local `live-tv-api` service (port 3000):
 
-### Local API Endpoints
-
-| Endpoint | Used By | Purpose |
+| Endpoint | Used by | Purpose |
 |---|---|---|
-| `GET /api/live` | Monitor, Live Player | Live streams + upcoming events for a channel |
-| `GET /api/videos` | Katha Monitor | Last 30 recent videos from Katha channel |
+| `GET /api/live` | Live Monitor, Live Player | Live + upcoming streams for a channel |
+| `GET /api/videos` | Katha Monitor | Recent uploads from the Katha channel |
+| `GET /api/video-description?videoId=` | Katha Monitor, Delay Player keyword-skip | Full video description (cached 6 h, innertube-first with scrape fallback) |
 
-### How Data is Fetched — 3-Layer Waterfall
-
-Every request tries 3 sources in order. If one fails, it automatically falls back to the next:
+Each request tries three sources in order and falls back automatically — the response's `"source"` field tells you which one answered:
 
 ```
-1. Piped  →  2. YouTube Scrape  →  3. YouTube RSS
+1. Piped (public instances)  →  2. YouTube HTML scrape  →  3. YouTube RSS (no live status)
 ```
 
-**Layer 1 — Piped (Open Source, no API key)**
-Tries 4 public Piped instances in order, first success wins:
-```
-https://pipedapi.kavin.rocks
-https://api.piped.yt
-https://pipedapi.adminforge.de
-https://piped-api.coke.cx
-```
-Response includes `"source": "piped"`
-
-**Layer 2 — YouTube HTML Scrape (fallback)**
-Fetches `youtube.com/channel/{id}/streams` directly and parses `ytInitialData` JSON embedded in the page.
-- No API key needed
-- Can detect live/upcoming status
-- Response includes `"source": "youtube-scrape"`
-
-**Layer 3 — YouTube RSS Feed (last resort)**
-Fetches the official YouTube RSS feed:
-```
-https://www.youtube.com/feeds/videos.xml?channel_id={id}
-```
-- Stable since 2006, never breaks
-- Limitation: no live/upcoming status — past videos only
-- Response includes `"source": "rss"`
-
-### Other External APIs
-
-| API | Purpose |
-|---|---|
-| `youtube.com/oembed` | Get video title + channel name from a video ID |
-| `ws://localhost:3004/ws` | Real-time scheduler events (local WebSocket) |
-
-### Summary
-
-> No YouTube API key required. The local API auto-selects the best available data source on every request.
+When YouTube breaks the parsing, fix **one file**: `live-tv-api/lib/youtube.js` (see [live-tv-api/DEPLOY.md](live-tv-api/DEPLOY.md)).

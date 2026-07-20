@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Playlist Automation System</title>
+    <!-- Using standard Tailwind utility classes for modern UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom scrollbar for textareas */
+        textarea::-webkit-scrollbar { width: 8px; }
+        textarea::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        textarea::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        textarea::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+        
+        /* Smooth height transition for collapsibles */
+        .collapsible-content {
+            transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out, padding 0.3s ease-in-out;
+            overflow: hidden;
+        }
+        .collapsed {
+            max-height: 0 !important;
+            opacity: 0;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            border: none !important;
+        }
+        
+        /* Inline Form Inputs */
+        .form-input {
+            padding: 0.35rem 0.6rem; border-radius: 0.375rem;
+            border: 1px solid #d1d5db; outline: none; transition: border-color 0.15s;
+            font-size: 0.875rem; background-color: #fff;
+        }
+        .form-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+        .input-error { border-color: #ef4444 !important; }
+        
+        /* Error handling in a single-line context */
+        .input-wrapper { position: relative; }
+        .error-text { 
+            position: absolute; top: 100%; left: 0; 
+            font-size: 0.7rem; color: #ef4444; margin-top: 2px; 
+            display: none; white-space: nowrap; font-weight: 500;
+        }
+        .has-error .error-text { display: block; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans min-h-screen pb-20">
+
+    <!-- Header -->
+    <header class="bg-white shadow-sm sticky top-0 z-10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+            <div>
+                <h1 class="text-xl sm:text-2xl font-bold text-gray-900">Playlist Automation</h1>
+                <p class="text-sm text-gray-500">Manage hierarchical YouTube routines</p>
+            </div>
+            <button id="add-group-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md shadow-sm font-medium flex items-center transition-colors">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                Add Group
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+        <div id="app-container" class="space-y-4">
+            <!-- Groups will be injected here -->
+            <div id="empty-state" class="text-center py-20 text-gray-500">
+                <svg class="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                <p class="text-lg">No groups configured yet.</p>
+                <p class="text-sm mt-1">Click "Add Group" to get started.</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Core Logic -->
+    <script>
+        const appState = { groups: [] };
+        const generateId = () => 'id-' + Math.random().toString(36).substr(2, 9);
+
+        const icons = {
+            expand: `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>`,
+            collapse: `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>`,
+            delete: `<svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>`,
+            add: `<svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>`,
+            list: `<svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>`
+        };
+
+        const container = document.getElementById('app-container');
+        const emptyState = document.getElementById('empty-state');
+        document.getElementById('add-group-btn').addEventListener('click', createGroup);
+
+        function createGroup() {
+            appState.groups.push({
+                id: generateId(), serial: '', name: '', triggerType: 'default', triggerValue: '',
+                endType: 'loop', endValue: '', lists: [], isExpanded: true
+            });
+            renderGroups();
+        }
+
+        function createList(groupId) {
+            const group = appState.groups.find(g => g.id === groupId);
+            if (!group) return;
+            group.lists.push({
+                id: generateId(), serial: '', name: '', videoIds: [], currentIndex: 1,
+                playCount: 1, endType: 'nextList', endValue: '', isExpanded: true
+            });
+            renderGroups();
+        }
+
+        function deleteGroup(groupId) {
+            appState.groups = appState.groups.filter(g => g.id !== groupId);
+            renderGroups();
+        }
+
+        function deleteList(groupId, listId) {
+            const group = appState.groups.find(g => g.id === groupId);
+            if (group) { group.lists = group.lists.filter(l => l.id !== listId); renderGroups(); }
+        }
+
+        function validateUniqueness() {
+            document.querySelectorAll('.input-wrapper').forEach(el => el.classList.remove('has-error'));
+            document.querySelectorAll('.form-input').forEach(el => el.classList.remove('input-error'));
+
+            let isValid = true;
+            const groupSerials = new Set(), groupNames = new Set();
+
+            appState.groups.forEach(group => {
+                if (group.serial !== '') {
+                    if (groupSerials.has(group.serial)) { showError(`${group.id}-serial`, 'Must be unique'); isValid = false; }
+                    groupSerials.add(group.serial);
+                }
+                if (group.name !== '') {
+                    if (groupNames.has(group.name)) { showError(`${group.id}-name`, 'Must be unique'); isValid = false; }
+                    groupNames.add(group.name);
+                }
+
+                const listSerials = new Set(), listNames = new Set();
+                group.lists.forEach(list => {
+                    if (list.serial !== '') {
+                        if (listSerials.has(list.serial)) { showError(`${list.id}-serial`, 'Must be unique in group'); isValid = false; }
+                        listSerials.add(list.serial);
+                    }
+                    if (list.name !== '') {
+                        if (listNames.has(list.name)) { showError(`${list.id}-name`, 'Must be unique in group'); isValid = false; }
+                        listNames.add(list.name);
+                    }
+                    
+                    const maxVideos = list.videoIds.length;
+                    if(list.currentIndex > maxVideos && maxVideos > 0) list.currentIndex = maxVideos;
+                    if(list.currentIndex < 1 && maxVideos > 0) list.currentIndex = 1;
+                    const remaining = maxVideos > 0 ? (maxVideos - list.currentIndex + 1) : 0;
+                    if(list.playCount > remaining && remaining > 0) list.playCount = remaining;
+                });
+            });
+            return isValid;
+        }
+
+        function showError(inputId, message) {
+            const input = document.getElementById(inputId);
+            if (input) {
+                input.classList.add('input-error');
+                const wrapper = input.closest('.input-wrapper');
+                if (wrapper) { wrapper.classList.add('has-error'); wrapper.querySelector('.error-text').textContent = message; }
+            }
+        }
+
+        function countTotalVideos(group) {
+            return group.lists.reduce((total, list) => total + list.videoIds.length, 0);
+        }
+
+        function renderGroups() {
+            emptyState.style.display = appState.groups.length === 0 ? 'block' : 'none';
+            
+            const activeElementId = document.activeElement ? document.activeElement.id : null;
+            let selectionStart = null, selectionEnd = null;
+            if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+                try { selectionStart = document.activeElement.selectionStart; selectionEnd = document.activeElement.selectionEnd; } catch(e) {}
+            }
+
+            Array.from(container.children).forEach(child => { if (child.id !== 'empty-state') child.remove(); });
+
+            appState.groups.forEach((group, index) => {
+                const groupEl = document.createElement('div');
+                groupEl.className = 'bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden mb-4';
+
+                // --- GROUP HEADER ---
+                const headerHtml = `
+                    <div class="bg-gray-100 px-4 py-3 border-b border-gray-200 flex justify-between items-center cursor-pointer hover:bg-gray-200 transition-colors" onclick="toggleExpand('${group.id}')">
+                        <div class="flex items-center space-x-3">
+                            <span class="text-gray-500" id="icon-${group.id}">${group.isExpanded ? icons.collapse : icons.expand}</span>
+                            <div>
+                                <h2 class="text-md font-semibold text-gray-800">
+                                    ${group.name || `Group ${index + 1}`} <span class="text-xs font-normal text-gray-500 ml-1">#${group.serial || '?'}</span>
+                                </h2>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-4">
+                            <div class="text-xs text-gray-500 hidden sm:flex space-x-3">
+                                <span class="bg-white px-2 py-0.5 rounded border">Lists: ${group.lists.length}</span>
+                                <span class="bg-white px-2 py-0.5 rounded border">Videos: ${countTotalVideos(group)}</span>
+                            </div>
+                            <button onclick="event.stopPropagation(); deleteGroup('${group.id}')" class="text-red-500 hover:text-red-700 bg-white px-2 py-1 rounded text-xs border border-red-200 hover:bg-red-50 flex items-center transition-colors">
+                                ${icons.delete} Delete
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                // --- GROUP BODY ---
+                let triggerInputHtml = group.triggerType === 'scheduler' 
+                    ? `<input type="time" id="${group.id}-triggerVal" class="form-input w-32" value="${group.triggerValue}" oninput="updateState('${group.id}', 'triggerValue', this.value)">`
+                    : (group.triggerType === 'live_events' 
+                        ? `<input type="text" id="${group.id}-triggerVal" placeholder="Keywords (e.g. News)" class="form-input flex-1 min-w-[150px]" value="${group.triggerValue}" oninput="updateState('${group.id}', 'triggerValue', this.value)">`
+                        : ``); // Default has no input
+
+                let endGroupTargetHtml = '';
+                if (group.endType === 'serial') {
+                    const opts = appState.groups.filter(g => g.id !== group.id).map(g => `<option value="${g.serial}" ${group.endValue === g.serial ? 'selected' : ''}>${g.serial || '?'} - ${g.name || 'Unnamed'}</option>`).join('');
+                    endGroupTargetHtml = `<select id="${group.id}-endVal" class="form-input w-48" onchange="updateState('${group.id}', 'endValue', this.value)"><option value="">Select Target...</option>${opts}</select>`;
+                } else if (group.endType === 'name') {
+                    const opts = appState.groups.filter(g => g.id !== group.id).map(g => `<option value="${g.name}" ${group.endValue === g.name ? 'selected' : ''}>${g.name || 'Unnamed'}</option>`).join('');
+                    endGroupTargetHtml = `<select id="${group.id}-endVal" class="form-input w-48" onchange="updateState('${group.id}', 'endValue', this.value)"><option value="">Select Target...</option>${opts}</select>`;
+                }
+
+                const bodyHtml = `
+                    <div class="collapsible-content p-4 ${group.isExpanded ? 'max-h-[5000px] opacity-100' : 'collapsed'}" id="body-${group.id}">
+                        
+                        <!-- Single Line Settings -->
+                        <div class="flex flex-wrap items-center gap-x-6 gap-y-4 mb-4 pb-4 border-b border-gray-100">
+                            
+                            <!-- Identifier Line -->
+                            <div class="flex items-center gap-2">
+                                <label class="font-medium text-gray-600 text-sm whitespace-nowrap">Serial No <span class="text-red-500">*</span></label>
+                                <div class="input-wrapper"><input type="number" id="${group.id}-serial" class="form-input w-20" placeholder="ID" value="${group.serial}" oninput="updateState('${group.id}', 'serial', this.value)"><span class="error-text"></span></div>
+                            </div>
+                            <div class="flex items-center gap-2 flex-1 min-w-[200px]">
+                                <label class="font-medium text-gray-600 text-sm whitespace-nowrap">Group Name <span class="text-red-500">*</span></label>
+                                <div class="input-wrapper w-full"><input type="text" id="${group.id}-name" class="form-input w-full" placeholder="Name" value="${group.name}" oninput="updateState('${group.id}', 'name', this.value)"><span class="error-text"></span></div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap items-center justify-between gap-4 bg-gray-50/50 p-3 rounded border border-gray-200 mb-6">
+                            <!-- Trigger Logic Line -->
+                            <div class="flex items-center gap-2">
+                                <span class="font-medium text-gray-700 text-sm whitespace-nowrap">Trigger:</span>
+                                <select id="${group.id}-triggerType" class="form-input w-auto bg-gray-50" onchange="updateGroupTrigger('${group.id}', this.value)">
+                                    <option value="default" ${group.triggerType === 'default' ? 'selected' : ''}>Default (Another Group)</option>
+                                    <option value="scheduler" ${group.triggerType === 'scheduler' ? 'selected' : ''}>On Scheduler Time</option>
+                                    <option value="live_events" ${group.triggerType === 'live_events' ? 'selected' : ''}>On Live Event Match</option>
+                                </select>
+                                ${triggerInputHtml}
+                            </div>
+
+                            <!-- End Logic Line -->
+                            <div class="flex items-center gap-2">
+                                <span class="font-medium text-gray-700 text-sm whitespace-nowrap border-l border-gray-300 pl-4">Then:</span>
+                                <select class="form-input w-auto bg-gray-50" onchange="updateGroupEndType('${group.id}', this.value)">
+                                    <option value="loop" ${group.endType === 'loop' ? 'selected' : ''}>Loop Current Group</option>
+                                    <option value="serial" ${group.endType === 'serial' ? 'selected' : ''}>Next Group by Serial</option>
+                                    <option value="name" ${group.endType === 'name' ? 'selected' : ''}>Next Group by Name</option>
+                                </select>
+                                ${endGroupTargetHtml}
+                            </div>
+                        </div>
+
+                        <!-- LISTS SECTION -->
+                        <div class="flex justify-between items-center mb-3">
+                            <h3 class="text-sm font-semibold text-gray-600 uppercase tracking-wider">Playlists</h3>
+                            <button onclick="createList('${group.id}')" class="bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded text-xs font-medium flex items-center transition-colors border border-blue-200">
+                                ${icons.add} Add New List
+                            </button>
+                        </div>
+                        
+                        <div class="space-y-3" id="lists-container-${group.id}">
+                            ${group.lists.length === 0 ? `<div class="text-center py-4 text-gray-400 text-sm bg-gray-50 rounded border border-dashed border-gray-200">No lists added yet.</div>` : ''}
+                        </div>
+                    </div>
+                `;
+
+                groupEl.innerHTML = headerHtml + bodyHtml;
+                container.appendChild(groupEl);
+
+                const listsContainer = document.getElementById(`lists-container-${group.id}`);
+                group.lists.forEach((list, listIndex) => {
+                    const listEl = document.createElement('div');
+                    listEl.className = 'bg-white rounded border border-blue-200 shadow-sm overflow-visible';
+
+                    let endListTargetHtml = '';
+                    if (list.endType === 'nextList') {
+                        const opts = group.lists.filter(l => l.id !== list.id).map(l => `<option value="${l.id}" ${list.endValue === l.id ? 'selected' : ''}>${l.serial || '?'} - ${l.name || 'Unnamed'}</option>`).join('');
+                        endListTargetHtml = `<select id="${list.id}-endVal" class="form-input w-36" onchange="updateListState('${group.id}', '${list.id}', 'endValue', this.value)"><option value="">Select Target...</option>${opts}</select>`;
+                    }
+
+                    listEl.innerHTML = `
+                        <div class="bg-blue-50/40 px-3 py-2 flex justify-between items-center cursor-pointer border-b border-blue-100" onclick="toggleListExpand('${group.id}', '${list.id}')">
+                            <div class="flex items-center space-x-2">
+                                <span class="text-blue-500" id="icon-list-${list.id}">${list.isExpanded ? icons.collapse : icons.expand}</span>
+                                <h4 class="font-medium text-sm text-gray-800 flex items-center">
+                                    ${icons.list} ${list.name || `List ${listIndex + 1}`} <span class="text-xs font-normal text-gray-500 ml-2">#${list.serial || '?'}</span>
+                                </h4>
+                            </div>
+                            <div class="flex items-center space-x-3">
+                                <span class="text-xs text-gray-500 hidden sm:inline-block">${list.videoIds.length} Videos</span>
+                                <button onclick="event.stopPropagation(); deleteList('${group.id}', '${list.id}')" class="text-gray-400 hover:text-red-500 transition-colors p-1">${icons.delete}</button>
+                            </div>
+                        </div>
+
+                        <div class="collapsible-content px-4 py-3 ${list.isExpanded ? 'max-h-[2000px] opacity-100' : 'collapsed'}" id="body-list-${list.id}">
+                            
+                            <!-- Inline List IDs -->
+                            <div class="flex flex-wrap items-center gap-x-4 gap-y-3 mb-3">
+                                <div class="flex items-center gap-2">
+                                    <label class="text-sm font-medium text-gray-600">Serial:</label>
+                                    <div class="input-wrapper"><input type="number" id="${list.id}-serial" class="form-input w-20" placeholder="ID" value="${list.serial}" oninput="updateListState('${group.id}', '${list.id}', 'serial', this.value)"><span class="error-text"></span></div>
+                                </div>
+                                <div class="flex items-center gap-2 flex-1 min-w-[200px]">
+                                    <label class="text-sm font-medium text-gray-600">Name:</label>
+                                    <div class="input-wrapper w-full"><input type="text" id="${list.id}-name" class="form-input w-full" placeholder="List Name" value="${list.name}" oninput="updateListState('${group.id}', '${list.id}', 'name', this.value)"><span class="error-text"></span></div>
+                                </div>
+                            </div>
+
+                            <!-- Video Input Line -->
+                            <div class="flex items-center gap-3 mb-3">
+                                <label class="text-sm font-medium text-gray-600 whitespace-nowrap">Video IDs:</label>
+                                <textarea id="${list.id}-videoIds" rows="1" class="form-input font-mono text-sm flex-1 py-1.5" placeholder="abc123, xyz456" oninput="updateListState('${group.id}', '${list.id}', 'rawInput', this.value)">${list.rawInput || list.videoIds.join(', ')}</textarea>
+                                <button onclick="importVideos('${group.id}', '${list.id}')" class="bg-gray-800 hover:bg-gray-900 text-white px-3 py-1 rounded text-xs font-medium transition-colors">Import</button>
+                                <button onclick="clearVideos('${group.id}', '${list.id}')" class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-1 rounded text-xs font-medium transition-colors">Clear</button>
+                            </div>
+
+                            <!-- Logic Engine Line -->
+                            <div class="flex flex-wrap items-center justify-between gap-4 bg-gray-50 px-3 py-2 rounded border border-gray-200">
+                                <div class="flex items-center gap-4">
+                                    <div class="flex items-center gap-2">
+                                        <label class="text-sm text-gray-600 whitespace-nowrap">Start Index:</label>
+                                        <input type="number" id="${list.id}-currentIndex" min="1" max="${Math.max(1, list.videoIds.length)}" class="form-input w-16 text-center" value="${list.currentIndex}" oninput="updateListState('${group.id}', '${list.id}', 'currentIndex', parseInt(this.value) || 1)">
+                                    </div>
+                                    <div class="flex items-center gap-2 border-l border-gray-300 pl-4">
+                                        <label class="text-sm text-gray-600 whitespace-nowrap">Play Count:</label>
+                                        <input type="number" id="${list.id}-playCount" min="1" class="form-input w-16 text-center" value="${list.playCount}" oninput="updateListState('${group.id}', '${list.id}', 'playCount', parseInt(this.value) || 1)">
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2 border-l border-gray-300 pl-4 ml-auto">
+                                    <label class="text-sm font-medium text-gray-700 whitespace-nowrap">Then:</label>
+                                    <select class="form-input w-auto bg-gray-50" onchange="updateListEndType('${group.id}', '${list.id}', this.value)">
+                                        <option value="nextList" ${list.endType === 'nextList' ? 'selected' : ''}>Go to Next List</option>
+                                        <option value="endGroup" ${list.endType === 'endGroup' ? 'selected' : ''}>End Group</option>
+                                    </select>
+                                    ${endListTargetHtml}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    listsContainer.appendChild(listEl);
+                });
+            });
+
+            validateUniqueness();
+
+            if (activeElementId) {
+                const el = document.getElementById(activeElementId);
+                if (el) {
+                    el.focus();
+                    if (selectionStart !== null && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+                        try { el.setSelectionRange(selectionStart, selectionEnd); } catch(e){}
+                    }
+                }
+            }
+        }
+
+        // --- State Updaters ---
+        function updateState(groupId, field, value) {
+            const group = appState.groups.find(g => g.id === groupId);
+            if (group) {
+                group[field] = value;
+                if (field === 'serial' || field === 'name') renderGroups(); 
+                else validateUniqueness();
+            }
+        }
+
+        function updateListState(groupId, listId, field, value) {
+            const group = appState.groups.find(g => g.id === groupId);
+            if (group) {
+                const list = group.lists.find(l => l.id === listId);
+                if (list) {
+                    list[field] = value;
+                    if (field === 'serial' || field === 'name') renderGroups(); 
+                    else if (field === 'currentIndex') {
+                        const max = list.videoIds.length;
+                        const rem = max > 0 ? (max - list.currentIndex + 1) : 0;
+                        if(list.playCount > rem && rem > 0) list.playCount = rem;
+                        renderGroups();
+                    }
+                }
+            }
+        }
+
+        function updateGroupTrigger(groupId, val) {
+            const group = appState.groups.find(g => g.id === groupId);
+            if (group) { group.triggerType = val; group.triggerValue = ''; renderGroups(); }
+        }
+
+        function updateGroupEndType(groupId, val) {
+            const group = appState.groups.find(g => g.id === groupId);
+            if (group) { group.endType = val; group.endValue = ''; renderGroups(); }
+        }
+
+        function updateListEndType(groupId, listId, val) {
+            const group = appState.groups.find(g => g.id === groupId);
+            if (group) {
+                const list = group.lists.find(l => l.id === listId);
+                if(list) { list.endType = val; list.endValue = ''; renderGroups(); }
+            }
+        }
+
+        function importVideos(groupId, listId) {
+            const group = appState.groups.find(g => g.id === groupId);
+            if (!group) return;
+            const list = group.lists.find(l => l.id === listId);
+            if (!list) return;
+
+            const rawText = list.rawInput || document.getElementById(`${listId}-videoIds`).value || '';
+            const uniqueIds = [...new Set(rawText.split(',').map(id => id.trim()).filter(id => id !== ''))];
+            
+            list.videoIds = uniqueIds;
+            list.rawInput = uniqueIds.join(', ');
+            if(list.currentIndex > list.videoIds.length) list.currentIndex = 1;
+            renderGroups();
+        }
+
+        function clearVideos(groupId, listId) {
+            const group = appState.groups.find(g => g.id === groupId);
+            if (!group) return;
+            const list = group.lists.find(l => l.id === listId);
+            if (!list) return;
+
+            list.videoIds = []; list.rawInput = ''; list.currentIndex = 1; list.playCount = 1;
+            renderGroups();
+        }
+
+        function toggleExpand(groupId) {
+            const group = appState.groups.find(g => g.id === groupId);
+            if (group) {
+                group.isExpanded = !group.isExpanded;
+                const body = document.getElementById(`body-${groupId}`), icon = document.getElementById(`icon-${groupId}`);
+                if (group.isExpanded) { body.classList.remove('collapsed'); body.classList.add('max-h-[5000px]', 'opacity-100'); icon.innerHTML = icons.collapse; } 
+                else { body.classList.add('collapsed'); body.classList.remove('max-h-[5000px]', 'opacity-100'); icon.innerHTML = icons.expand; }
+            }
+        }
+
+        function toggleListExpand(groupId, listId) {
+            const group = appState.groups.find(g => g.id === groupId);
+            if (group) {
+                const list = group.lists.find(l => l.id === listId);
+                if (list) {
+                    list.isExpanded = !list.isExpanded;
+                    const body = document.getElementById(`body-list-${listId}`), icon = document.getElementById(`icon-list-${listId}`);
+                    if (list.isExpanded) { body.classList.remove('collapsed'); body.classList.add('max-h-[2000px]', 'opacity-100'); icon.innerHTML = icons.collapse; } 
+                    else { body.classList.add('collapsed'); body.classList.remove('max-h-[2000px]', 'opacity-100'); icon.innerHTML = icons.expand; }
+                }
+            }
+        }
+
+    </script>
+</body>
+</html>

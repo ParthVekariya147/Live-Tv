@@ -1,5 +1,7 @@
 # SMK TV — Command Reference
 
+> Something broken? See **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** (symptom → cause → fix).
+
 ## Ports
 
 | Service                 | Port |
@@ -7,6 +9,7 @@
 | YouTube API server      | 3000 |
 | Controller (dev & prod)  | 3004 |
 | Controller API (dev only, internal) | 3005 |
+| HTTPS phone-setup server (`/setup`, self-signed) | 3443 (`HTTPS_PORT`) |
 
 Browser-facing port is always **3004** — in dev mode Vite serves the UI there and proxies `/api`, `/videos`, `/ws` to the internal Express backend on 3005; in production the same Express server (`server.cjs`) serves the built UI and API directly on 3004.
 
@@ -127,6 +130,21 @@ node smk.cjs exe
 # Or directly
 node build.cjs
 ```
+
+EXE builds land in `windows/exe/SMK TV <N>.exe` (auto-numbered). The build also copies the root `.env` to `windows/exe/.env` — the exe reads its env from there, so if you edit `.env` after building, rebuild or update that copy too. Changes to `live-tv-controller-react/public/` files (setup.html, player pages) only reach the exe after a rebuild (they're embedded via `public-assets.cjs`).
+
+---
+
+## Quick Diagnostics (paste in a browser)
+
+| URL | Tells you |
+|---|---|
+| `http://localhost:3004/api/scheduler/status` | Scheduler running, schedule count |
+| `http://localhost:3004/api/scheduler/alerts` | Missed/failed triggers |
+| `http://localhost:3004/api/notifications/status` | Firebase initialized? registered devices? |
+| `http://localhost:3004/api/notifications/setup-url` | Phone-pairing URLs (live-checks the tunnel) |
+| `http://localhost:3000/api/live` | YouTube data service up; `"source"` shows which fallback answered |
+| `http://localhost:3004/api/backup/status` | Auto-backup state |
 
 ---
 

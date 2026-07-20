@@ -5,6 +5,23 @@ export const LOCAL_PLAYER_EVENT_KEY = "localPCPlayerEvent";
 export const LIVE_PLAYER_EVENT_KEY = "livePlayerEvent";
 export const ALLOWED_CHANNELS = ["Swaminarayan Bhagwan 1", "Swaminarayan", "Swaminarayan Bhagwan"];
 
+// --- Video ID parsing helpers (shared by Loop Player + Playlist Automation) ---
+// Splits raw pasted/file text into IDs — accepts newline, comma, or CR/LF separated lists.
+export function parseIdsFromText(text) {
+    return String(text ?? '').split(/[\r\n,]+/).map(s => s.trim()).filter(Boolean);
+}
+
+// Accepts either a bare 11-char YouTube ID or a full URL (watch?v=, youtu.be/, /shorts/, /embed/)
+// and returns just the ID — so files/pastes built from copied URLs still work.
+const YOUTUBE_URL_ID_RE = /(?:v=|\/embed\/|\/shorts\/|youtu\.be\/|\/v\/)([a-zA-Z0-9_-]{11})/;
+export function extractVideoId(raw) {
+    const trimmed = String(raw ?? '').trim();
+    if (!trimmed) return '';
+    if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) return trimmed;
+    const match = trimmed.match(YOUTUBE_URL_ID_RE);
+    return match ? match[1] : trimmed;
+}
+
 // --- Time Conversion Helper ---
 export function timeToSeconds(timeString) {
     if (!timeString || typeof timeString !== "string") {
@@ -252,7 +269,8 @@ export function sendPlayerCommand(
     videoId = null,
     startSeconds = null,
     endSeconds = null,
-    videoPath = null
+    videoPath = null,
+    extras = null
 ) {
     const commandData = { command: command };
     if (videoId) {
@@ -263,6 +281,9 @@ export function sendPlayerCommand(
 
     if (videoPath) {
         commandData.videoPath = videoPath;
+    }
+    if (extras && typeof extras === 'object') {
+        Object.assign(commandData, extras);
     }
 
     localStorage.setItem(playerKey, JSON.stringify(commandData));

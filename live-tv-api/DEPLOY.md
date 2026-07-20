@@ -1,4 +1,26 @@
-# Deploy Your Own API — Step by Step
+# live-tv-api — Run Locally & Deploy
+
+## How it normally runs
+
+In this project the API runs **locally on port 3000** (started by `node smk.cjs dev` / `node smk.cjs start` from the repo root, PM2 process `smk-api`, or bundled inside the Windows EXE). The Vercel deployment below is optional — a way to host the same code publicly.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/live?channelId=` | Live + upcoming streams for a channel |
+| `GET /api/videos` | Recent uploads (Katha Monitor) |
+| `GET /api/video-description?videoId=` | Full video description (Mangla Charan timestamp, Delay Player keyword-skip) |
+
+### `/api/video-description` resilience (server.js)
+
+This endpoint is hardened against YouTube rate-limiting (a burst of 30 concurrent fetches once got the machine's IP 429-blocked):
+
+- **6-hour in-memory cache** per videoId (`cached: true` in the response).
+- **Max 3 concurrent** upstream fetches; extra requests queue.
+- **Innertube first**: `POST youtubei/v1/player` (small JSON call that works even while the watch page is behind Google's "sorry" 429 page), watch-page HTML scrape as fallback.
+- On a **429**, the scrape path cools down for 5 minutes.
+- If all sources fail but an expired cache entry exists, it's served with `stale: true` instead of erroring.
+
+If descriptions stop coming through, check the server log for `[Description]` warnings before touching code — it's usually the cooldown doing its job.
 
 ## Why This Exists
 

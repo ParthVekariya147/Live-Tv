@@ -122,15 +122,15 @@ export default function NotificationSettings() {
     }
 
     async function removeDevice(deviceId) {
-        const device = devices.find(d => d.id === deviceId)
-        if (!device) return
         try {
-            await fetch('/api/notifications/register', {
+            // The devices API never exposes raw tokens — delete by deviceId and only
+            // drop the row from the list once the server confirms actual removal.
+            const res = await fetch('/api/notifications/register', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: device.token }),
+                body: JSON.stringify({ deviceId }),
             })
-            setDevices(prev => prev.filter(d => d.id !== deviceId))
+            if (res.ok) setDevices(prev => prev.filter(d => d.id !== deviceId))
         } catch (_) {}
     }
 

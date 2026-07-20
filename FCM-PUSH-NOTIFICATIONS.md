@@ -2,7 +2,7 @@
 
 > Generated: 2026-06-29
 > Project: Live TV Controller (`live-tv-controller-react`)
-> Status: **Analysis complete — awaiting implementation approval**
+> Status: **HISTORICAL — the feature is implemented and has since evolved.** This document is the original design plan, kept for context. For current behavior see `FEATURES-REPORT.md` §8 and `live-tv-controller-react/PROJECT.md` §8; for fixing problems see `TROUBLESHOOTING.md` §3. Notable post-plan changes: `SCHEDULER_TRIGGER_FAILED` template + confirm-before-notify flow, delete-by-deviceId, tunnel health checks, `sendTest()` surfacing FCM rejections, `firebase-admin` pinned to ^12.7.0 for pkg.
 
 ---
 

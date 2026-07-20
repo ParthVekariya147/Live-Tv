@@ -78,6 +78,86 @@ function extractDescriptionFromHtml(html) {
     return "";
 }
 
+// ─── Description cache + throttling ──────────────────────────────────────────
+// Descriptions rarely change, so cache them for hours. Katha Monitor requests
+// 30 at once — without a cache + concurrency cap that pattern got the machine's
+// IP rate-limited by YouTube (HTTP 429 → Google "sorry" page).
+const descCache = new Map(); // videoId → { description, fetchedAt }
+const DESC_FRESH_MS = 6 * 60 * 60 * 1000; // 6h
+
+// Max simultaneous YouTube watch-page fetches
+const DESC_MAX_CONCURRENT = 3;
+let descActive = 0;
+const descWaiters = [];
+
+async function withDescSlot(task) {
+    if (descActive >= DESC_MAX_CONCURRENT) {
+        await new Promise((resolve) => descWaiters.push(resolve));
+    }
+    descActive++;
+    try {
+        return await task();
+    } finally {
+        descActive--;
+        const next = descWaiters.shift();
+        if (next) next();
+    }
+}
+
+// When YouTube answers 429, stop hitting it for a while so the block can lift
+const YT_COOLDOWN_MS = 5 * 60 * 1000;
+let ytBlockedUntil = 0;
+
+async function fetchDescriptionFromYouTube(videoId) {
+    if (Date.now() < ytBlockedUntil) {
+        throw new Error("YouTube rate-limited (cooling down)");
+    }
+    const response = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`, {
+        signal: AbortSignal.timeout(12000),
+        headers: {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+    });
+    if (!response.ok) {
+        if (response.status === 429) {
+            ytBlockedUntil = Date.now() + YT_COOLDOWN_MS;
+            console.warn(`[Description] YouTube 429 — cooling down for ${YT_COOLDOWN_MS / 60000}min`);
+        }
+        throw new Error(`HTTP ${response.status}`);
+    }
+    const html = await response.text();
+    return extractDescriptionFromHtml(html);
+}
+
+// Primary source: YouTube's innertube API — a small JSON call that keeps
+// working even when the watch page is behind the Google "sorry" 429 block.
+async function fetchDescriptionFromInnertube(videoId) {
+    const res = await fetch("https://www.youtube.com/youtubei/v1/player?prettyPrint=false", {
+        method: "POST",
+        signal: AbortSignal.timeout(10000),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            context: { client: { clientName: "WEB", clientVersion: "2.20240726.00.00" } },
+            videoId,
+        }),
+    });
+    if (!res.ok) throw new Error(`Innertube HTTP ${res.status}`);
+    const data = await res.json();
+    return data?.videoDetails?.shortDescription || "";
+}
+
+async function fetchDescription(videoId) {
+    try {
+        const desc = await fetchDescriptionFromInnertube(videoId);
+        if (desc) return desc;
+    } catch (e) {
+        console.warn(`[Description] Innertube failed for ${videoId}: ${e.message}`);
+    }
+    // Fallback: scrape the watch page (heavier, subject to the 429 cooldown)
+    return fetchDescriptionFromYouTube(videoId);
+}
+
 async function handleVideoDescription(req, res) {
     if (req.method === "OPTIONS") {
         return res.status(200).end();
@@ -94,28 +174,20 @@ async function handleVideoDescription(req, res) {
         });
     }
 
+    const cached = descCache.get(videoId);
+    if (cached && Date.now() - cached.fetchedAt < DESC_FRESH_MS) {
+        return res.status(200).json({ success: true, videoId, description: cached.description, cached: true });
+    }
+
     try {
-        const response = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`, {
-            signal: AbortSignal.timeout(12000),
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            },
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-
-        const html = await response.text();
-        const description = extractDescriptionFromHtml(html);
-
-        return res.status(200).json({
-            success: true,
-            videoId,
-            description,
-        });
+        const description = await withDescSlot(() => fetchDescription(videoId));
+        descCache.set(videoId, { description, fetchedAt: Date.now() });
+        return res.status(200).json({ success: true, videoId, description });
     } catch (error) {
+        if (cached) {
+            // Expired cache beats no data while sources are down
+            return res.status(200).json({ success: true, videoId, description: cached.description, stale: true });
+        }
         return res.status(500).json({
             success: false,
             videoId,

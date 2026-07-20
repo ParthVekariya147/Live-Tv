@@ -1,0 +1,206 @@
+{
+  "version": 1,
+  "maxEntries": 500,
+  "entries": [
+    {
+      "id": "7f419dfa-d9bc-43d5-909d-6ec7ad58b65d",
+      "sentAt": "2026-07-13T12:26:40.613Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Loop Player did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "ed79f32a-59f5-4c3d-abd3-4f0974aefb6d",
+      "sentAt": "2026-07-13T12:26:40.458Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Delay Live did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "46c69798-7dc9-45d3-8646-ed29ab380122",
+      "sentAt": "2026-07-13T12:26:40.298Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Live Player did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "71abe927-ff2c-45a1-a80b-2d0ece2c5d6c",
+      "sentAt": "2026-07-13T12:26:40.271Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Loop Player did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "4bc522ab-e4d4-4181-b142-1d28507c5fa7",
+      "sentAt": "2026-07-13T12:26:40.176Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Delay Live did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "79e455e4-28a1-4b56-9aac-c906f764071f",
+      "sentAt": "2026-07-13T12:26:40.141Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Local Player did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "4c6ae2c7-c6cb-4b73-8283-082e9505bacc",
+      "sentAt": "2026-07-13T12:26:40.097Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Delay Live did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "2bcd9c2c-c358-49a2-9c7c-2cddae850ecd",
+      "sentAt": "2026-07-13T12:26:39.865Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Local Player did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "799142e5-04c7-4d02-b690-d4f8ca4c3e05",
+      "sentAt": "2026-07-13T12:26:39.851Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Live Player did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "68d64d2f-d5d5-4164-b931-f7cbea082973",
+      "sentAt": "2026-07-13T12:26:39.805Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Local Player did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "b2446ab5-8834-421c-98d8-06433a868a3f",
+      "sentAt": "2026-07-13T12:26:39.751Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Delay Live did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "aa911557-c054-4634-8175-0d6e0e221886",
+      "sentAt": "2026-07-13T12:26:39.664Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Local Player did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "10faec45-c360-45cf-a729-33d97e6fbb17",
+      "sentAt": "2026-07-13T12:26:39.616Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Local Player did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "2802ac42-1c7c-4e38-bef5-b20f6ab9de4b",
+      "sentAt": "2026-07-13T12:26:39.562Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Loop Player did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "cc8a1b7d-f895-48d3-89b5-21c9666526b7",
+      "sentAt": "2026-07-13T12:26:39.452Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Loop Player did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "25b29166-85ad-448e-9b48-5d5db87bb25c",
+      "sentAt": "2026-07-13T12:26:39.321Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Live Player did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "b89a9181-5bbc-4efa-be38-0ed6a075c579",
+      "sentAt": "2026-07-13T12:26:39.278Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Local Player did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "a62683e8-55da-45fa-bd52-5548e806d3da",
+      "sentAt": "2026-07-13T12:26:39.141Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Live Player did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "fb20be07-5d4a-4ebc-9936-07d6269729be",
+      "sentAt": "2026-07-13T12:26:39.059Z",
+      "event": "SCHEDULER_TRIGGER_FAILED",
+      "title": "⚠ Delay did not run",
+      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    },
+    {
+      "id": "b6c8af1d-6cc7-4b11-8a1a-f0a1908163f7",
+      "sentAt": "2026-07-13T12:24:30.947Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "Scheduler Alert",
+      "body": "\"19 Missed Schedule(s) Detected\" failed  times",
+      "tokensAttempted": 2,
+      "tokensSucceeded": 2,
+      "tokensFailed": 0
+    }
+  ]
+}

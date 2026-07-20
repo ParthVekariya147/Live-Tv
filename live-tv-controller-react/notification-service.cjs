@@ -91,7 +91,13 @@ class FCMProvider extends NotificationProvider {
                 if (resp.success) {
                     succeeded.push(chunk[idx]);
                 } else {
-                    failed.push({ token: chunk[idx], error: resp.error?.code || 'unknown' });
+                    // Keep code for programmatic handling, but preserve the underlying
+                    // message — codes like app/invalid-credential hide the real cause.
+                    failed.push({
+                        token: chunk[idx],
+                        error: resp.error?.code || 'unknown',
+                        message: resp.error?.message || ''
+                    });
                 }
             });
         }
@@ -114,6 +120,12 @@ const TEMPLATES = {
         body:  (d) => `"${d.scheduleName || 'Schedule'}" failed ${d.retries || ''} times`,
         icon: '/icon-192.png',
         tag: 'scheduler-alert',
+    },
+    SCHEDULER_TRIGGER_FAILED: {
+        title: (d) => `⚠ ${d.scheduleName || 'Schedule'} did not run`,
+        body:  (d) => `"${d.action || 'action'}" failed: ${d.reason || 'not confirmed by OBS'}`,
+        icon: '/icon-192.png',
+        tag: 'scheduler-trigger-failed',
     },
     RECORDING_STARTED: {
         title: () => 'Recording Started',
@@ -325,7 +337,11 @@ class NotificationService {
         const result = await this.provider.send([token], payload);
         console.log(`[NotificationService] sendTest result: ok=${result.succeeded.length} fail=${result.failed.length}`);
         if (result.failed.length > 0) {
-            console.warn('[NotificationService] sendTest failed:', result.failed[0]?.error);
+            const f = result.failed[0];
+            console.warn('[NotificationService] sendTest failed:', f?.error, f?.message || '');
+            // Surface the FCM rejection to the caller — otherwise the API replies
+            // {sent:true} and the UI shows success for a token Google refused.
+            throw new Error(`FCM rejected the token: ${f?.error || 'unknown error'}${f?.message ? ` — ${f.message}` : ''}`);
         }
     }
 }

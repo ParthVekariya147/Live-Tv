@@ -1,13 +1,15 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useOBS } from '../context/OBSContext';
-import { sendPlayerCommand, PLAYER_EVENT_KEY } from '../utils/core-utils';
+import { sendPlayerCommand, PLAYER_EVENT_KEY, parseIdsFromText, extractVideoId } from '../utils/core-utils';
 import { usePlayerTime } from '../utils/usePlayerHooks';
 import { useVideoInfo } from '../hooks/useVideoInfo';
 import { logVideoLoad, logVideoPlay, logPlaylistAction } from '../utils/logger';
 import { setStateValue } from '../utils/state-api';
 import PlayerControlBtn from './common/PlayerControlBtn';
 import ThumbnailLoader from './common/ThumbnailLoader';
+import ErrorBoundary from './common/ErrorBoundary';
+import LoopPlaylistAutomation from './LoopPlaylistAutomation';
 
 const LoopPlayerCard = () => {
     const { sourceState } = useOBS();
@@ -21,6 +23,11 @@ const LoopPlayerCard = () => {
     const currentIndexRef = useRef(currentIndex);
     useEffect(() => { playlistRef.current = playlist; }, [playlist]);
     useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
+    // True while the Playlist Automation manager is actively driving playback (Groups/Lists
+    // chaining). While true, this card's own "wrap to next index on video end" logic backs
+    // off so the two don't fight over what plays next — the automation manager decides.
+    // Any manual control (Load/Next/Prev/Jump/Reset) takes control back from automation.
+    const automationModeRef = useRef(false);
     const [inputValue, setInputValue] = useState("");
     const [jumpIndex, setJumpIndex] = useState(""); // For jump to index feature
     const [isImporting, setIsImporting] = useState(false);
@@ -174,6 +181,10 @@ const LoopPlayerCard = () => {
                 try {
                     const data = JSON.parse(e.newValue);
                     if (data.playerType === 'loop' && (data.event === 'videoEnded' || data.event === 'videoError')) {
+                        // Playlist Automation owns advancement while it's driving playback —
+                        // it listens to this same event independently and decides what plays
+                        // next (including cross-list/cross-group chaining). Don't also wrap here.
+                        if (automationModeRef.current) return;
                         const ci = currentIndexRef.current;
                         const pl = playlistRef.current;
                         let nextIdx = ci + 1;
@@ -189,7 +200,51 @@ const LoopPlayerCard = () => {
         return () => window.removeEventListener('storage', handleStorage);
     }, []); // refs always have latest values — no stale closure
 
+    // Receive a video list + start position from the Playlist Automation manager.
+    // Mirrors handleLoadAndPlay/handleJump but is triggered externally (by a schedule,
+    // a live-event match, or list/group chaining) instead of by the user.
+    useEffect(() => {
+        const handleAutomationLoad = (event) => {
+            const { videoIds, startIndex } = event.detail || {};
+            if (!Array.isArray(videoIds) || videoIds.length === 0) return;
+            const idx = Math.min(Math.max(startIndex || 0, 0), videoIds.length - 1);
+            const vid = videoIds[idx];
+            if (!vid) return;
+
+            automationModeRef.current = true;
+            setPlaylist(videoIds);
+            setCurrentIndex(idx);
+            hasUserData.current = true;
+
+            sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
+            sendPlayerCommand('loopPlayerCommand', 'play');
+            sendPlayerCommand('loopPlayerCommand', 'unmute');
+            setIsPlaying(true);
+            setIsStopped(false);
+            setIsMuted(false);
+            setStatusText('Playlist Automation active');
+            logVideoLoad('Loop Player', vid, videoTitle, 'automation', { playlistIndex: idx, playlistSize: videoIds.length });
+            logVideoPlay('Loop Player', vid, 'automation');
+        };
+        window.addEventListener('loopPlayerLoadPlaylist', handleAutomationLoad);
+        return () => window.removeEventListener('loopPlayerLoadPlaylist', handleAutomationLoad);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Automation intentionally stopped (dead-end chain, deleted group, or the user hit
+    // "Stop Automation") — hand control back so this card's own wraparound resumes on
+    // whatever was last loaded, instead of silently going unresponsive on video end.
+    useEffect(() => {
+        const handleAutomationStop = () => {
+            automationModeRef.current = false;
+            setStatusText('Automation ended — looping last playlist');
+        };
+        window.addEventListener('loopPlayerAutomationStop', handleAutomationStop);
+        return () => window.removeEventListener('loopPlayerAutomationStop', handleAutomationStop);
+    }, []);
+
     const handleLoadAndPlay = () => {
+        automationModeRef.current = false; // manual load takes control back from automation
         let currentList = playlist;
         if (inputValue) {
             currentList = inputValue.split(',').map(s => s.trim()).filter(Boolean);
@@ -254,6 +309,7 @@ const LoopPlayerCard = () => {
     };
 
     const handleNext = () => {
+        automationModeRef.current = false;
         let nextIdx = currentIndex + 1;
         if (nextIdx >= playlist.length) nextIdx = 0;
         setCurrentIndex(nextIdx);
@@ -262,6 +318,7 @@ const LoopPlayerCard = () => {
     };
 
     const handlePrev = () => {
+        automationModeRef.current = false;
         let prevIdx = currentIndex - 1;
         if (prevIdx < 0) prevIdx = playlist.length - 1;
         setCurrentIndex(prevIdx);
@@ -270,6 +327,7 @@ const LoopPlayerCard = () => {
     };
 
     const handleJump = () => {
+        automationModeRef.current = false;
         const idx = parseInt(jumpIndex, 10);
         if (isNaN(idx) || idx < 1 || idx > playlist.length) {
             setStatusText(`Enter index 1-${playlist.length}`);
@@ -289,6 +347,7 @@ const LoopPlayerCard = () => {
     };
 
     const handleReset = () => {
+        automationModeRef.current = false;
         sendPlayerCommand('loopPlayerCommand', 'stop');
         setPlaylist([]);
         setCurrentIndex(0);
@@ -320,21 +379,8 @@ const LoopPlayerCard = () => {
         setStatusText(`Exported ${playlist.length.toLocaleString()} video ID(s) to file`);
     };
 
-    // Splits raw pasted/file text into IDs — accepts newline, comma, or CR/LF separated lists.
-    const parseIdsFromText = (text) => text.split(/[\r\n,]+/).map(s => s.trim()).filter(Boolean);
-
-    // Accepts either a bare 11-char YouTube ID or a full URL (watch?v=, youtu.be/, /shorts/, /embed/)
-    // and returns just the ID — so files/pastes built from copied URLs still work.
-    const YOUTUBE_URL_ID_RE = /(?:v=|\/embed\/|\/shorts\/|youtu\.be\/|\/v\/)([a-zA-Z0-9_-]{11})/;
-    const extractVideoId = (raw) => {
-        const trimmed = String(raw ?? '').trim();
-        if (!trimmed) return '';
-        if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) return trimmed;
-        const match = trimmed.match(YOUTUBE_URL_ID_RE);
-        return match ? match[1] : trimmed;
-    };
-
     const loadIds = (rawIds, sourceLabel) => {
+        automationModeRef.current = false; // manual import takes control back from automation
         const unique = [...new Set(rawIds.map(extractVideoId).filter(Boolean))];
         if (unique.length === 0) {
             setStatusText("No video IDs found");
@@ -388,7 +434,12 @@ const LoopPlayerCard = () => {
 
     return (
         <div className="player-control-card">
-            <h3>Loop Player</h3>
+            <div className="flex items-center justify-between w-full gap-2">
+                <h3>Loop Player</h3>
+                <ErrorBoundary label="Playlist Automation">
+                    <LoopPlaylistAutomation />
+                </ErrorBoundary>
+            </div>
             <ThumbnailLoader src={videoThumbnail} alt="Loop Player Thumbnail" loading={thumbLoading} />
             <p className="video-title">{thumbLoading ? 'Loading...' : (videoTitle || 'No video loaded')}</p>
             <p className="video-time-display">{timeInfo.currentTime} / {timeInfo.remainingTime}</p>

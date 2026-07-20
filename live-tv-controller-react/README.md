@@ -1,16 +1,28 @@
-# React + Vite
+# live-tv-controller-react
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The main SMK TV controller app: React UI (Vite + Tailwind) + Express server (`server.cjs`) with WebSocket, server-side scheduler, FCM push notifications, and OBS integration.
 
-Currently, two official plugins are available:
+**Start here:**
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **[PROJECT.md](PROJECT.md)** — full technical reference for this app (architecture, every REST/WS endpoint, players, scheduler, notifications, build/packaging).
+- **[../TROUBLESHOOTING.md](../TROUBLESHOOTING.md)** — symptom → cause → fix when something breaks.
+- **[../FEATURES-REPORT.md](../FEATURES-REPORT.md)** — feature-by-feature overview of the whole project.
+- **[../COMMANDS.md](../COMMANDS.md)** — ops commands (run, stop, build, PM2).
 
-## React Compiler
+## Quick reference
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+# Development — run from the REPO ROOT (starts everything):
+node smk.cjs dev          # Vite UI :3004 + this Express API :3005 + live-tv-api :3000
 
-## Expanding the ESLint configuration
+# Or manually, inside this folder (two terminals):
+npm run dev:api           # Express + WebSocket on :3005
+npm run dev               # Vite on :3004 (proxies /api /videos /ws → :3005)
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+# Release EXE — run from the REPO ROOT:
+npm run build:exe         # → windows/exe/SMK TV <N>.exe
+```
+
+Open **http://localhost:3004**. OBS Browser Sources point at the player pages on the same origin (e.g. `http://localhost:3004/DelayLive.html`).
+
+> ⚠ Files in `public/` are embedded into the EXE via the generated `public-assets.cjs` — a change there needs a rebuild (`npm run build:exe` at the root) to reach a packaged exe.
