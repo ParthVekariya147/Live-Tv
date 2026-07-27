@@ -2,7 +2,7 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { warmCache, fetchStreamChannel, fetchKathaChannel } from "./lib/youtube.js";
+import { warmChannels, getActiveChannelIds } from "./lib/youtube.js";
 
 // ─── Crash protection — log and keep running ─────────────────────────────────
 process.on("uncaughtException", (err) => {
@@ -221,13 +221,14 @@ async function init() {
         "/api/live": (await import("./api/live.js")).default,
         "/api/videos": (await import("./api/videos.js")).default,
         "/api/video-description": handleVideoDescription,
+        "/api/channels": (await import("./api/channels.js")).default,
     };
 
     const server = http.createServer(async (req, res) => {
         const url = new URL(req.url, `http://localhost:${PORT}`);
 
         res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
         res.setHeader("Access-Control-Allow-Headers", "Content-Type");
         res.setHeader("Cache-Control", "no-store");
 
@@ -255,14 +256,18 @@ async function init() {
 
     server.listen(PORT, () => {
         console.log(`live-tv-api running at http://localhost:${PORT}`);
-        console.log(`GET http://localhost:${PORT}/api/live`);
-        console.log(`GET http://localhost:${PORT}/api/videos`);
+        console.log(`GET  http://localhost:${PORT}/api/live`);
+        console.log(`GET  http://localhost:${PORT}/api/videos`);
+        console.log(`GET/POST http://localhost:${PORT}/api/channels`);
 
-        warmCache().catch((e) => console.error("[Startup] warmCache error:", e));
-
+        // No blanket startup warm-up — channels are fetched on demand the moment
+        // a monitor first requests them. The background poll below only keeps
+        // already-in-use channels warm (see getActiveChannelIds in lib/youtube.js),
+        // so channels nobody has selected cost nothing.
         setInterval(() => {
-            fetchStreamChannel().catch((e) => console.error("[BG] streams:", e));
-            fetchKathaChannel().catch((e) => console.error("[BG] katha:", e));
+            const ids = getActiveChannelIds();
+            if (ids.length === 0) return;
+            warmChannels(ids).catch((e) => console.error("[BG] warmChannels:", e));
         }, 90 * 1000);
     });
 }

@@ -33,6 +33,93 @@
     const PLAYER_EVENT_KEY = "loopPlayerEvent"; // Unique key for sending events to Controller.html
     let isLoadingVideo = false; // Flag to prevent videoEnded during loading
     let timeUpdateInterval = null; // 24/7 Reliability: Track interval for cleanup
+    // A freshly-constructed YT.Player doesn't have its control methods (playVideo,
+    // unMute, etc.) attached until onReady fires — they're wired up async. Commands
+    // that land in that gap (e.g. the "play"/"unmute" that immediately follow
+    // "loadVideo" when creating a brand-new player) used to throw "is not a function"
+    // and get silently swallowed, which could leave the first video of a session
+    // muted or never actually playing. Queue them and replay once ready instead.
+    let playerReady = false;
+    let pendingCommands = [];
+    // Whether the "Loop Player" OBS source is actually the visible/on-air one right
+    // now, per the controller panel. Fail-closed (starts false) so a stray/queued
+    // command can't autoplay audio+video in the background before the panel has had
+    // a chance to report real OBS state.
+    let sourceVisible = false;
+    let pendingPlayWhenVisible = false;
+
+    function applyCommand(data) {
+      switch (data.command) {
+        case "play":
+          if (!sourceVisible) {
+            console.log("LoopPlayer: Play requested while source is hidden — deferring until visible.");
+            pendingPlayWhenVisible = true;
+            break;
+          }
+          console.log("LoopPlayer: Playing video.");
+          player.playVideo();
+          break;
+        case "pause":
+          console.log("LoopPlayer: Pausing video.");
+          player.pauseVideo();
+          break;
+        case "stop":
+          console.log("LoopPlayer: Stopping and destroying player.");
+          player.stopVideo();
+          if (timeUpdateInterval) {
+            clearInterval(timeUpdateInterval);
+            timeUpdateInterval = null;
+          }
+          player.destroy();
+          player = null;
+          playerReady = false;
+          pendingCommands = [];
+          break;
+        case "mute":
+          console.log("LoopPlayer: Muting video.");
+          player.mute();
+          break;
+        case "unmute":
+          console.log("LoopPlayer: Unmuting video.");
+          player.unMute();
+          break;
+        case "setVolume":
+          if (typeof data.volume === "number") {
+            console.log(`LoopPlayer: Setting volume to ${data.volume}.`);
+            player.setVolume(data.volume);
+          }
+          break;
+        case "seekTo":
+          if (typeof data.seconds === "number") {
+            console.log(`LoopPlayer: Seeking to ${data.seconds} seconds.`);
+            player.seekTo(data.seconds, true); // true for allowSeekAhead
+          }
+          break;
+        case "destroy":
+          console.log("LoopPlayer: Destroying player.");
+          if (timeUpdateInterval) {
+            clearInterval(timeUpdateInterval);
+            timeUpdateInterval = null;
+          }
+          player.destroy();
+          player = null;
+          playerReady = false;
+          pendingCommands = [];
+          break;
+        case "loadVideo":
+          console.log(`LoopPlayer: Loading new video ID: ${data.videoId}`);
+          pendingPlayWhenVisible = false; // fresh video — any earlier deferred play no longer applies
+          if (sourceVisible) {
+            player.loadVideoById({ videoId: data.videoId });
+          } else {
+            // cueVideoById loads without autoplaying — loadVideoById always plays
+            // immediately regardless of any "autoplay" field, which is what let
+            // videos start in the background while this source was hidden.
+            player.cueVideoById({ videoId: data.videoId });
+          }
+          break;
+      }
+    }
 
     // Function to load the YouTube IFrame API asynchronously
     function loadYouTubeAPI() {
@@ -57,25 +144,27 @@
           const data = JSON.parse(event.newValue);
           console.log("LoopPlayer: Command received via localStorage:", data);
 
-          if (data.command === "loadVideo" && data.videoId) {
+          if (data.command === "setSourceVisible") {
+            sourceVisible = !!data.visible;
+            if (player && playerReady) {
+              if (sourceVisible && pendingPlayWhenVisible) {
+                pendingPlayWhenVisible = false;
+                player.playVideo();
+              } else if (!sourceVisible) {
+                player.pauseVideo();
+              }
+            }
+          } else if (data.command === "loadVideo" && data.videoId) {
             isLoadingVideo = true; // Set loading flag
             if (player) {
-              // If player already exists, load new video
-              console.log(
-                `LoopPlayer: Loading new video ID: ${data.videoId}`
-              );
-              player.loadVideoById({
-                videoId: data.videoId,
-                playerVars: {
-                  autoplay: 1,
-                  controls: 0,
-                  modestbranding: 1, // Hide YouTube logo
-                  showinfo: 0, // Hide video title and uploader info
-                  rel: 0, // Do not show related videos
-                  fs: 1, // Enable fullscreen button (though we control it)
-                  iv_load_policy: 3, // Do not show video annotations
-                },
-              });
+              // If player already exists but hasn't fired onReady yet (e.g. this
+              // loadVideo followed hard on the one that just created it),
+              // loadVideoById isn't attached yet — queue for replay instead.
+              if (!playerReady) {
+                pendingCommands.push(data);
+              } else {
+                applyCommand(data);
+              }
             } else {
               // Create new player if it doesn't exist
               // Ensure YT.Player is available before trying to create
@@ -86,10 +175,13 @@
                 console.log(
                   `LoopPlayer: Creating new player for video ID: ${data.videoId}`
                 );
+                playerReady = false;
+                pendingCommands = [];
+                pendingPlayWhenVisible = false;
                 player = new YT.Player("player", {
                   videoId: data.videoId,
                   playerVars: {
-                    autoplay: 1,
+                    autoplay: sourceVisible ? 1 : 0,
                     controls: 0,
                     modestbranding: 1,
                     showinfo: 0,
@@ -110,61 +202,14 @@
               }
             }
           } else if (player) {
-            // Handle other commands if player exists
-            switch (data.command) {
-              case "play":
-                console.log("LoopPlayer: Playing video.");
-                player.playVideo();
-                break;
-              case "pause":
-                console.log("LoopPlayer: Pausing video.");
-                player.pauseVideo();
-                break;
-              case "stop":
-                console.log("LoopPlayer: Stopping and destroying player.");
-                player.stopVideo();
-                // 24/7 Reliability: Clear interval before destroy
-                if (timeUpdateInterval) {
-                  clearInterval(timeUpdateInterval);
-                  timeUpdateInterval = null;
-                }
-                player.destroy(); // Destroy player to clear video
-                player = null;
-                break;
-              case "mute":
-                console.log("LoopPlayer: Muting video.");
-                player.mute();
-                break;
-              case "unmute":
-                console.log("LoopPlayer: Unmuting video.");
-                player.unMute();
-                break;
-              case "setVolume":
-                if (typeof data.volume === "number") {
-                  console.log(
-                    `LoopPlayer: Setting volume to ${data.volume}.`
-                  );
-                  player.setVolume(data.volume);
-                }
-                break;
-              case "seekTo":
-                if (typeof data.seconds === "number") {
-                  console.log(
-                    `LoopPlayer: Seeking to ${data.seconds} seconds.`
-                  );
-                  player.seekTo(data.seconds, true); // true for allowSeekAhead
-                }
-                break;
-              case "destroy":
-                console.log("LoopPlayer: Destroying player.");
-                // 24/7 Reliability: Clear interval before destroy
-                if (timeUpdateInterval) {
-                  clearInterval(timeUpdateInterval);
-                  timeUpdateInterval = null;
-                }
-                player.destroy();
-                player = null;
-                break;
+            // If the player object exists but hasn't fired onReady yet (e.g. this
+            // "play"/"unmute" arrived right after the "loadVideo" that just created
+            // it), its control methods aren't attached yet — queue for replay instead
+            // of calling straight into a TypeError that silently gets swallowed below.
+            if (!playerReady) {
+              pendingCommands.push(data);
+            } else {
+              applyCommand(data);
             }
           }
         } catch (e) {
@@ -175,7 +220,15 @@
 
     function onPlayerReady(event) {
       console.log("LoopPlayer: Player is ready!");
-      event.target.playVideo(); // Autoplay on ready
+      playerReady = true;
+      if (sourceVisible) {
+        event.target.playVideo(); // Autoplay on ready — only when actually the visible source
+      }
+      // Replay any play/mute/seek/etc. commands that arrived before the player's
+      // control methods were attached, in the order they arrived.
+      const queued = pendingCommands;
+      pendingCommands = [];
+      queued.forEach(applyCommand);
     }
 
     function onPlayerStateChange(event) {

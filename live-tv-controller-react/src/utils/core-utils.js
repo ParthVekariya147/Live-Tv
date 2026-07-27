@@ -3,7 +3,6 @@ export const PLAYER_EVENT_KEY = "loopPlayerEvent";
 export const DELAY_PLAYER_EVENT_KEY = "delayLivePlayerEvent";
 export const LOCAL_PLAYER_EVENT_KEY = "localPCPlayerEvent";
 export const LIVE_PLAYER_EVENT_KEY = "livePlayerEvent";
-export const ALLOWED_CHANNELS = ["Swaminarayan Bhagwan 1", "Swaminarayan", "Swaminarayan Bhagwan"];
 
 // --- Video ID parsing helpers (shared by Loop Player + Playlist Automation) ---
 // Splits raw pasted/file text into IDs — accepts newline, comma, or CR/LF separated lists.

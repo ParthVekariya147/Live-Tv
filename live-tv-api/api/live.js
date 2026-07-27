@@ -1,5 +1,5 @@
 // api/live.js  →  GET /api/live
-// Returns: currently live streams + upcoming events from the Live Monitor channel
+// Returns: currently live streams + upcoming events from a given channel
 //
 // RESPONSE FORMAT — this never changes, only lib/youtube.js changes:
 // {
@@ -10,18 +10,26 @@
 //   "updatedAt": "ISO string"
 // }
 
-import { CHANNELS, fetchStreamChannel, fetchChannelById, getLiveStreams, getUpcoming } from "../lib/youtube.js";
+import { fetchChannelById, getLiveStreams, getUpcoming } from "../lib/youtube.js";
+import { getDefaultChannelId } from "../lib/channels-store.js";
 
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
     const url       = new URL(req.url, `http://localhost`);
-    const channelId = url.searchParams.get("channelId") || CHANNELS.streams;
+    const channelId = url.searchParams.get("channelId") || getDefaultChannelId();
 
-    const allVideos = channelId === CHANNELS.streams
-      ? await fetchStreamChannel()
-      : await fetchChannelById(channelId);
+    if (!channelId) {
+      return res.status(400).json({
+        success: false,
+        error: "No channelId provided and no channels configured — add one via /api/channels",
+        live: [],
+        upcoming: [],
+      });
+    }
+
+    const allVideos = await fetchChannelById(channelId);
 
     const live      = getLiveStreams(allVideos);
     const upcoming  = getUpcoming(allVideos);

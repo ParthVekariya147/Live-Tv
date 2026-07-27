@@ -55,6 +55,14 @@ export const OBSProvider = ({ children }) => {
     useEffect(() => { sourceStateRef.current = sourceState; }, [sourceState]);
     useEffect(() => { sourceIdsRef.current = sourceIds; }, [sourceIds]);
 
+    // Holds a setSourceVisibility() call that arrived before OBS had reported its current
+    // scene (a normal race at app startup / reconnect) — replayed once GetSceneItemList
+    // resolves instead of being silently dropped.
+    const pendingVisibilityRef = useRef(null);
+    // Always-current ref to setSourceVisibility, so handleOBSMessage (declared above it)
+    // can replay a pending request without a stale closure.
+    const setSourceVisibilityRef = useRef(null);
+
     const sendRequest = useCallback((type, data = {}) => {
         const ws = socketRef.current;
         if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -158,6 +166,14 @@ export const OBSProvider = ({ children }) => {
                     }
                     setSourceState(prev => ({ ...prev, ...newSourceState }));
                     setSourceIds(prev => ({ ...prev, ...newSourceIds }));
+
+                    // Replay a visibility change that came in before the scene/sources were
+                    // known (e.g. right at startup) now that they've just resolved.
+                    if (pendingVisibilityRef.current) {
+                        const { sourceName, visible, trigger } = pendingVisibilityRef.current;
+                        pendingVisibilityRef.current = null;
+                        setTimeout(() => setSourceVisibilityRef.current?.(sourceName, visible, trigger), 0);
+                    }
                     break;
                 }
                 case "GetStreamStatus":
@@ -382,12 +398,9 @@ export const OBSProvider = ({ children }) => {
         const currentSourceState = sourceStateRef.current;
 
         if (!sceneNameRef.current) {
-            logError(
-                LogType.OBS_SOURCE_ERROR,
-                LogCategory.SYSTEM,
-                { function: 'setSourceVisibility', sourceName, visible, trigger },
-                `setSourceVisibility("${sourceName}") failed — OBS scene name unknown`
-            );
+            // Normal race at startup/reconnect — OBS hasn't reported its current scene yet.
+            // Queue it; the GetSceneItemList handler replays it as soon as the scene resolves.
+            pendingVisibilityRef.current = { sourceName, visible, trigger };
             return false;
         }
 
@@ -448,6 +461,8 @@ export const OBSProvider = ({ children }) => {
         }
         return true;
     }, [sendRequest]);
+
+    useEffect(() => { setSourceVisibilityRef.current = setSourceVisibility; }, [setSourceVisibility]);
 
     // Confirmed variant of setSourceVisibility — awaits OBS's actual RequestResponse
     // before resolving, so callers (the scheduler's confirm-before-notify flow) know

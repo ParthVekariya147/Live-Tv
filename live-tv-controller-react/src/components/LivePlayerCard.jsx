@@ -2,18 +2,19 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useOBS } from '../context/OBSContext';
 import { sendPlayerCommand, LIVE_PLAYER_EVENT_KEY, secondsToHMS } from '../utils/core-utils';
-import { usePlayerTime } from '../utils/usePlayerHooks';
+import { usePlayerTime, usePlayerEvents } from '../utils/usePlayerHooks';
 import { useVideoInfo } from '../hooks/useVideoInfo';
 import { logVideoLoad, logVideoPlay, logError, LogCategory, LogType } from '../utils/logger';
 import { setStateValue } from '../utils/state-api';
 import PlayerControlBtn from './common/PlayerControlBtn';
 import ThumbnailLoader from './common/ThumbnailLoader';
+import { LOOP_AUTOMATION_LOCAL_KEY } from './LoopPlaylistAutomation';
 
 const DEFAULT_LIVE_VIDEO_ID = "T3wvnwSSw8g";
 const API_BASE = '';
 
 const LivePlayerCard = () => {
-    const { sourceState } = useOBS();
+    const { sourceState, setSourceVisibility } = useOBS();
     const isVisible = sourceState["Live Player"];
     const isInitialized = useRef(false);
 
@@ -22,6 +23,27 @@ const LivePlayerCard = () => {
     useEffect(() => { videoIdRef.current = videoId; }, [videoId]);
     const videoTitleRef = useRef('');
     const [priority, setPriority] = useState("matchSearchTerms");
+
+    // "On Stream End, Start Group" — when the live stream goes offline (YouTube reports
+    // ENDED), automatically hand off to Loop Player and start the picked Group. Blank = do
+    // nothing, same as before this feature existed.
+    const [endGroupId, setEndGroupId] = useState("");
+    const endGroupIdRef = useRef(endGroupId);
+    useEffect(() => { endGroupIdRef.current = endGroupId; }, [endGroupId]);
+    const [automationGroups, setAutomationGroups] = useState([]);
+    useEffect(() => {
+        const loadGroups = () => {
+            try {
+                const saved = localStorage.getItem(LOOP_AUTOMATION_LOCAL_KEY);
+                const parsed = saved ? JSON.parse(saved) : [];
+                setAutomationGroups(Array.isArray(parsed) ? parsed : []);
+            } catch { setAutomationGroups([]); }
+        };
+        loadGroups();
+        const onStorage = (e) => { if (e.key === LOOP_AUTOMATION_LOCAL_KEY) loadGroups(); };
+        window.addEventListener('storage', onStorage);
+        return () => window.removeEventListener('storage', onStorage);
+    }, []);
 
     // Playback
     const [isPlaying, setIsPlaying] = useState(true);
@@ -81,6 +103,7 @@ const LivePlayerCard = () => {
                 setIsPlaying(parsed.isPlaying ?? true);
                 setIsMuted(parsed.isMuted ?? false);
                 setIsStopped(parsed.isStopped ?? false);
+                setEndGroupId(parsed.endGroupId || "");
             } catch { /* ignore malformed localStorage */ }
         }
         isInitialized.current = true;
@@ -89,17 +112,17 @@ const LivePlayerCard = () => {
     // Save state to localStorage and server
     useEffect(() => {
         if (!isInitialized.current) return;
-        const state = { videoId, priority, isPlaying, isMuted, isStopped };
+        const state = { videoId, priority, isPlaying, isMuted, isStopped, endGroupId };
         localStorage.setItem('livePlayerState', JSON.stringify(state));
         setStateValue('player.live', state);
-    }, [videoId, priority, isPlaying, isMuted, isStopped]);
+    }, [videoId, priority, isPlaying, isMuted, isStopped, endGroupId]);
 
     // Always-current ref to flush current state on demand (pre-backup / pre-export)
     const flushStateRef = useRef(null);
     useEffect(() => {
         flushStateRef.current = () => {
             if (!isInitialized.current) return;
-            const state = { videoId, priority, isPlaying, isMuted, isStopped };
+            const state = { videoId, priority, isPlaying, isMuted, isStopped, endGroupId };
             localStorage.setItem('livePlayerState', JSON.stringify(state));
             setStateValue('player.live', state);
         };
@@ -275,6 +298,28 @@ const LivePlayerCard = () => {
         window.addEventListener('livePlayerAutoLoad', handleAutoLoad);
         return () => window.removeEventListener('livePlayerAutoLoad', handleAutoLoad);
     }, [stopRecording]);
+
+    // Refs so the videoEnded handler below always sees the latest OBS state/setter without
+    // being recreated on every OBS poll tick (same pattern as Local/Delay Player cards).
+    const sourceStateRef = useRef(sourceState);
+    useEffect(() => { sourceStateRef.current = sourceState; }, [sourceState]);
+    const setSourceVisibilityRef = useRef(setSourceVisibility);
+    useEffect(() => { setSourceVisibilityRef.current = setSourceVisibility; }, [setSourceVisibility]);
+
+    // When the live stream goes offline (YouTube reports ENDED), hand off to Loop Player and
+    // tell the automation engine which Group to start, if one was picked below.
+    const handleLiveVideoEnded = useCallback(() => {
+        const groupId = endGroupIdRef.current;
+        if (!groupId) return;
+        const setSrcVis = setSourceVisibilityRef.current ?? setSourceVisibility;
+        setSrcVis("Live Player", false);
+        setSrcVis("Loop Player", true);
+        setStatusText("Stream ended — switched to Loop Player");
+        window.dispatchEvent(new CustomEvent('loopAutomationStartGroup', {
+            detail: { groupId, label: 'Live Player stream ended' },
+        }));
+    }, [setSourceVisibility]);
+    usePlayerEvents(LIVE_PLAYER_EVENT_KEY, 'live', handleLiveVideoEnded);
 
     // Resume playback when OBS visibility changes
     const resumePlayback = () => {
@@ -550,6 +595,20 @@ const LivePlayerCard = () => {
                     <option value="matchSearchTerms">Match Search Terms</option>
                 </select>
             </div>
+
+            <label className="flex flex-col gap-1 mt-2 px-2 text-xs text-gray-400 w-full">
+                On Stream End, Start Group:
+                <select
+                    className="input-field"
+                    value={endGroupId}
+                    onChange={(e) => setEndGroupId(e.target.value)}
+                >
+                    <option value="">— None (do nothing) —</option>
+                    {automationGroups.map(g => (
+                        <option key={g.id} value={g.id}>{g.serial ? `${g.serial} - ` : ''}{g.name || 'Unnamed Group'}</option>
+                    ))}
+                </select>
+            </label>
 
             <div className="btn-group mt-2">
                 <PlayerControlBtn

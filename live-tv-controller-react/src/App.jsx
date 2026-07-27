@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useOBS } from './context/OBSContext';
 import { getCurrentDateTimeFormatted, DELAY_PLAYER_EVENT_KEY, LIVE_PLAYER_EVENT_KEY, LOCAL_PLAYER_EVENT_KEY, sendPlayerCommand } from './utils/core-utils';
 import { logVideoEnd, logVideoError } from './utils/logger';
@@ -10,6 +10,15 @@ import KathaMonitor from './components/KathaMonitor';
 import Scheduler from './components/Scheduler';
 import LogViewer from './components/LogViewer';
 import BuildFooter from './components/BuildFooter';
+import { CHANNELS_UPDATED_EVENT } from './components/ChannelManager';
+
+const LOCAL_API_BASE = import.meta.env.VITE_LOCAL_API_BASE || "http://localhost:3000";
+// Single shared channel selection driving Live Monitor 1, Live Monitor 2, and
+// Upcoming Event Monitor together — one place to change it, one channel's
+// data fetched and shared across all three instead of each polling
+// independently. Katha Monitor keeps its own independent channel selector
+// (see KathaMonitor.jsx) since it's meant to run on a separate channel.
+const CHANNEL_SELECT_KEY = "liveSelectedChannelId";
 
 function App() {
   const { isConnected, SCENE_NAME, sourceState, setSourceVisibility } = useOBS();
@@ -18,6 +27,35 @@ function App() {
   const [currentTime, setCurrentTime] = useState(getCurrentDateTimeFormatted());
   const [monitor1Enabled, setMonitor1Enabled] = useState(true);
   const [monitor2Enabled, setMonitor2Enabled] = useState(true);
+  const [channelOptions, setChannelOptions] = useState([]);
+  const [selectedChannelId, setSelectedChannelId] = useState(
+    () => localStorage.getItem(CHANNEL_SELECT_KEY) || ''
+  );
+
+  const loadChannelOptions = useCallback(async () => {
+    try {
+      const res = await fetch(`${LOCAL_API_BASE}/api/channels`, { cache: 'no-store' });
+      const data = await res.json();
+      if (!data.success) return;
+      setChannelOptions(data.channels);
+      setSelectedChannelId((prev) =>
+        prev && data.channels.some((c) => c.channelId === prev) ? prev : (data.channels[0]?.channelId || '')
+      );
+    } catch (err) {
+      console.warn('[App] Failed to load channel list:', err.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadChannelOptions();
+    window.addEventListener(CHANNELS_UPDATED_EVENT, loadChannelOptions);
+    return () => window.removeEventListener(CHANNELS_UPDATED_EVENT, loadChannelOptions);
+  }, [loadChannelOptions]);
+
+  const handleChannelChange = useCallback((newId) => {
+    setSelectedChannelId(newId);
+    localStorage.setItem(CHANNEL_SELECT_KEY, newId);
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -128,7 +166,13 @@ function App() {
 
       {/* All Monitor Cards in a single row */}
       <div id="monitors-row" className="monitors-row-container">
-        <MonitorManager monitor1Enabled={monitor1Enabled} monitor2Enabled={monitor2Enabled} />
+        <MonitorManager
+          monitor1Enabled={monitor1Enabled}
+          monitor2Enabled={monitor2Enabled}
+          channelOptions={channelOptions}
+          selectedChannelId={selectedChannelId}
+          onChannelChange={handleChannelChange}
+        />
         <div className="table-cell-wrapper"><KathaMonitor /></div>
       </div>
 

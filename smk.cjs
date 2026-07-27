@@ -38,7 +38,7 @@ const API_PORT            = Number(process.env.API_PORT) || 3000;
 const CONTROLLER_PORT     = Number(process.env.CONTROLLER_PORT) || 3004;
 const CONTROLLER_DEV_PORT = Number(process.env.CONTROLLER_DEV_PORT) || 3005;
 const VITE_DEV_PORT       = Number(process.env.VITE_DEV_PORT) || 3004;
-const ALL_PORTS           = [API_PORT, CONTROLLER_PORT, CONTROLLER_DEV_PORT, VITE_DEV_PORT];
+const ALL_PORTS           = [...new Set([API_PORT, CONTROLLER_PORT, CONTROLLER_DEV_PORT, VITE_DEV_PORT])];
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const C = {
@@ -113,15 +113,17 @@ function ensurePm2() {
 
 function freePorts() {
     if (IS_WIN) {
+        const pids = new Set();
         for (const port of ALL_PORTS) {
             try {
-                const pids = execSync(`netstat -aon 2>nul | findstr ":${port} "`, { shell: true })
+                execSync(`netstat -aon 2>nul | findstr ":${port} "`, { shell: true })
                     .toString().trim().split('\n')
                     .map(l => l.trim().split(/\s+/).pop())
-                    .filter(p => p && /^\d+$/.test(p));
-                pids.forEach(pid => tryRun(`taskkill /F /PID ${pid}`));
+                    .filter(p => p && /^\d+$/.test(p) && p !== '0')
+                    .forEach(pid => pids.add(pid));
             } catch { /* port already free */ }
         }
+        pids.forEach(pid => tryRun(`taskkill /F /PID ${pid}`));
     } else {
         tryRun(`lsof -ti :${ALL_PORTS.join(',:')} | xargs kill -9 2>/dev/null || true`);
     }
@@ -284,15 +286,17 @@ function cmdStop() {
 
     info(`Freeing ports ${ALL_PORTS.join(', ')}...`);
     if (IS_WIN) {
+        const pids = new Set();
         for (const port of ALL_PORTS) {
             try {
-                const pids = execSync(`netstat -aon 2>nul | findstr ":${port} "`, { shell: true })
+                execSync(`netstat -aon 2>nul | findstr ":${port} "`, { shell: true })
                     .toString().trim().split('\n')
                     .map(l => l.trim().split(/\s+/).pop())
-                    .filter(p => p && /^\d+$/.test(p));
-                pids.forEach(pid => tryRun(`taskkill /F /PID ${pid}`));
+                    .filter(p => p && /^\d+$/.test(p) && p !== '0')
+                    .forEach(pid => pids.add(pid));
             } catch { /* already free */ }
         }
+        pids.forEach(pid => tryRun(`taskkill /F /PID ${pid}`));
     } else {
         for (const port of ALL_PORTS) {
             tryRun(`lsof -ti :${port} | xargs kill -9 2>/dev/null || true`);

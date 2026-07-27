@@ -18,12 +18,23 @@ const certManager    = require('./cert-manager.cjs');
 const ipDetector     = require('./ip-detector.cjs');
 const tunnelManager  = require('./tunnel-manager.cjs');
 
+// Same safety net as live-tv-api/server.js: without this, ANY single unhandled
+// exception anywhere in this file — a bad request, a locked file, a bind
+// failure on a background listener — kills the whole process, taking the API
+// server, WebSocket, and every player that depends on them down with it.
+process.on('uncaughtException', (err) => {
+    console.error('[FATAL] Uncaught exception — keeping server alive:', err);
+});
+process.on('unhandledRejection', (reason) => {
+    console.error('[FATAL] Unhandled rejection — keeping server alive:', reason);
+});
+
 // Load root .env (when run standalone, e.g. `npm run start` here, or as a
 // standalone pkg EXE). Never overwrites vars already set by the launcher /
 // PM2 / shell. __dirname inside a pkg snapshot is virtual, not the real
 // folder the .exe lives in, so resolve against process.execPath there instead.
+const envDir = process.pkg ? path.dirname(process.execPath) : path.join(__dirname, '..');
 try {
-    const envDir = process.pkg ? path.dirname(process.execPath) : path.join(__dirname, '..');
     require('../env-loader.cjs').loadEnv(path.join(envDir, '.env'));
 } catch (_) { /* launcher already loaded it, or env-loader.cjs unavailable */ }
 
@@ -247,6 +258,8 @@ setInterval(() => {
 // Memory monitoring every 60 seconds
 const MEMORY_WARNING_MB = 300;
 const MEMORY_CRITICAL_MB = 1000;
+const MEMORY_NOTIFY_COOLDOWN_MS = 30 * 60 * 1000; // don't push again until 30min after the last one
+let _lastMemoryNotifyAt = 0;
 
 setInterval(() => {
     const memUsage = process.memoryUsage();
@@ -257,6 +270,11 @@ setInterval(() => {
         console.error(`[MEMORY] CRITICAL: Heap ${heapUsedMB}MB, RSS ${rssMB}MB, Clients: ${wsClients.size}`);
     } else if (heapUsedMB > MEMORY_WARNING_MB) {
         console.warn(`[MEMORY] WARNING: Heap ${heapUsedMB}MB, RSS ${rssMB}MB, Clients: ${wsClients.size}`);
+    }
+
+    if (heapUsedMB > MEMORY_WARNING_MB && Date.now() - _lastMemoryNotifyAt > MEMORY_NOTIFY_COOLDOWN_MS) {
+        _lastMemoryNotifyAt = Date.now();
+        notificationService.send('MEMORY_WARNING', { mb: heapUsedMB }).catch(() => {});
     }
 }, 60000);
 
@@ -631,6 +649,50 @@ app.get('/api/videos/serve', (req, res) => {
     } catch (err) {
         if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
     }
+});
+
+// POST /api/videos/upload?name=<filename> - Save a locally-picked/dropped file into the
+// videos folder so it gets a real, persistent server path instead of a browser blob: URL.
+// Blob URLs only exist inside the tab that created them, so the separate player window
+// (e.g. the OBS browser source) that actually plays the video can never resolve them —
+// this gives local-file playback a path that works there too and survives a page refresh.
+app.post('/api/videos/upload', (req, res) => {
+    const rawName = req.query.name;
+    if (!rawName) return res.status(400).json({ success: false, error: 'name query parameter is required' });
+
+    const VIDEO_EXTS = ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.wmv'];
+    const ext = path.extname(rawName).toLowerCase();
+    if (!VIDEO_EXTS.includes(ext)) return res.status(400).json({ success: false, error: 'Unsupported file type' });
+
+    // path.basename strips any directory components the client-supplied name might contain,
+    // so this can only ever write inside videosDir.
+    const safeName = path.basename(rawName);
+    if (!fs.existsSync(videosDir)) fs.mkdirSync(videosDir, { recursive: true });
+    const destPath = path.join(videosDir, safeName);
+
+    const writeStream = fs.createWriteStream(destPath);
+    let responded = false;
+    const fail = (status, error) => {
+        if (responded) return;
+        responded = true;
+        writeStream.destroy();
+        if (!res.headersSent) res.status(status).json({ success: false, error });
+    };
+
+    req.on('error', (err) => fail(500, err.message));
+    writeStream.on('error', (err) => fail(500, err.message));
+    writeStream.on('finish', () => {
+        if (responded) return;
+        responded = true;
+        res.json({
+            success: true,
+            name: safeName,
+            serverPath: `/api/videos/serve?path=${encodeURIComponent(destPath)}`,
+            size: fs.statSync(destPath).size
+        });
+    });
+
+    req.pipe(writeStream);
 });
 
 // ============================================
@@ -1360,6 +1422,7 @@ class BackupService {
                     broadcast('FLUSH_STATE_FOR_BACKUP', {});
                     await new Promise(r => setTimeout(r, 600));
                     this.createBackup('auto');
+                    notificationService.send('BACKUP_COMPLETED', { type: 'auto' }).catch(() => {});
                 }
             } catch (e) { console.error('[Backup] Auto-backup error:', e.message); }
         };
@@ -1409,6 +1472,7 @@ class RecordingService {
         this.currentRecording = null;
         this.recordingStartTime = null;
         this.currentVideoId = null;
+        this._manualStop = false; // set true for the duration of an operator-requested stop() so the close handler can tell it apart from yt-dlp exiting on its own
     }
 
     getSettings() {
@@ -1569,7 +1633,8 @@ class RecordingService {
                 this._enforceAutoDelete(autoDeleteCount);
             }
 
-            if (onEvent) onEvent({ type: 'stopped', filename: stoppedFile, exitCode: code });
+            if (onEvent) onEvent({ type: 'stopped', filename: stoppedFile, exitCode: code, manual: this._manualStop });
+            this._manualStop = false;
         });
 
         return { success: true, filename, outputPath };
@@ -1581,6 +1646,7 @@ class RecordingService {
         }
         const filename = this.currentRecording;
         const pid = this.currentProcess.pid;
+        this._manualStop = true;
 
         if (process.platform === 'win32') {
             try {
@@ -1650,6 +1716,7 @@ app.post('/api/backup/manual', (req, res) => {
         const clientPayload = req.body?.backupData || null;
         const prefix = req.body?.prefix || 'backup';
         const result = backupService.createBackup('manual', clientPayload, prefix);
+        notificationService.send('BACKUP_COMPLETED', { type: 'manual' }).catch(() => {});
         res.json({ success: true, ...result });
     } catch (e) {
         res.status(500).json({ success: false, error: e.message });
@@ -1755,10 +1822,25 @@ app.get('/api/recording/status', (req, res) => {
 // POST /api/recording/start
 app.post('/api/recording/start', (req, res) => {
     const { videoId, title } = req.body;
+    let notifiedError = false; // spawn's 'error' and 'close' both fire for the same ENOENT/crash — only notify once
     const result = recordingService.start(videoId, (event) => {
         broadcast('RECORDING_EVENT', event);
+        if (event.type === 'error') {
+            notifiedError = true;
+            notificationService.send('RECORDING_ERROR', { message: event.message }).catch(() => {});
+        }
         if (event.type === 'stopped') {
             broadcast('RECORDING_STATUS', recordingService.getStatus());
+            // A manual stop is already notified by the /api/recording/stop handler below —
+            // only notify here for stops recordingService detected on its own (stream ended,
+            // yt-dlp crashed), which is exactly what's unattended and worth pushing to a phone.
+            if (!event.manual && !notifiedError) {
+                if (event.exitCode === 0) {
+                    notificationService.send('RECORDING_STOPPED', { filename: event.filename }).catch(() => {});
+                } else {
+                    notificationService.send('RECORDING_ERROR', { message: `Recording stopped unexpectedly (yt-dlp exited with code ${event.exitCode})` }).catch(() => {});
+                }
+            }
         }
     }, title);
     if (result.success) {
@@ -1772,6 +1854,9 @@ app.post('/api/recording/start', (req, res) => {
             message: `Recording started: ${result.filename}`,
             data: { videoId, filename: result.filename },
         });
+        notificationService.send('RECORDING_STARTED', { filename: result.filename }).catch(() => {});
+    } else {
+        notificationService.send('RECORDING_ERROR', { message: result.error }).catch(() => {});
     }
     res.json(result);
 });
@@ -1790,6 +1875,7 @@ app.post('/api/recording/stop', (req, res) => {
             message: `Recording stopped: ${result.filename}`,
             data: { filename: result.filename },
         });
+        notificationService.send('RECORDING_STOPPED', { filename: result.filename }).catch(() => {});
     }
     res.json(result);
 });
@@ -1867,6 +1953,7 @@ if (process.env.NOTIFICATIONS_SECRET) {
 const NOTIFICATION_SETTINGS_KEY = 'notifications.settings';
 const DEFAULT_NOTIFICATION_SETTINGS = {
     enabled: true,
+    appName: 'SMK TV',
     events: {
         SCHEDULER_TRIGGER: true,
         SCHEDULER_ALERT: true,
@@ -1984,6 +2071,7 @@ app.put('/api/notifications/settings', (req, res) => {
         const current = stateService.get(NOTIFICATION_SETTINGS_KEY) || DEFAULT_NOTIFICATION_SETTINGS;
         const updated = {
             enabled: typeof body.enabled === 'boolean' ? body.enabled : current.enabled,
+            appName: typeof body.appName === 'string' && body.appName.trim() ? body.appName.trim().slice(0, 40) : (current.appName || 'SMK TV'),
             events: { ...current.events, ...(body.events || {}) }
         };
         stateService.set(NOTIFICATION_SETTINGS_KEY, updated);
@@ -2055,6 +2143,14 @@ app.get('/api/notifications/setup-url', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: 'Failed to generate setup URL: ' + err.message });
     }
+});
+
+// POST /api/notifications/tunnel/retry — let the UI kick a reconnect on demand
+// instead of telling users to run `npx localtunnel` by hand (the exe has no
+// Node/npm on the host machine, so that instruction never worked there anyway).
+app.post('/api/notifications/tunnel/retry', (req, res) => {
+    const kicked = tunnelManager.forceReconnect();
+    res.json({ kicked });
 });
 
 // GET /api/notifications/status — diagnostic: is Firebase Admin ready?
@@ -2159,6 +2255,16 @@ server.listen(PORT, () => {
             const sslCert = await certManager.getCert(lanIPs);
             if (sslCert) {
                 const httpsServer = https.createServer({ cert: sslCert.cert, key: sslCert.key }, app);
+                // listen() binds asynchronously — a bind failure (e.g. EADDRINUSE from
+                // another already-running instance on this port) surfaces as an 'error'
+                // event, not a thrown exception, so it's invisible to any try/catch
+                // around this call. With no listener, Node's default behavior for an
+                // unhandled EventEmitter 'error' is to throw — which crashed the entire
+                // process (API server, WebSocket, everything) instead of just leaving
+                // HTTPS/phone-setup unavailable for this run.
+                httpsServer.on('error', (err) => {
+                    console.warn(`[HTTPS] Failed to listen on port ${HTTPS_PORT}: ${err.message} — continuing without HTTPS (phone setup / push notifications over LAN HTTPS won't be available this run)`);
+                });
                 httpsServer.listen(HTTPS_PORT, () => {
                     console.log(`[HTTPS] Listening on port ${HTTPS_PORT}`);
                 });
@@ -2206,8 +2312,13 @@ server.listen(PORT, () => {
     console.log('');
 });
 
-// Graceful shutdown
-process.on('SIGINT', () => {
+// Graceful shutdown — shared by Ctrl+C (SIGINT) and the tray "Exit" menu item,
+// so closing from either place stops recordings/backups/scheduler cleanly
+// instead of the process being killed mid-write.
+let _shuttingDown = false;
+function shutdown() {
+    if (_shuttingDown) return;
+    _shuttingDown = true;
     console.log('\nShutting down...');
     if (recordingService.getStatus().isRecording) {
         console.log('[Recording] Stopping active recording...');
@@ -2215,8 +2326,26 @@ process.on('SIGINT', () => {
     }
     backupService.stopAutoBackup();
     scheduler.stop();
+    // Kill the watchdog + API process too — otherwise the watchdog notices
+    // this process exiting and respawns it a few seconds later, which is
+    // why closing from the tray or Task Manager looked like it "didn't work".
+    if (process.pkg) {
+        try { require('../smk-control.cjs').killSiblings(envDir, 'controller'); } catch (_) { /* best effort */ }
+    }
     server.close(() => {
         console.log('Server closed');
         process.exit(0);
     });
-});
+    // server.close() waits for all open sockets (WebSocket clients, keep-alive
+    // connections) to close first and can hang indefinitely with any still
+    // open — force exit shortly after so the tray "Exit" always actually quits.
+    setTimeout(() => process.exit(0), 2000).unref();
+}
+process.on('SIGINT', shutdown);
+
+// Tray icon so the packaged EXE can be stopped from the notification area
+// instead of having to find and kill it in Task Manager.
+if (process.pkg) {
+    const { initTray } = require('./tray-service.cjs');
+    initTray({ port: PORT, onExit: shutdown });
+}

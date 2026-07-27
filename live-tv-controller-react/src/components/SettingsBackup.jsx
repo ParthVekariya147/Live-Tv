@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { LOOP_AUTOMATION_LOCAL_KEY } from './LoopPlaylistAutomation';
 
 // All localStorage keys used across the app (excludes logs)
 const LS_KEYS = [
@@ -413,6 +414,15 @@ export default function SettingsBackup() {
 
         if (lsData && Object.keys(lsData).length > 0) {
             restoreLocalStorage(lsData);
+        }
+
+        // Loop Playlist Automation keeps its own browser-side cache (loopAutomationGroups)
+        // that isn't in LS_KEYS. Sync it from the just-restored serverState so the panel's
+        // reconcile-on-mount logic doesn't overwrite the restore with the stale local copy.
+        if (serverState && Array.isArray(serverState['player.loop.automation'])) {
+            try {
+                localStorage.setItem(LOOP_AUTOMATION_LOCAL_KEY, JSON.stringify(serverState['player.loop.automation']));
+            } catch (_) { /* quota etc — server copy already restored */ }
         }
 
         return {

@@ -1,0 +1,655 @@
+{
+  "exportedAt": "2026-07-21T12:45:08.306Z",
+  "version": "2.0",
+  "serverState": {
+    "player.loop": {
+      "playlist": [
+        "5RRnw-405SU",
+        "23kUOPOJZkQ",
+        "XYntvBbnCfs",
+        "e3zgTuBIlpQ"
+      ],
+      "currentIndex": 0,
+      "isPlaying": false,
+      "isMuted": false,
+      "isStopped": false,
+      "videoId": "5RRnw-405SU"
+    },
+    "player.live": {
+      "videoId": "T3wvnwSSw8g",
+      "priority": "matchSearchTerms",
+      "isPlaying": true,
+      "isMuted": false,
+      "isStopped": false
+    },
+    "player.delay": {
+      "videoId": "_zN6kY5AKJI",
+      "startTime": "00:44:16",
+      "endTime": "",
+      "isPlaying": false,
+      "isMuted": false,
+      "isStopped": false,
+      "keywordSkipEnabled": true,
+      "skipKeyword": "Bhajan Prakalpo"
+    },
+    "player.local": {
+      "playlist": [
+        {
+          "path": "/videos/01_Shree Hari ni Swabhavik Chesta ¦ Swaminarayan Film ¦ Full Chesta 3D Animation ¦ Chesta na Pado.mp4",
+          "name": "01_Shree Hari ni Swabhavik Chesta ¦ Swaminarayan Film ¦ Full Chesta 3D Animation ¦ Chesta na Pado.mp4",
+          "startTime": "",
+          "endTime": "",
+          "enabled": true
+        },
+        {
+          "path": "/videos/Hari Leela - 08 _ Avtariya Avinashi _ 27 Mar 2026 _ Gyanjivandasji Swami - Kundaldham_1080p50.mp4",
+          "name": "Hari Leela - 08 _ Avtariya Avinashi _ 27 Mar 2026 _ Gyanjivandasji Swami - Kundaldham_1080p50.mp4",
+          "startTime": "",
+          "endTime": "",
+          "enabled": true
+        },
+        {
+          "path": "/videos/Murti Lagat Pyari Shree.._ Murti Varnan _ Dharmanand Padras - 01 _ Gyanjivandasji Swami - Kundaldham_1080p50.mp4",
+          "name": "Murti Lagat Pyari Shree.._ Murti Varnan _ Dharmanand Padras - 01 _ Gyanjivandasji Swami - Kundaldham_1080p50.mp4",
+          "startTime": "",
+          "endTime": "",
+          "enabled": true
+        },
+        {
+          "path": "/videos/Uncha Uncha Dungare... _ Kirtan Kiran - 15 _ 05 Apr 2026 _ Gyanjivandasji Swami - Kundaldham_1080p.mp4",
+          "name": "Uncha Uncha Dungare... _ Kirtan Kiran - 15 _ 05 Apr 2026 _ Gyanjivandasji Swami - Kundaldham_1080p.mp4",
+          "startTime": "",
+          "endTime": "",
+          "enabled": true
+        },
+        {
+          "path": "/videos/YTDown_YouTube_Keri-Jame-Hari-Kirtan-Kiran-17-17-May-20_Media_TPb2NbK_dLs_002_720p.mp4",
+          "name": "YTDown_YouTube_Keri-Jame-Hari-Kirtan-Kiran-17-17-May-20_Media_TPb2NbK_dLs_002_720p.mp4",
+          "startTime": "",
+          "endTime": "",
+          "enabled": true
+        }
+      ],
+      "currentIndex": 0,
+      "isPlaying": false,
+      "isMuted": false,
+      "isStopped": false
+    },
+    "player.local.endActions": {
+      "0": "Loop Player",
+      "1": "Loop Player",
+      "2": "Loop Player",
+      "3": "Loop Player",
+      "4": "Loop Player",
+      "5": "Loop Player",
+      "6": "Loop Player"
+    },
+    "monitor.1.enabled": true,
+    "monitor.1.searchTerms": "",
+    "monitor.2.enabled": true,
+    "monitor.2.searchTerms": "",
+    "katha.refresh.enabled": false,
+    "katha.refresh.time": "06:00",
+    "katha.refresh.lastTriggered": null,
+    "katha.player.enabled": false,
+    "katha.player.time": "07:00",
+    "katha.player.lastTriggered": null,
+    "obs.activeSource": null,
+    "app.version": "1.0.0",
+    "schedulerTriggerHistory": [
+      {
+        "id": 1784637907471,
+        "title": "",
+        "source": "Delay Live",
+        "action": "show",
+        "firedAt": "2026-07-21T12:45:07.471Z"
+      },
+      {
+        "id": 1784637907309,
+        "title": "",
+        "source": "Live Player",
+        "action": "show",
+        "firedAt": "2026-07-21T12:45:07.309Z"
+      },
+      {
+        "id": 1784637907117,
+        "title": "",
+        "source": "Loop Player",
+        "action": "show",
+        "firedAt": "2026-07-21T12:45:07.117Z"
+      },
+      {
+        "id": 1784637906948,
+        "title": "",
+        "source": "Delay Live",
+        "action": "show",
+        "firedAt": "2026-07-21T12:45:06.948Z"
+      },
+      {
+        "id": 1784637906731,
+        "title": "",
+        "source": "Local Player",
+        "action": "show",
+        "firedAt": "2026-07-21T12:45:06.731Z"
+      },
+      {
+        "id": 1784637906551,
+        "title": "",
+        "source": "Delay Live",
+        "action": "show",
+        "firedAt": "2026-07-21T12:45:06.551Z"
+      },
+      {
+        "id": 1784637906359,
+        "title": "",
+        "source": "Loop Player",
+        "action": "show",
+        "firedAt": "2026-07-21T12:45:06.359Z"
+      },
+      {
+        "id": 1784637906203,
+        "title": "",
+        "source": "Local Player",
+        "action": "show",
+        "firedAt": "2026-07-21T12:45:06.203Z"
+      },
+      {
+        "id": 1784637906044,
+        "title": "",
+        "source": "Live Player",
+        "action": "show",
+        "firedAt": "2026-07-21T12:45:06.044Z"
+      },
+      {
+        "id": 1784637905869,
+        "title": "",
+        "source": "Local Player",
+        "action": "show",
+        "firedAt": "2026-07-21T12:45:05.869Z"
+      }
+    ],
+    "obs.connected": true,
+    "notifications.settings": {
+      "enabled": true,
+      "events": {
+        "SCHEDULER_TRIGGER": true,
+        "SCHEDULER_ALERT": true,
+        "RECORDING_STARTED": true,
+        "RECORDING_STOPPED": true,
+        "RECORDING_ERROR": true,
+        "BACKUP_COMPLETED": false,
+        "MEMORY_WARNING": true,
+        "MONITOR_LIVE": true
+      }
+    },
+    "player.loop.automation": [
+      {
+        "id": "id-vk5hw1aw9",
+        "serial": "1",
+        "name": "TEST",
+        "triggerType": "default",
+        "triggerValue": "",
+        "endType": "loop",
+        "endValue": "",
+        "lastFiredDate": null,
+        "isExpanded": true,
+        "lists": [
+          {
+            "id": "id-qy2ioga8j",
+            "serial": "1",
+            "name": "dhun",
+            "videoIds": [
+              "k2pULEQ1JC0",
+              "VvC2EAnAGds",
+              "vlUVfio2QbU",
+              "t2czbfWKj4c"
+            ],
+            "rawInput": "k2pULEQ1JC0, VvC2EAnAGds, vlUVfio2QbU, t2czbfWKj4c",
+            "startIndex": 3,
+            "playCount": 1,
+            "endType": "nextList",
+            "endValue": "id-q98w7jm4r",
+            "isExpanded": true
+          },
+          {
+            "id": "id-q98w7jm4r",
+            "serial": "2",
+            "name": "katha",
+            "videoIds": [
+              "z6dJ4q2iU3A",
+              "Ob408ZOnfkg",
+              "Px6J6RrumE0"
+            ],
+            "rawInput": "z6dJ4q2iU3A, Ob408ZOnfkg, Px6J6RrumE0",
+            "startIndex": 1,
+            "playCount": 1,
+            "endType": "nextList",
+            "endValue": "id-665004m3s",
+            "isExpanded": true
+          },
+          {
+            "id": "id-665004m3s",
+            "serial": "3",
+            "name": "kirtan",
+            "videoIds": [
+              "5RRnw-405SU",
+              "23kUOPOJZkQ",
+              "XYntvBbnCfs",
+              "e3zgTuBIlpQ"
+            ],
+            "rawInput": "5RRnw-405SU, 23kUOPOJZkQ, XYntvBbnCfs, e3zgTuBIlpQ",
+            "startIndex": 2,
+            "playCount": 1,
+            "endType": "nextList",
+            "endValue": "id-a8zu4xyg9",
+            "isExpanded": true
+          },
+          {
+            "id": "id-a8zu4xyg9",
+            "serial": "4",
+            "name": "Ai",
+            "videoIds": [
+              "b2H7bPU0l70",
+              "R_Yva0KYXWU",
+              "foUPvhh7PFg",
+              "EW6k9cbg0DU",
+              "n12esPk_oB0",
+              "nT5BxBV68mQ"
+            ],
+            "rawInput": "b2H7bPU0l70, R_Yva0KYXWU, foUPvhh7PFg, EW6k9cbg0DU, n12esPk_oB0, nT5BxBV68mQ",
+            "startIndex": 1,
+            "playCount": 1,
+            "endType": "nextList",
+            "endValue": "id-qy2ioga8j",
+            "isExpanded": true
+          }
+        ]
+      }
+    ]
+  },
+  "schedules": [
+    {
+      "id": 1769188208541,
+      "time": "22:52",
+      "source": "Local Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "Local",
+      "enabled": true,
+      "lastTriggered": "2026-06-29-22:52",
+      "lastTriggeredAt": "2026-06-29T18:07:03.786Z",
+      "createdAt": "2026-01-23T17:10:08.541Z"
+    },
+    {
+      "id": 1769245106689,
+      "time": "14:31",
+      "source": "Delay Live",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "Delay",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-14:31",
+      "lastTriggeredAt": "2026-07-21T12:45:04.255Z",
+      "createdAt": "2026-01-24T08:58:26.689Z"
+    },
+    {
+      "id": 1769269727536,
+      "time": "21:20",
+      "source": "Live Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "Live",
+      "enabled": true,
+      "lastTriggered": "2026-07-20-21:20",
+      "lastTriggeredAt": "2026-07-20T15:50:00.072Z",
+      "createdAt": "2026-01-24T15:48:47.536Z"
+    },
+    {
+      "id": 1769270206595,
+      "time": "23:07",
+      "source": "Delay Live",
+      "action": "show",
+      "recurrence": "weekly",
+      "days": [],
+      "scheduledDay": 6,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-06-13-23:07",
+      "lastTriggeredAt": "2026-06-13T17:37:00.437Z",
+      "createdAt": "2026-01-24T15:56:46.595Z"
+    },
+    {
+      "id": 1769270651423,
+      "time": "21:41",
+      "source": "Katha Refresh",
+      "action": "katha_refresh",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "Refresh Katha Content",
+      "enabled": true,
+      "lastTriggered": "2026-07-20-21:41",
+      "lastTriggeredAt": "2026-07-20T16:11:00.577Z",
+      "createdAt": "2026-01-24T16:04:11.423Z",
+      "skipIfLivePlaying": false
+    },
+    {
+      "id": 1769270682396,
+      "time": "21:39",
+      "source": "Katha Player",
+      "action": "katha_player",
+      "recurrence": "daily",
+      "days": [],
+      "title": "Load Katha to Delay Player",
+      "enabled": true,
+      "lastTriggered": "2026-07-20-21:39",
+      "lastTriggeredAt": "2026-07-20T16:09:00.734Z",
+      "createdAt": "2026-01-24T16:04:42.396Z",
+      "skipIfLivePlaying": false
+    },
+    {
+      "id": 1769271220084,
+      "time": "21:45",
+      "source": "Local Player",
+      "action": "hide",
+      "recurrence": "days",
+      "days": [
+        4,
+        3,
+        5,
+        6
+      ],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-01-21:45",
+      "lastTriggeredAt": "2026-07-01T16:15:00.832Z",
+      "createdAt": "2026-01-24T16:13:40.084Z"
+    },
+    {
+      "id": 1781411950013,
+      "time": "10:10",
+      "source": "Live Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-10:10",
+      "lastTriggeredAt": "2026-07-21T12:45:04.427Z",
+      "createdAt": "2026-06-14T04:39:10.013Z",
+      "skipUntil": null,
+      "nextFireAfterSkip": null
+    },
+    {
+      "id": 1782205159123,
+      "time": "14:30",
+      "source": "Local Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-14:30",
+      "lastTriggeredAt": "2026-07-21T12:45:04.588Z",
+      "createdAt": "2026-06-23T08:59:19.123Z"
+    },
+    {
+      "id": 1782760713334,
+      "time": "00:49",
+      "source": "Live Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-00:49",
+      "lastTriggeredAt": "2026-07-21T12:45:04.761Z",
+      "createdAt": "2026-06-29T19:18:33.334Z"
+    },
+    {
+      "id": 1782761666534,
+      "time": "01:05",
+      "source": "Loop Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-01:05",
+      "lastTriggeredAt": "2026-07-21T12:45:04.925Z",
+      "createdAt": "2026-06-29T19:34:26.534Z"
+    },
+    {
+      "id": 1782761797035,
+      "time": "01:07",
+      "source": "Loop Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-01:07",
+      "lastTriggeredAt": "2026-07-21T12:45:05.094Z",
+      "createdAt": "2026-06-29T19:36:37.035Z"
+    },
+    {
+      "id": 1782761806971,
+      "time": "01:09",
+      "source": "Local Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-01:09",
+      "lastTriggeredAt": "2026-07-21T12:45:05.254Z",
+      "createdAt": "2026-06-29T19:36:46.971Z"
+    },
+    {
+      "id": 1782761879770,
+      "time": "01:08",
+      "source": "Local Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-01:08",
+      "lastTriggeredAt": "2026-07-21T12:45:05.418Z",
+      "createdAt": "2026-06-29T19:37:59.770Z"
+    },
+    {
+      "id": 1782762594091,
+      "time": "01:20",
+      "source": "Delay Live",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-01:20",
+      "lastTriggeredAt": "2026-07-21T12:45:05.690Z",
+      "createdAt": "2026-06-29T19:49:54.091Z"
+    },
+    {
+      "id": 1782762631707,
+      "time": "01:20",
+      "source": "Local Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-01:20",
+      "lastTriggeredAt": "2026-07-21T12:45:05.852Z",
+      "createdAt": "2026-06-29T19:50:31.707Z"
+    },
+    {
+      "id": 1782763892475,
+      "time": "01:42",
+      "source": "Live Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-01:42",
+      "lastTriggeredAt": "2026-07-21T12:45:06.031Z",
+      "createdAt": "2026-06-29T20:11:32.475Z"
+    },
+    {
+      "id": 1782764455026,
+      "time": "01:51",
+      "source": "Local Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-01:51",
+      "lastTriggeredAt": "2026-07-21T12:45:06.190Z",
+      "createdAt": "2026-06-29T20:20:55.026Z"
+    },
+    {
+      "id": 1782765702582,
+      "time": "02:12",
+      "source": "Loop Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-02:12",
+      "lastTriggeredAt": "2026-07-21T12:45:06.346Z",
+      "createdAt": "2026-06-29T20:41:42.582Z"
+    },
+    {
+      "id": 1782767295560,
+      "time": "02:39",
+      "source": "Delay Live",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-02:39",
+      "lastTriggeredAt": "2026-07-21T12:45:06.536Z",
+      "createdAt": "2026-06-29T21:08:15.560Z"
+    },
+    {
+      "id": 1782795608656,
+      "time": "10:31",
+      "source": "Local Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-10:31",
+      "lastTriggeredAt": "2026-07-21T12:45:06.712Z",
+      "createdAt": "2026-06-30T05:00:08.656Z"
+    },
+    {
+      "id": 1782795630472,
+      "time": "10:31",
+      "source": "Delay Live",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-10:31",
+      "lastTriggeredAt": "2026-07-21T12:45:06.934Z",
+      "createdAt": "2026-06-30T05:00:30.472Z"
+    },
+    {
+      "id": 1782795639842,
+      "time": "10:32",
+      "source": "Loop Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-10:32",
+      "lastTriggeredAt": "2026-07-21T12:45:07.103Z",
+      "createdAt": "2026-06-30T05:00:39.842Z"
+    },
+    {
+      "id": 1782795642192,
+      "time": "10:30",
+      "source": "Live Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-10:30",
+      "lastTriggeredAt": "2026-07-21T12:45:07.296Z",
+      "createdAt": "2026-06-30T05:00:42.192Z"
+    },
+    {
+      "id": 1782795686050,
+      "time": "10:33",
+      "source": "Delay Live",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-07-21-10:33",
+      "lastTriggeredAt": "2026-07-21T12:45:07.455Z",
+      "createdAt": "2026-06-30T05:01:26.050Z"
+    }
+  ],
+  "localStorage": {
+    "loopPlayerState": "{\"playlist\":[\"5RRnw-405SU\",\"23kUOPOJZkQ\",\"XYntvBbnCfs\",\"e3zgTuBIlpQ\"],\"currentIndex\":0,\"isPlaying\":false,\"isMuted\":false,\"isStopped\":false,\"videoId\":\"5RRnw-405SU\"}",
+    "livePlayerState": "{\"videoId\":\"T3wvnwSSw8g\",\"priority\":\"matchSearchTerms\",\"isPlaying\":true,\"isMuted\":false,\"isStopped\":false}",
+    "delayPlayerState": "{\"videoId\":\"_zN6kY5AKJI\",\"startTime\":\"00:44:16\",\"endTime\":\"\",\"isPlaying\":false,\"isMuted\":false,\"isStopped\":false,\"keywordSkipEnabled\":true,\"skipKeyword\":\"Bhajan Prakalpo\"}",
+    "localPCPlayerState": "{\"playlist\":[{\"path\":\"/videos/01_Shree Hari ni Swabhavik Chesta ¦ Swaminarayan Film ¦ Full Chesta 3D Animation ¦ Chesta na Pado.mp4\",\"name\":\"01_Shree Hari ni Swabhavik Chesta ¦ Swaminarayan Film ¦ Full Chesta 3D Animation ¦ Chesta na Pado.mp4\",\"startTime\":\"\",\"endTime\":\"\",\"enabled\":true},{\"path\":\"/videos/Hari Leela - 08 _ Avtariya Avinashi _ 27 Mar 2026 _ Gyanjivandasji Swami - Kundaldham_1080p50.mp4\",\"name\":\"Hari Leela - 08 _ Avtariya Avinashi _ 27 Mar 2026 _ Gyanjivandasji Swami - Kundaldham_1080p50.mp4\",\"startTime\":\"\",\"endTime\":\"\",\"enabled\":true},{\"path\":\"/videos/Murti Lagat Pyari Shree.._ Murti Varnan _ Dharmanand Padras - 01 _ Gyanjivandasji Swami - Kundaldham_1080p50.mp4\",\"name\":\"Murti Lagat Pyari Shree.._ Murti Varnan _ Dharmanand Padras - 01 _ Gyanjivandasji Swami - Kundaldham_1080p50.mp4\",\"startTime\":\"\",\"endTime\":\"\",\"enabled\":true},{\"path\":\"/videos/Uncha Uncha Dungare... _ Kirtan Kiran - 15 _ 05 Apr 2026 _ Gyanjivandasji Swami - Kundaldham_1080p.mp4\",\"name\":\"Uncha Uncha Dungare... _ Kirtan Kiran - 15 _ 05 Apr 2026 _ Gyanjivandasji Swami - Kundaldham_1080p.mp4\",\"startTime\":\"\",\"endTime\":\"\",\"enabled\":true},{\"path\":\"/videos/YTDown_YouTube_Keri-Jame-Hari-Kirtan-Kiran-17-17-May-20_Media_TPb2NbK_dLs_002_720p.mp4\",\"name\":\"YTDown_YouTube_Keri-Jame-Hari-Kirtan-Kiran-17-17-May-20_Media_TPb2NbK_dLs_002_720p.mp4\",\"startTime\":\"\",\"endTime\":\"\",\"enabled\":true}],\"currentIndex\":0,\"isPlaying\":false,\"isMuted\":false,\"isStopped\":false}",
+    "localPCPlayerEndActions": "{\"0\":\"Loop Player\",\"1\":\"Loop Player\",\"2\":\"Loop Player\",\"3\":\"Loop Player\",\"4\":\"Loop Player\",\"5\":\"Loop Player\",\"6\":\"Loop Player\"}",
+    "liveMonitorEnabled1": "true",
+    "liveMonitorEnabled2": "true",
+    "savedSearchTitles1": "",
+    "savedSearchTitles2": ""
+  },
+  "validation": {
+    "warnings": [],
+    "playerKeys": [
+      "loopPlayerState",
+      "livePlayerState",
+      "delayPlayerState",
+      "localPCPlayerState",
+      "localPCPlayerEndActions",
+      "liveMonitorEnabled1",
+      "liveMonitorEnabled2",
+      "savedSearchTitles1",
+      "savedSearchTitles2"
+    ]
+  }
+}

@@ -49,9 +49,11 @@ A List is "which videos, how many, and what happens after them." Fields:
 |---|---|
 | Serial / Name | Labels — used so other Lists in the same Group can target this one. |
 | Video IDs box | Paste video IDs or full YouTube URLs, comma or newline separated, then click **Import**. |
-| **Start Index** | Which video in the list to begin at (1-based). |
-| **Play Count** | How many videos to play starting from Start Index before handing off. |
+| **Resume At** (formerly "Start Index") | Which video in the list to begin at (1-based). **Auto-advances as the list plays** — see below. |
+| **Play Count** | How many videos to play starting from Resume At before handing off. |
 | **Then** | What happens once Play Count is reached (see below). |
+
+**Resume At auto-advances — videos don't repeat.** Every time a video from this List actually plays, Resume At is immediately updated to point past it (wrapping back to 1 once the last video in the List has played). So if a List has 10 videos and Play Count is 1, activating it five times in a row (e.g. via "Loop this Group") plays videos 1, 2, 3, 4, 5 — not video 1 five times. This is what makes "Loop this Group" behave like a rotating playlist instead of replaying the same video(s) forever. You can still type a number into Resume At yourself at any time to manually jump or force a replay from a specific position — the field is just also kept up to date automatically.
 
 **"Then" types:**
 
@@ -80,6 +82,34 @@ A List is "which videos, how many, and what happens after them." Fields:
 - **Live-event keyword matching is best-effort.** It depends on your existing Live Player monitor detecting a live match first, and on a YouTube oEmbed title lookup succeeding — if that lookup fails or times out, keyworded Groups simply won't match that occurrence (Groups with no keyword still fire, since they don't need the title).
 - **Only the Loop Player has this feature.** Live Player, Delay Player, and Local Player are untouched.
 - **Serial/Name uniqueness isn't enforced strictly** — the editor doesn't block you from using duplicate Group/List serials or names, but "Go to Group/List by Serial/Name" targeting will only ever resolve to whichever match `Array.find` hits first, so duplicates make chaining ambiguous. Keep them unique.
+
+---
+
+## Fixed 2026-07-20: video timer showing 00:00/00:00
+
+**Symptom:** while a playlist was running, the current-time/remaining-time display on the Loop Player card stayed at `00:00 / 00:00` instead of updating.
+
+**Root cause:** `LoopPlayer.html` (and `LivePlayer.html`, same copy-pasted code) fires `loadVideo`, `play`, and `unmute` as three separate commands with no gap between them. When the very first video of a session loads, `loadVideo` creates a brand-new YouTube `IFrame` player object — but that object's control methods (`playVideo`, `unMute`, etc.) aren't actually attached until its internal `onReady` callback fires a moment later. The `play`/`unmute` commands that arrived in that gap threw `TypeError: player.playVideo is not a function` / `... unMute is not a function`, which was caught and silently swallowed. The video could then get stuck never reaching YouTube's `PLAYING` state — and since the time-report loop only broadcasts a time update when `state === PLAYING`, the display never received anything to show and sat at its hardcoded default forever.
+
+**Fix:** both files now queue any command that arrives before the freshly-created player is actually ready, and replay the queue once `onReady` fires — instead of dropping it. Verified end-to-end: after the fix, a fresh session's first video reaches `PLAYING`, ends up correctly unmuted, and the controller's timer ticks in real time.
+
+**Not fixed (same-shaped risk, lower confidence it's hit in practice):** `DelayLive.html` has a related but not identical pattern — it already checks `typeof player.loadVideoById === 'function'` before deciding whether to reuse or recreate the player, which is more defensive, but its `play` case still calls `player.playVideo()` unconditionally. Worth the same treatment if the same symptom ever shows up on Delay Live Player specifically.
+
+---
+
+## Fixed 2026-07-20: "all the players are getting errors" — server.cjs was crashing entirely
+
+**Symptom:** every player showed errors; the browser console was flooded with `SyntaxError: Unexpected end of JSON input` from `state-api.js`, `scheduler-api.js`, and `logger.js`, plus WebSocket errors from the Scheduler and Katha Monitor.
+
+**This had nothing to do with the Loop/Live Player timer fix above** — it was a separate, pre-existing, much more severe bug: `server.cjs`'s background HTTPS server (port 3443, used for the phone push-notification setup page) calls `httpsServer.listen(HTTPS_PORT, ...)` with no `.on('error', ...)` handler attached. If port 3443 is already in use — e.g. by another already-running instance of the app (the packaged exe, a previous session that wasn't fully closed) — that failure surfaces as an unhandled `EADDRINUSE` **`error` event**, and Node's default behavior for an unhandled `error` event on an `EventEmitter` is to throw. With nothing catching it, this **crashed the entire Node process** — not just the HTTPS server. That takes the main API server (port 3005) down with it, which is why literally everything depending on `/api/*` broke at once: every player's state stopped saving, the scheduler and Katha Monitor's WebSocket connections dropped, and nothing could recover on its own because the process was simply gone.
+
+Confirmed directly: after this happened, `curl http://localhost:3005/api/state` failed to connect at all (not a 500 — no server there), while port 3004 (Vite) stayed up and kept returning its own generic 500 for every proxied API call it couldn't reach — which is what produced the `Unexpected end of JSON input` errors client-side (a body-less proxy error response isn't valid JSON).
+
+**Fix (`server.cjs`):**
+1. Added the missing `.on('error', ...)` handler on the HTTPS server before `.listen()`, matching the graceful-degradation behavior already documented for HTTPS/cert failures elsewhere in this file — a bind failure now just logs a warning and the app continues running HTTP-only, exactly as the existing docs already claimed it should.
+2. Added a process-wide `process.on('uncaughtException', ...)` / `process.on('unhandledRejection', ...)` safety net at the top of `server.cjs`, matching the pattern `live-tv-api/server.js` already uses. This is defense-in-depth on top of fix #1 — it doesn't replace fixing the specific root cause, but it means *any* single future unhandled error elsewhere in this ~2000-line file logs and keeps the server alive instead of taking every player down with it.
+
+Verified end-to-end: recreated the exact port-3443-already-in-use condition, confirmed the server logged `[HTTPS] Failed to listen on port 3443: ... — continuing without HTTPS` and stayed up, confirmed `/api/state/*` requests that previously failed with a bodyless `500` now return a clean `200`, and confirmed the console error flood was gone on reload (only the normal, self-resolving initial OBS-WebSocket-reconnect messages remained).
 - **Config is saved to both `localStorage` and the server**, but the server save can silently fail (see below) — `localStorage` is what actually keeps your setup safe across reloads/crashes in that case.
 
 ---

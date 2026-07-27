@@ -144,10 +144,13 @@ async function startTunnel(port, { maxRetries = 3, subdomain } = {}) {
                 await new Promise(r => setTimeout(r, wait));
                 return tryStart();
             }
-            console.error('[Tunnel] ❌ All attempts failed.');
-            console.error('[Tunnel]    To set up manually: npx localtunnel --port', port);
-            console.error('[Tunnel]    Then paste the URL into .env as TUNNEL_URL=https://xxx.loca.lt');
+            // Don't give up permanently — loca.lt is often just slow/flaky at boot.
+            // Keep retrying quietly in the background so the tunnel eventually comes
+            // up on its own instead of requiring the user to notice it never
+            // connected and click "Retry connection" by hand.
+            console.error(`[Tunnel] ❌ ${maxRetries} attempts failed — will keep retrying in the background every 30s.`);
             reconnecting = false;
+            setTimeout(() => { attempt = 0; tryStart(); }, 30000);
             return null;
         }
     }

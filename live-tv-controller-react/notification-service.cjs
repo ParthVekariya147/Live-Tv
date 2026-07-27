@@ -172,6 +172,21 @@ function getDataDir() {
     return path.join(__dirname, 'data');
 }
 
+function getSettings() {
+    try {
+        const stateFile = path.join(getDataDir(), 'app-state.json');
+        if (fs.existsSync(stateFile)) {
+            const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+            return state?.state?.['notifications.settings'] || null;
+        }
+    } catch (_) {}
+    return null;
+}
+
+function getAppName() {
+    return getSettings()?.appName || 'SMK TV';
+}
+
 function appendHistory(entry) {
     if (process.env.NOTIFICATION_HISTORY !== 'true') return;
     const histFile = path.join(getDataDir(), 'notification-history.json');
@@ -253,17 +268,11 @@ class NotificationService {
         }
 
         // Check per-event preferences (read from state file directly to avoid circular deps)
-        try {
-            const stateFile = path.join(getDataDir(), 'app-state.json');
-            if (fs.existsSync(stateFile)) {
-                const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-                const settings = state?.state?.['notifications.settings'];
-                if (settings) {
-                    if (settings.enabled === false) { console.log('[NotificationService] Notifications disabled globally — skipping'); return; }
-                    if (settings.events?.[event] === false) { console.log(`[NotificationService] Event ${event} disabled — skipping`); return; }
-                }
-            }
-        } catch (_) {}
+        const settings = getSettings();
+        if (settings) {
+            if (settings.enabled === false) { console.log('[NotificationService] Notifications disabled globally — skipping'); return; }
+            if (settings.events?.[event] === false) { console.log(`[NotificationService] Event ${event} disabled — skipping`); return; }
+        }
 
         const allTokens = tokenStore.getTokens();
         const tokens = allTokens.filter(t => t.active).map(t => t.token);
@@ -273,9 +282,11 @@ class NotificationService {
             return;
         }
 
+        // Title is the operator's chosen app name (e.g. "SMK TV") so it's always
+        // recognizable at a glance; the event's own title/body become the body lines.
         const payload = {
-            title: template.title(data),
-            body:  template.body(data),
+            title: settings?.appName || 'SMK TV',
+            body:  `${template.title(data)}\n${template.body(data)}`,
             icon:  template.icon,
             tag:   template.tag,
         };
@@ -329,8 +340,8 @@ class NotificationService {
             throw new Error('Notification service not initialized — check Firebase credentials in .env');
         }
         const payload = {
-            title: 'Test Notification',
-            body: 'Live TV Controller notifications are working!',
+            title: getAppName(),
+            body: 'Test notification — Live TV Controller notifications are working!',
             icon: '/icon-192.png',
             tag: 'test',
         };

@@ -714,7 +714,7 @@ const Scheduler = () => {
                                 >
                                     <div className="flex items-center gap-2">
                                         <span className="text-white">{pt.title || pt.source}</span>
-                                        <span className={`text-xs px-1.5 py-0.5 rounded ${pt.action === 'show' ? 'bg-green-600/80' : 'bg-red-600/80'}`}>
+                                        <span className={`text-xs px-1.5 py-0.5 rounded ${pt.action === 'hide' ? 'bg-red-600/80' : 'bg-green-600/80'}`}>
                                             {pt.action}
                                         </span>
                                     </div>
@@ -769,7 +769,7 @@ const Scheduler = () => {
                                             {entry.title && <span className="text-gray-500 ml-1">· {entry.title}</span>}
                                         </td>
                                         <td className="py-1 pr-3">
-                                            <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${entry.action === 'show' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}>
+                                            <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${entry.action === 'hide' ? 'bg-red-900/50 text-red-400' : 'bg-green-900/50 text-green-400'}`}>
                                                 {entry.action}
                                             </span>
                                         </td>

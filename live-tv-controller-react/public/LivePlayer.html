@@ -32,6 +32,66 @@
     const LIVE_PLAYER_EVENT_KEY = 'livePlayerEvent';
     let isLoadingVideo = false; // Flag to prevent videoEnded during loading
     let timeUpdateInterval = null; // 24/7 Reliability: Track interval for cleanup
+    // See LoopPlayer.html for why this queue exists: a freshly-constructed YT.Player's
+    // control methods aren't attached until onReady fires, so "play"/"unmute" commands
+    // that immediately follow the "loadVideo" that created it can throw "is not a
+    // function" and get silently swallowed. Queue and replay once ready instead.
+    let playerReady = false;
+    let pendingCommands = [];
+
+    function applyCommand(data) {
+      switch (data.command) {
+        case "play":
+          player.playVideo();
+          break;
+        case "pause":
+          player.pauseVideo();
+          break;
+        case "stop":
+          player.stopVideo();
+          break;
+        case "mute":
+          player.mute();
+          break;
+        case "unmute":
+          player.unMute();
+          break;
+        case "setVolume":
+          if (typeof data.volume === "number") {
+            player.setVolume(data.volume);
+          }
+          break;
+        case "seekTo":
+          if (typeof data.seconds === "number") {
+            player.seekTo(data.seconds, true);
+          }
+          break;
+        case "destroy":
+          if (timeUpdateInterval) {
+            clearInterval(timeUpdateInterval);
+            timeUpdateInterval = null;
+          }
+          player.destroy();
+          player = null;
+          playerReady = false;
+          pendingCommands = [];
+          break;
+        case "loadVideo":
+          player.loadVideoById({
+            videoId: data.videoId,
+            playerVars: {
+              autoplay: 1,
+              controls: 0,
+              modestbranding: 1,
+              showinfo: 0,
+              rel: 0,
+              fs: 1,
+              iv_load_policy: 3,
+            },
+          });
+          break;
+      }
+    }
 
     function loadYouTubeAPI() {
       const tag = document.createElement("script");
@@ -57,24 +117,22 @@
           if (data.command === "loadVideo" && data.videoId) {
             isLoadingVideo = true; // Set loading flag
             if (player) {
-              player.loadVideoById({
-                videoId: data.videoId,
-                playerVars: {
-                  autoplay: 1,
-                  controls: 0,
-                  modestbranding: 1,
-                  showinfo: 0,
-                  rel: 0,
-                  fs: 1,
-                  iv_load_policy: 3,
-                },
-              });
+              // Same readiness gap as any other command: if this player was
+              // just created by a prior loadVideo and onReady hasn't fired
+              // yet, loadVideoById isn't attached and throws — queue it.
+              if (!playerReady) {
+                pendingCommands.push(data);
+              } else {
+                applyCommand(data);
+              }
             } else {
               // Safety check: ensure YT API is ready
               if (typeof YT === "undefined" || typeof YT.Player === "undefined") {
                 console.error("LivePlayer: YouTube IFrame API (YT.Player) is not yet ready. Cannot create player.");
                 return;
               }
+              playerReady = false;
+              pendingCommands = [];
               player = new YT.Player("player", {
                 videoId: data.videoId,
                 playerVars: {
@@ -94,41 +152,10 @@
               });
             }
           } else if (player) {
-            switch (data.command) {
-              case "play":
-                player.playVideo();
-                break;
-              case "pause":
-                player.pauseVideo();
-                break;
-              case "stop":
-                player.stopVideo();
-                break;
-              case "mute":
-                player.mute();
-                break;
-              case "unmute":
-                player.unMute();
-                break;
-              case "setVolume":
-                if (typeof data.volume === "number") {
-                  player.setVolume(data.volume);
-                }
-                break;
-              case "seekTo":
-                if (typeof data.seconds === "number") {
-                  player.seekTo(data.seconds, true);
-                }
-                break;
-              case "destroy":
-                // 24/7 Reliability: Clear interval before destroy
-                if (timeUpdateInterval) {
-                  clearInterval(timeUpdateInterval);
-                  timeUpdateInterval = null;
-                }
-                player.destroy();
-                player = null;
-                break;
+            if (!playerReady) {
+              pendingCommands.push(data);
+            } else {
+              applyCommand(data);
             }
           }
         } catch (e) {
@@ -142,8 +169,12 @@
 
     function onPlayerReady(event) {
       console.log("LivePlayer is ready!");
+      playerReady = true;
       event.target.playVideo();
       // event.target.mute(); // Commented out to allow unmuted playback on load
+      const queued = pendingCommands;
+      pendingCommands = [];
+      queued.forEach(applyCommand);
     }
 
     function onPlayerStateChange(event) {

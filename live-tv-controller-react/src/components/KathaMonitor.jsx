@@ -1,6 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { copyToClipboard, formatDateToDDMMMYYYY } from '../utils/core-utils';
 import TimePickerAMPM from './common/TimePickerAMPM';
+import { CHANNELS_UPDATED_EVENT } from './ChannelManager';
+
+const KATHA_CHANNEL_SELECT_KEY = 'kathaSelectedChannelId';
 
 function to12hr(t) {
     if (!t) return '--';
@@ -82,6 +85,10 @@ const KathaMonitor = () => {
     const [statusText, setStatusText] = useState("Katha Monitor Ready");
     const [dateFilter, setDateFilter] = useState(() => localStorage.getItem('kathaLastFilter') || 'auto');
     const [fetchedAt, setFetchedAt] = useState(null);
+    const [channelOptions, setChannelOptions] = useState([]);
+    const [selectedChannelId, setSelectedChannelId] = useState(
+        () => localStorage.getItem(KATHA_CHANNEL_SELECT_KEY) || ''
+    );
 
     const [refreshSchedulerEnabled, setRefreshSchedulerEnabled] = useState(false);
     const [refreshSchedulerTime, setRefreshSchedulerTime] = useState("00:00");
@@ -129,12 +136,16 @@ const KathaMonitor = () => {
     // Fetch last 30 videos + all descriptions in parallel — called on mount and on Refresh
     // force=true bypasses the server-side cache so a manual Refresh always pulls live data
     const fetchAllVideos = async (force = false) => {
+        if (!selectedChannelId) return; // no channel configured/selected yet
+
         setLoading(true);
         setError(null);
         setStatusText("Loading Katha videos...");
 
         try {
-            const response = await fetch(`${LOCAL_API_BASE}/api/videos${force ? '?force=1' : ''}`, {
+            const params = new URLSearchParams({ channelId: selectedChannelId });
+            if (force) params.set('force', '1');
+            const response = await fetch(`${LOCAL_API_BASE}/api/videos?${params.toString()}`, {
                 signal: AbortSignal.timeout(15000),
                 cache: 'no-store',
             });
@@ -253,8 +264,39 @@ const KathaMonitor = () => {
         };
 
         loadSchedulesFromServer();
-        fetchAllVideos();
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Load the configured channel list, keep the selection valid, refresh on Channel Manager saves —
+    // Katha Monitor picks its own channel independently from Live Monitor 1/2.
+    const loadChannelOptions = useCallback(async () => {
+        try {
+            const res = await fetch(`${LOCAL_API_BASE}/api/channels`, { cache: 'no-store' });
+            const data = await res.json();
+            if (!data.success) return;
+            setChannelOptions(data.channels);
+            setSelectedChannelId((prev) =>
+                prev && data.channels.some((c) => c.channelId === prev) ? prev : (data.channels[0]?.channelId || '')
+            );
+        } catch (e) {
+            console.warn('[KathaMonitor] Failed to load channel list:', e.message);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadChannelOptions();
+        window.addEventListener(CHANNELS_UPDATED_EVENT, loadChannelOptions);
+        return () => window.removeEventListener(CHANNELS_UPDATED_EVENT, loadChannelOptions);
+    }, [loadChannelOptions]);
+
+    const handleChannelChange = useCallback((newId) => {
+        setSelectedChannelId(newId);
+        localStorage.setItem(KATHA_CHANNEL_SELECT_KEY, newId);
+    }, []);
+
+    // Fetch (or re-fetch) whenever the selected channel changes / becomes available
+    useEffect(() => {
+        if (selectedChannelId) fetchAllVideos();
+    }, [selectedChannelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const saveKathaSchedule = async (type, enabled, time) => {
         const scheduleData = {
@@ -381,6 +423,21 @@ const KathaMonitor = () => {
     return (
         <div className="player-control-card">
             <h3 className="live-monitor-card-h3">Katha Monitor</h3>
+
+            {channelOptions.length > 0 && (
+                <div className="flex flex-col w-full px-2 mb-2">
+                    <label className="live-monitor-label mb-1">Monitor Channel:</label>
+                    <select
+                        className="input-field"
+                        value={selectedChannelId}
+                        onChange={(e) => handleChannelChange(e.target.value)}
+                    >
+                        {channelOptions.map((ch) => (
+                            <option key={ch.id} value={ch.channelId}>{ch.name}</option>
+                        ))}
+                    </select>
+                </div>
+            )}
 
             {/* Filter row — local filtering only, zero API calls per click */}
             <div className="flex gap-1 mb-2 w-full">

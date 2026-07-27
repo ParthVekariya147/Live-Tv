@@ -122,6 +122,14 @@ const LoopPlayerCard = () => {
         return () => window.removeEventListener('flushPlayerState', handler);
     }, []);
 
+    // Tell the actual player page (public/LoopPlayer.html) whether this source is
+    // really on-air right now, so it can refuse to autoplay in the background even
+    // if some other code path sends a loadVideo/play command while hidden. Fires on
+    // mount too — the player page defaults to "not visible" until it hears otherwise.
+    useEffect(() => {
+        sendPlayerCommand('loopPlayerCommand', 'setSourceVisible', null, null, null, null, { visible: !!isVisible });
+    }, [isVisible]);
+
     // Track mount time to prevent visibility commands on initial mount
     const mountTime = useRef(Date.now());
     const prevIsVisible = useRef(undefined);
@@ -217,19 +225,24 @@ const LoopPlayerCard = () => {
             hasUserData.current = true;
 
             sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
-            sendPlayerCommand('loopPlayerCommand', 'play');
-            sendPlayerCommand('loopPlayerCommand', 'unmute');
-            setIsPlaying(true);
-            setIsStopped(false);
-            setIsMuted(false);
-            setStatusText('Playlist Automation active');
             logVideoLoad('Loop Player', vid, videoTitle, 'automation', { playlistIndex: idx, playlistSize: videoIds.length });
-            logVideoPlay('Loop Player', vid, 'automation');
+
+            if (isVisible) {
+                sendPlayerCommand('loopPlayerCommand', 'play');
+                sendPlayerCommand('loopPlayerCommand', 'unmute');
+                setIsPlaying(true);
+                setIsStopped(false);
+                setIsMuted(false);
+                setStatusText('Playlist Automation active');
+                logVideoPlay('Loop Player', vid, 'automation');
+            } else {
+                setStatusText('Playlist Automation loaded — will play when source is visible.');
+            }
         };
         window.addEventListener('loopPlayerLoadPlaylist', handleAutomationLoad);
         return () => window.removeEventListener('loopPlayerLoadPlaylist', handleAutomationLoad);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [isVisible]);
 
     // Automation intentionally stopped (dead-end chain, deleted group, or the user hit
     // "Stop Automation") — hand control back so this card's own wraparound resumes on
@@ -314,7 +327,10 @@ const LoopPlayerCard = () => {
         if (nextIdx >= playlist.length) nextIdx = 0;
         setCurrentIndex(nextIdx);
         const vid = playlist[nextIdx];
-        if (vid) sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
+        if (vid) {
+            sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
+            setStatusText(isVisible ? `Video ${nextIdx + 1}` : `Video ${nextIdx + 1} cued — will play when source is visible.`);
+        }
     };
 
     const handlePrev = () => {
@@ -323,7 +339,10 @@ const LoopPlayerCard = () => {
         if (prevIdx < 0) prevIdx = playlist.length - 1;
         setCurrentIndex(prevIdx);
         const vid = playlist[prevIdx];
-        if (vid) sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
+        if (vid) {
+            sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
+            setStatusText(isVisible ? `Video ${prevIdx + 1}` : `Video ${prevIdx + 1} cued — will play when source is visible.`);
+        }
     };
 
     const handleJump = () => {
@@ -338,10 +357,14 @@ const LoopPlayerCard = () => {
         const vid = playlist[targetIdx];
         if (vid) {
             sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
-            sendPlayerCommand('loopPlayerCommand', 'play');
-            setIsPlaying(true);
-            setIsStopped(false);
-            setStatusText(`Jumped to video ${idx}`);
+            if (isVisible) {
+                sendPlayerCommand('loopPlayerCommand', 'play');
+                setIsPlaying(true);
+                setIsStopped(false);
+                setStatusText(`Jumped to video ${idx}`);
+            } else {
+                setStatusText(`Video ${idx} cued — will play when source is visible.`);
+            }
         }
         setJumpIndex("");
     };

@@ -1,5 +1,5 @@
 // api/videos.js  →  GET /api/videos
-// Returns: last 30 recent videos from the Katha Monitor channel
+// Returns: last 30 recent videos from a given channel (Katha Monitor)
 //
 // RESPONSE FORMAT — this never changes, only lib/youtube.js changes:
 // {
@@ -9,22 +9,34 @@
 //   "updatedAt": "ISO string"
 // }
 
-import { CHANNELS, fetchKathaChannel, getRecentVideos } from "../lib/youtube.js";
+import { fetchKathaChannel, getRecentVideos } from "../lib/youtube.js";
+import { getDefaultChannelId } from "../lib/channels-store.js";
 
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
-    const force = new URL(req.url, "http://localhost").searchParams.get("force") === "1";
-    const allVideos = await fetchKathaChannel(force);
+    const url       = new URL(req.url, "http://localhost");
+    const channelId = url.searchParams.get("channelId") || getDefaultChannelId();
+    const force     = url.searchParams.get("force") === "1";
+
+    if (!channelId) {
+      return res.status(400).json({
+        success: false,
+        error: "No channelId provided and no channels configured — add one via /api/channels",
+        data: [],
+      });
+    }
+
+    const allVideos = await fetchKathaChannel(channelId, force);
     const videos    = getRecentVideos(allVideos, 30);
     const source    = allVideos[0]?.source ?? "none";
     const stale     = allVideos.some((v) => v.stale === true);
 
     return res.status(200).json({
       success:   true,
-      channelId: CHANNELS.videos,
-      channelUrl: `https://www.youtube.com/channel/${CHANNELS.videos}/videos`,
+      channelId,
+      channelUrl: `https://www.youtube.com/channel/${channelId}/videos`,
       limit:     30,
       count:     videos.length,
       source,

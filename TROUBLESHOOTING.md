@@ -48,6 +48,12 @@ If that doesn't clear it, kill by port manually (see COMMANDS.md → "Stop Every
 
 The Vite dev server (3004) is up but the Express API (3005) isn't. `node smk.cjs dev` starts both; if you started Vite by hand, also run `npm run dev:api` inside `live-tv-controller-react/`.
 
+### Every player breaks at once — console flooded with "Unexpected end of JSON input"
+
+**Fixed July 2026.** This meant the whole `server.cjs` process had crashed, not just one feature. Cause: the background HTTPS server (port 3443, phone-setup page) called `.listen()` with no `'error'` handler — if another already-running instance (e.g. the packaged exe) already held port 3443, the resulting unhandled `EADDRINUSE` **event** threw and killed the entire Node process, taking the API server (3005) and WebSocket down with it. Vite (3004) stayed up and returned its own body-less proxy-error 500 for every API call it could no longer reach, which is what surfaced client-side as `SyntaxError: Unexpected end of JSON input` from `state-api.js`/`scheduler-api.js`/`logger.js`, plus Scheduler/Katha Monitor WebSocket errors.
+
+Now handled two ways in `server.cjs`: (1) the HTTPS listen call has a proper error handler and degrades to HTTP-only with a warning instead of crashing, and (2) a process-wide `uncaughtException`/`unhandledRejection` safety net (matching the one already in `live-tv-api/server.js`) keeps the process alive even if some *other* unhandled error shows up elsewhere in the file. If you still see this symptom, check the server console for `[FATAL] Uncaught exception` — it'll now tell you what crashed instead of just going silent.
+
 ---
 
 ## 2. EXE Build & Packaging
@@ -127,6 +133,10 @@ Known localtunnel free-tier failure: the client stays "connected" to the control
 - `GET /api/notifications/setup-url` (the QR-code endpoint) live-verifies the tunnel before preferring it; if dead it falls back to the LAN HTTPS URL and kicks `forceReconnect()` in the background.
 
 If you hit a dead tunnel link, just re-open the QR/setup dialog — it will hand out a working URL.
+
+### Only the LAN IP shows up, never a tunnel URL
+
+At startup `tunnel-manager.cjs` tries to connect 3 times a few seconds apart; if loca.lt is briefly unreachable during that window (slow boot network, DNS not up yet) it used to give up permanently and require a manual "Retry connection" click in Notification Settings. Fixed: after those 3 attempts fail, it now keeps retrying automatically every 30 s in the background until it connects — no manual step, no `npx` required (the exe bundles the `localtunnel` package directly; the app never shells out to `npx`). If a `windows/exe/SMK TV <N>.exe` still shows only the IP, it predates this fix — rebuild with `npm run build:exe` and run the newest numbered exe.
 
 ### Tunnel keeps getting a random subdomain
 

@@ -17,6 +17,7 @@ const path = require('path');
 const http = require('http');
 const fs   = require('fs');
 const { loadEnv } = require('./env-loader.cjs');
+const { writePid } = require('./smk-control.cjs');
 
 const EXE   = process.execPath;
 const ROLE  = process.env.SMK_ROLE || '';
@@ -62,6 +63,7 @@ function runController() {
 
 function runWatchdog() {
   console.log('[Watchdog] Starting SMK TV services...');
+  writePid(ENV_DIR, 'watchdog', process.pid);
 
   function spawnService(role, port, label) {
     const child = spawn(EXE, [], {
@@ -69,6 +71,7 @@ function runWatchdog() {
       stdio: 'ignore',
       windowsHide: true,
     });
+    writePid(ENV_DIR, role, child.pid);
 
     child.on('exit', (code) => {
       console.log(`[Watchdog] ${label} exited (code ${code}) — restarting in 3s`);

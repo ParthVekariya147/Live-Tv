@@ -42,3 +42,8 @@ live-tv-controller-react/data/backups/
 live-tv-controller-react/data/app-state.json
 live-tv-controller-react/data/app-state.json.bak
 live-tv-controller-react/data/schedules.json.bak
+
+# Secrets (previously tracked — untracked via git rm --cached, kept on disk)
+live-tv-controller-react/data/ssl-key.pem
+live-tv-controller-react/data/fcm-tokens.json
+live-tv-controller-react/data/fcm-tokens.json.bak

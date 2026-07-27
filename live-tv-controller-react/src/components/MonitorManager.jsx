@@ -8,12 +8,6 @@ import { useOBS } from '../context/OBSContext';
 const LIVE_DETAILS_POLL_INTERVAL_MS = 20000;
 const RETRY_DELAY_MS = 10000; // retry after 10s on failure
 const LOCAL_API_BASE = import.meta.env.VITE_LOCAL_API_BASE || "http://localhost:3000";
-const LIVE_CHANNEL_SELECT_KEY = "liveSelectedChannelId";
-
-const CHANNEL_OPTIONS = [
-    { id: "UC7HQ3mzdsyvLU0Y7a2t3N7A", name: "Swaminarayan" },
-    { id: "UCQXWP4gEdEwlb6vodwrU75A", name: "Swaminarayan Bhagwan" },
-];
 
 const toDate = (value) => {
     if (!value) return null;
@@ -36,8 +30,8 @@ const normalizeLiveVideo = (video, overrides = {}) => {
         thumbnailUrl:
             video.thumbnail ||
             `https://placehold.co/320x180/cccccc/333333?text=No+Image`,
-        channelName: video.channelName || 'Swaminarayan',
-        channelUrl: video.channelUrl || 'https://www.youtube.com/channel/UC7HQ3mzdsyvLU0Y7a2t3N7A',
+        channelName: video.channelName || '',
+        channelUrl: video.channelUrl || '',
         isLive: Boolean(video.isLive),
         isUpcoming: Boolean(video.upcoming || video.isUpcoming),
         startedAt: video.startedAt || null,
@@ -64,7 +58,7 @@ const findMatchingVideoId = (searchTermsText, liveEvents) => {
     return null;
 };
 
-const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
+const MonitorManager = ({ monitor1Enabled, monitor2Enabled, channelOptions, selectedChannelId, onChannelChange }) => {
     const { setSourceVisibility, sourceState } = useOBS();
     // Ref so the guard inside fetchLiveVideoDetails always sees the latest sourceState
     // without adding sourceState to the useCallback deps (which would recreate the callback
@@ -79,22 +73,6 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
     const retryTimerRef = useRef(null);
     // Keep last known good data so UI never goes blank on transient failures
     const lastGoodData = useRef({ m1: null, m2: null, upcoming: null });
-    const [selectedChannelId, setSelectedChannelId] = useState(
-        () => localStorage.getItem(LIVE_CHANNEL_SELECT_KEY) || CHANNEL_OPTIONS[0].id
-    );
-
-    const handleChannelChange = useCallback((newId) => {
-        setSelectedChannelId(newId);
-        localStorage.setItem(LIVE_CHANNEL_SELECT_KEY, newId);
-        lastAutoLoadedIdRef.current = null;
-        localStorage.removeItem('lastAutoLoadedVideoId');
-    }, []);
-
-    // Persist lastAutoLoadedId across page reloads so the monitor doesn't re-dispatch
-    // a play command for the video that was already playing before the reload.
-    const lastAutoLoadedIdRef = useRef(
-        localStorage.getItem('lastAutoLoadedVideoId') || null
-    );
 
     const fetchLiveVideoDetails = useCallback(async () => {
         if (!monitor1Enabled && !monitor2Enabled) {
@@ -103,6 +81,7 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
             setUpcomingEventData(null);
             return;
         }
+        if (!selectedChannelId) return; // no channel configured/selected yet
 
         try {
             setError(null);
@@ -115,19 +94,15 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
                 signal: AbortSignal.timeout(15000),
                 cache: 'no-store',
             });
-            if (!response.ok) {
-                throw new Error(`API error ${response.status}`);
-            }
-
+            if (!response.ok) throw new Error(`API error ${response.status}`);
             const payload = await response.json();
-            setStale(payload.stale === true);
 
-            const liveEvents = (payload.live || [])
-                .map((video) =>
-                    normalizeLiveVideo(video, { isLive: true, isUpcoming: false })
-                )
+            setStale(Boolean(payload?.stale));
+
+            const toLiveEvents = (payload) => (payload?.live || [])
+                .map((video) => normalizeLiveVideo(video, { isLive: true, isUpcoming: false }))
                 .sort((a, b) => getEventStartMs(b) - getEventStartMs(a));
-            const upcomingEvents = (payload.upcoming || []).map((video) =>
+            const toUpcomingEvents = (payload) => (payload?.upcoming || []).map((video) =>
                 normalizeLiveVideo(video, {
                     isLive: false,
                     isUpcoming: true,
@@ -135,11 +110,15 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
                 })
             );
 
-            upcomingEvents.sort((a, b) => (a.startTime || 0) - (b.startTime || 0));
+            // One channel feeds both monitors: Monitor 1 gets the most recent
+            // live stream, Monitor 2 the next one — both from a single fetch.
+            const combinedLiveEvents = toLiveEvents(payload);
+            const combinedUpcoming = toUpcomingEvents(payload);
+            const liveEvent1 = combinedLiveEvents[0] || null;
+            const liveEvent2 = combinedLiveEvents[1] || null;
 
-            const liveEvent1 = liveEvents.length > 0 ? liveEvents[0] : null;
-            const liveEvent2 = liveEvents.length > 1 ? liveEvents[1] : null;
-            const nextUpcomingEvent = upcomingEvents.length > 0 ? upcomingEvents[0] : null;
+            combinedUpcoming.sort((a, b) => (a.startTime || 0) - (b.startTime || 0));
+            const nextUpcomingEvent = combinedUpcoming.length > 0 ? combinedUpcoming[0] : null;
 
             // Save as last good data
             lastGoodData.current = { m1: liveEvent1, m2: liveEvent2, upcoming: nextUpcomingEvent };
@@ -170,21 +149,18 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
                 const searchTerms1 = localStorage.getItem('savedSearchTitles1') || '';
                 const searchTerms2 = localStorage.getItem('savedSearchTitles2') || '';
                 videoIdToAutoLoad =
-                    findMatchingVideoId(searchTerms1, liveEvents) ||
-                    findMatchingVideoId(searchTerms2, liveEvents);
+                    findMatchingVideoId(searchTerms1, combinedLiveEvents) ||
+                    findMatchingVideoId(searchTerms2, combinedLiveEvents);
             }
 
-            // Only auto-load if found a new video (different from current and last auto-loaded)
-            if (
-                videoIdToAutoLoad &&
-                videoIdToAutoLoad !== currentLoadedId &&
-                videoIdToAutoLoad !== lastAutoLoadedIdRef.current
-            ) {
-                lastAutoLoadedIdRef.current = videoIdToAutoLoad;
-                localStorage.setItem('lastAutoLoadedVideoId', videoIdToAutoLoad);
-
-                const videoTitle = liveEvents.find(e => e.videoId === videoIdToAutoLoad)?.title || 'Unknown';
-                const channelName = liveEvents.find(e => e.videoId === videoIdToAutoLoad)?.channelName || 'Swaminarayan';
+            // Auto-load whenever the match differs from what the Live Player actually
+            // has loaded (read fresh from localStorage above) — this must NOT also be
+            // gated on "have we already auto-loaded this id before", since the Live
+            // Player can drift away from the match (manual override, restart, etc.)
+            // while the matched id itself stays the same, and it needs to resync.
+            if (videoIdToAutoLoad && videoIdToAutoLoad !== currentLoadedId) {
+                const videoTitle = combinedLiveEvents.find(e => e.videoId === videoIdToAutoLoad)?.title || 'Unknown';
+                const channelName = combinedLiveEvents.find(e => e.videoId === videoIdToAutoLoad)?.channelName || '';
                 logLiveMonitorEvent(1, videoIdToAutoLoad, videoTitle, channelName);
                 logVideoLoad('Live Player', videoIdToAutoLoad, videoTitle, 'monitor_autoload');
 
@@ -233,9 +209,8 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
             setMonitor2Data(null);
             setUpcomingEventData(null);
             setError(null);
-            lastAutoLoadedIdRef.current = null;
         }
-    }, [monitor1Enabled, monitor2Enabled, fetchLiveVideoDetails, selectedChannelId]);
+    }, [monitor1Enabled, monitor2Enabled, fetchLiveVideoDetails]);
 
     return (
         <>
@@ -247,12 +222,21 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled }) => {
                     data={monitor1Data}
                     error={error}
                     stale={stale}
-                    channelOptions={CHANNEL_OPTIONS}
+                    channelOptions={channelOptions}
                     selectedChannelId={selectedChannelId}
-                    onChannelChange={handleChannelChange}
+                    onChannelChange={onChannelChange}
                 />
             </div>
-            <div className="table-cell-wrapper"><MonitorCard id={2} title="Live Event Monitor 2" enabled={monitor2Enabled} data={monitor2Data} error={error} stale={stale} /></div>
+            <div className="table-cell-wrapper">
+                <MonitorCard
+                    id={2}
+                    title="Live Event Monitor 2"
+                    enabled={monitor2Enabled}
+                    data={monitor2Data}
+                    error={error}
+                    stale={stale}
+                />
+            </div>
             <div className="table-cell-wrapper"><UpcomingEventMonitor enabled={monitor1Enabled || monitor2Enabled} data={upcomingEventData} error={error} /></div>
         </>
     );

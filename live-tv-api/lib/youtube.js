@@ -2,19 +2,36 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // THIS IS THE ONLY FILE YOU EVER NEED TO EDIT WHEN YOUTUBE BREAKS.
 // The API endpoints (/api/live, /api/videos) always return the same format.
+// Channel IDs are no longer hardcoded here — they're user-configured via
+// /api/channels (see lib/channels-store.js) and passed in per-request.
 // ─────────────────────────────────────────────────────────────────────────────
-
-// Your two channel IDs
-export const CHANNELS = {
-  streams: "UC7HQ3mzdsyvLU0Y7a2t3N7A",
-  videos:  "UCQXWP4gEdEwlb6vodwrU75A",
-};
 
 // ─── Cache — cache-first, serves stale while refreshing in background ─────────
 const cache = new Map(); // key → { videos, fetchedAt }
 const CACHE_FRESH_MS  = 15 * 1000;      // < 15s   → return instantly, no fetch (client polls every 20s)
 const CACHE_STALE_MS  = 60 * 60 * 1000; // < 60min → return stale + refresh bg
 const refreshing = new Set();            // keys currently being refreshed
+
+// ─── Active-channel tracking — only channels a real client has asked for   ───
+// recently get kept warm by the background poll (see warmChannels below).
+// Touched from fetchChannels/fetchKathaChannel (real requests), never from the
+// warm loop itself, so a channel nobody is watching ages out on its own.
+const lastRequestedAt = new Map(); // channelId → timestamp of last real request
+const ACTIVE_CHANNEL_IDLE_MS = 5 * 60 * 1000; // 5min — well above the 20s poll
+
+function touchActive(channelId) {
+  if (channelId) lastRequestedAt.set(channelId, Date.now());
+}
+
+export function getActiveChannelIds() {
+  const now = Date.now();
+  const active = [];
+  for (const [id, ts] of lastRequestedAt.entries()) {
+    if (now - ts < ACTIVE_CHANNEL_IDLE_MS) active.push(id);
+    else lastRequestedAt.delete(id);
+  }
+  return active;
+}
 
 function cacheGet(key) {
   return cache.get(key) || null;
@@ -401,7 +418,7 @@ function normalizeLockupViewModel(lvm, channelId) {
     videoId,
     title,
     thumbnail,
-    channelName: "Swaminarayan",
+    channelName: "",
     channelId,
     channelUrl: `https://www.youtube.com/channel/${channelId}`,
     isLive,
@@ -440,7 +457,7 @@ function normalizeVideoRenderer(vr, channelId) {
     videoId,
     title,
     thumbnail,
-    channelName: "Swaminarayan",
+    channelName: "",
     channelId,
     channelUrl: `https://www.youtube.com/channel/${channelId}`,
     isLive,
@@ -518,6 +535,7 @@ async function doFetch(ids, cacheKey) {
 // ─── Public fetch — cache-first, background refresh when stale ───────────────
 async function fetchChannels(channelIds) {
   const ids = Array.isArray(channelIds) ? channelIds : [channelIds];
+  ids.forEach(touchActive);
   const cacheKey = ids.join(",");
 
   const cached = cacheGet(cacheKey);
@@ -545,20 +563,18 @@ async function fetchChannels(channelIds) {
   return doFetch(ids, cacheKey);
 }
 
-export function fetchStreamChannel() {
-  return fetchChannels(CHANNELS.streams);
-}
-
-// Katha channel — Piped (with pagination to 30) → RSS only (no scrape needed)
-async function doFetchKatha() {
-  const cacheKey = `katha:${CHANNELS.videos}`;
+// Recent-uploads fetch for any channel — Piped (with pagination to 30) → YouTube
+// scrape → RSS. Used by Katha Monitor (or any monitor wanting a channel's recent
+// uploads), parameterized by channelId instead of a hardcoded "videos" channel.
+async function doFetchRecentUploads(channelId) {
+  const cacheKey = `katha:${channelId}`;
 
   if (!pipedCircuit.isOpen()) {
-    const piped = await fetchPipedChannel(CHANNELS.videos);
+    const piped = await fetchPipedChannel(channelId);
     if (piped) {
       const videos = [];
       (piped.data.relatedStreams || []).forEach((stream) => {
-        const v = normalizePiped(stream, CHANNELS.videos, piped.data.name);
+        const v = normalizePiped(stream, channelId, piped.data.name);
         if (v) videos.push(v);
       });
 
@@ -567,13 +583,13 @@ async function doFetchKatha() {
       while (videos.length < 30 && nextpage) {
         try {
           const res = await fetch(
-            `${piped.source}/nextpage/channel/${CHANNELS.videos}?nextpage=${encodeURIComponent(nextpage)}`,
+            `${piped.source}/nextpage/channel/${channelId}?nextpage=${encodeURIComponent(nextpage)}`,
             { signal: AbortSignal.timeout(4000), headers: { "User-Agent": "SMK-TV-Monitor/1.0" } }
           );
           if (!res.ok) break;
           const pageData = await res.json();
           (pageData.relatedStreams || []).forEach((stream) => {
-            const v = normalizePiped(stream, CHANNELS.videos, piped.data.name);
+            const v = normalizePiped(stream, channelId, piped.data.name);
             if (v) videos.push(v);
           });
           nextpage = pageData.nextpage;
@@ -583,34 +599,35 @@ async function doFetchKatha() {
         }
       }
 
-      console.log(`[Piped Katha] Fetched ${videos.length} videos total`);
+      console.log(`[Piped Katha] Fetched ${videos.length} videos total for ${channelId}`);
       if (videos.length > 0) { cacheSet(cacheKey, videos); return videos; }
     }
   }
 
   // Piped failed — try scraping the YouTube /videos tab (same approach as streams channel)
-  console.warn("[API] Piped failed for katha — scraping YouTube /videos tab");
-  const scraped = await fetchYouTubeVideosScrape(CHANNELS.videos);
+  console.warn(`[API] Piped failed for ${channelId} — scraping YouTube /videos tab`);
+  const scraped = await fetchYouTubeVideosScrape(channelId);
   if (scraped && scraped.length > 0) { cacheSet(cacheKey, scraped); return scraped; }
 
-  console.warn("[API] YT Videos scrape failed for katha — falling back to RSS (max 15)");
-  const rss = await fetchRSSChannel(CHANNELS.videos);
+  console.warn(`[API] YT Videos scrape failed for ${channelId} — falling back to RSS (max 15)`);
+  const rss = await fetchRSSChannel(channelId);
   if (rss && rss.length > 0) { cacheSet(cacheKey, rss); return rss; }
 
   const cached = cacheGet(cacheKey);
   if (cached) {
-    console.warn(`[API] All sources failed for katha — serving cache`);
+    console.warn(`[API] All sources failed for ${channelId} — serving cache`);
     return cached.videos.map((v) => ({ ...v, stale: true }));
   }
   return [];
 }
 
-export function fetchKathaChannel(forceRefresh = false) {
-  const cacheKey = `katha:${CHANNELS.videos}`;
+export function fetchKathaChannel(channelId, forceRefresh = false) {
+  touchActive(channelId);
+  const cacheKey = `katha:${channelId}`;
 
   if (forceRefresh) {
     // Bypass cache entirely — used by the manual "↻ Refresh" button
-    return doFetchKatha();
+    return doFetchRecentUploads(channelId);
   }
 
   const cached = cacheGet(cacheKey);
@@ -619,31 +636,31 @@ export function fetchKathaChannel(forceRefresh = false) {
     if (age < CACHE_FRESH_MS) return Promise.resolve(cached.videos);
     if (!refreshing.has(cacheKey)) {
       refreshing.add(cacheKey);
-      doFetchKatha().catch((e) => console.error("[Katha BG Refresh]", e)).finally(() => refreshing.delete(cacheKey));
+      doFetchRecentUploads(channelId).catch((e) => console.error("[Katha BG Refresh]", e)).finally(() => refreshing.delete(cacheKey));
     }
     return Promise.resolve(cached.videos.map((v) => (age > CACHE_STALE_MS ? { ...v, stale: true } : v)));
   }
-  return doFetchKatha();
+  return doFetchRecentUploads(channelId);
 }
 
-// ─── Warm cache on server startup so first real request is instant ────────────
-export async function warmCache() {
-  console.log("[Cache] Warming up...");
+// ─── Warm cache for a specific set of channels ────────────────────────────────
+// Warms both the live-fetch and recent-uploads caches for the given channel
+// IDs. Called by the background poll with only the channels a real client has
+// requested recently (see getActiveChannelIds) — NOT every configured channel
+// — so channels nobody is watching stop costing fetches within a few minutes.
+// Also called directly after a channel-list save so a freshly added channel
+// isn't cold the first time someone picks it.
+export async function warmChannels(channelIds) {
+  const ids = [...new Set(channelIds)].filter(Boolean);
+  if (ids.length === 0) return;
   await Promise.allSettled([
-    doFetch([CHANNELS.streams], CHANNELS.streams),
-    doFetchKatha(),
+    ...ids.map((id) => doFetch([id], id)),
+    ...ids.map((id) => doFetchRecentUploads(id)),
   ]);
-  console.log("[Cache] Warm-up complete");
 }
 
 export function fetchChannelById(channelId) {
   return fetchChannels(channelId);
-}
-
-// ─── Main: fetch all videos from both channels ────────────────────────────────
-// Returns the permanent response shape — THIS SHAPE NEVER CHANGES
-export async function fetchAllChannels() {
-  return fetchChannels(Object.values(CHANNELS));
 }
 
 // ─── Filter helpers ───────────────────────────────────────────────────────────

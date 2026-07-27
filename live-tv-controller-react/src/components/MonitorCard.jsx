@@ -38,9 +38,9 @@ const MonitorCard = ({ id, title, enabled, data, error, stale, channelOptions, s
     } else if (data) {
         displayTitle = data.title;
         videoId = data.videoId;
-        channelName = data.channelName || "Swaminarayan";
+        channelName = data.channelName || "Unknown";
         thumbnail = data.thumbnailUrl;
-        channelUrl = data.channelUrl || `https://www.youtube.com/channel/UC7HQ3mzdsyvLU0Y7a2t3N7A`;
+        channelUrl = data.channelUrl || "N/A";
     } else {
         displayTitle = "No Live Event Found";
         thumbnail = "https://placehold.co/280x157.5/333333/FFFFFF?text=No+Live+Event";
@@ -68,7 +68,7 @@ const MonitorCard = ({ id, title, enabled, data, error, stale, channelOptions, s
                 )}
             </h3>
 
-            {channelOptions && onChannelChange && (
+            {channelOptions && channelOptions.length > 0 && onChannelChange && (
                 <div className="flex flex-col w-full px-2 mb-2">
                     <label className="live-monitor-label mb-1">Monitor Channel:</label>
                     <select
@@ -77,7 +77,7 @@ const MonitorCard = ({ id, title, enabled, data, error, stale, channelOptions, s
                         onChange={(e) => onChannelChange(e.target.value)}
                     >
                         {channelOptions.map((ch) => (
-                            <option key={ch.id} value={ch.id}>{ch.name}</option>
+                            <option key={ch.id} value={ch.channelId}>{ch.name}</option>
                         ))}
                     </select>
                 </div>

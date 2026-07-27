@@ -4,6 +4,7 @@ import { useOBS } from '../context/OBSContext';
 import PreviewBox from './PreviewBox';
 import SettingsBackup from './SettingsBackup';
 import NotificationSettings from './NotificationSettings';
+import ChannelManager from './ChannelManager';
 import { LIVE_PLAYER_EVENT_KEY, PLAYER_EVENT_KEY, DELAY_PLAYER_EVENT_KEY, LOCAL_PLAYER_EVENT_KEY } from '../utils/core-utils';
 import { logError, LogCategory, LogType } from '../utils/logger';
 
@@ -157,28 +158,31 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
         </button>
     );
 
+    // Compact bordered "chip" used to visually group related buttons inline,
+    // without adding a separate label row (keeps the header to one row's height).
+    const HeaderGroup = ({ label, children }) => (
+        <div className="flex items-center gap-1.5 bg-gray-900/40 border border-gray-700/60 rounded-md pl-2 pr-1.5 py-1">
+            <span className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">{label}</span>
+            {children}
+        </div>
+    );
+
     return (
-        <div className="w-full bg-gray-800/50 rounded-lg p-4 border border-gray-700 flex flex-wrap gap-6 items-center justify-between">
-            {/* Preview Box */}
-            <div className="flex-shrink-0">
+        <div className="w-full bg-gray-800/50 rounded-lg p-4 border border-gray-700 flex flex-wrap gap-6 items-center">
+            {/* Left: Preview + Title */}
+            <div className="flex items-center gap-4 flex-shrink-0">
                 <PreviewBox />
+
+                <div className="text-center min-w-[150px]">
+                    <h2 className="text-2xl font-bold text-[#00adb5]">SMK TV</h2>
+                    <div className="text-xl font-mono text-white">{currentTime.split(',')[1]?.trim()}</div>
+                    <div className="text-sm text-gray-400">{currentTime.split(',')[0]?.trim()}</div>
+                </div>
             </div>
 
-            {/* Title & Time */}
-            <div className="text-center min-w-[150px]">
-                <h2 className="text-2xl font-bold text-[#00adb5]">SMK TV</h2>
-                <div className="text-xl font-mono text-white">{currentTime.split(',')[1]?.trim()}</div>
-                <div className="text-sm text-gray-400">{currentTime.split(',')[0]?.trim()}</div>
-            </div>
-
-            {/* Source Toggles - Compact Row */}
-            <div className="flex flex-wrap gap-1.5 justify-center">
-                {/* <button
-                    onClick={toggleLiveLoop}
-                    className={`px-3 py-1.5 rounded text-xs font-medium transition-all toggle-btn ${getLiveLoopClass()}`}
-                >
-                    {getLiveLoopText()}
-                </button> */}
+            {/* Center: Sources — takes the flexible middle space so it stays visually centered */}
+            <div className="flex-1 flex justify-center min-w-[200px]">
+                <HeaderGroup label="Src">
                     <ToggleBtn
                         active={sourceState["Live Player"]}
                         onClick={() => switchToSource("Live Player")}
@@ -195,169 +199,181 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
                         loading={loadingSource === "Loop Player"}
                         warn={warnSource === "Loop Player"}
                     />
-                <ToggleBtn
-                    active={sourceState["Delay Live"]}
-                    onClick={() => switchToSource("Delay Live")}
-                    label={`Delay ${sourceState["Delay Live"] ? '●' : '○'}`}
-                    activeClass="bg-purple-600"
-                    loading={loadingSource === "Delay Live"}
-                    warn={warnSource === "Delay Live"}
-                />
-                <ToggleBtn
-                    active={sourceState["Local Player"]}
-                    onClick={() => switchToSource("Local Player")}
-                    label={`Local ${sourceState["Local Player"] ? '●' : '○'}`}
-                    activeClass="bg-pink-600"
-                    loading={loadingSource === "Local Player"}
-                    warn={warnSource === "Local Player"}
-                />
+                    <ToggleBtn
+                        active={sourceState["Delay Live"]}
+                        onClick={() => switchToSource("Delay Live")}
+                        label={`Delay ${sourceState["Delay Live"] ? '●' : '○'}`}
+                        activeClass="bg-purple-600"
+                        loading={loadingSource === "Delay Live"}
+                        warn={warnSource === "Delay Live"}
+                    />
+                    <ToggleBtn
+                        active={sourceState["Local Player"]}
+                        onClick={() => switchToSource("Local Player")}
+                        label={`Local ${sourceState["Local Player"] ? '●' : '○'}`}
+                        activeClass="bg-pink-600"
+                        loading={loadingSource === "Local Player"}
+                        warn={warnSource === "Local Player"}
+                    />
+                </HeaderGroup>
             </div>
 
-            {/* OBS Controls - Compact Column */}
-            <div className="flex flex-col gap-1 items-end">
-                <div className="flex items-center gap-2 mb-1">
-                    <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-500'}`} />
-                    <span className="text-xs text-cyan-400 font-semibold">OBS</span>
-                    <button
-                        onClick={() => setShowOBSSetup(v => !v)}
-                        title="OBS WebSocket Setup"
-                        className={`px-1.5 py-0.5 rounded text-xs font-medium transition-all ${showOBSSetup ? 'bg-cyan-700 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}
-                    >
-                        ⚙ Setup
-                    </button>
-                </div>
+            {/* Right: Rec group + utility cluster, each clearly separated by a gap + divider */}
+            <div className="flex flex-wrap gap-5 items-start flex-shrink-0">
+                <HeaderGroup label="Rec">
+                    <div className="flex flex-col gap-1">
+                        <div className="flex flex-wrap gap-1.5">
+                            <button
+                                onClick={toggleStream}
+                                className={`px-2 py-1 rounded text-xs font-medium transition-all ${streamActive
+                                    ? 'bg-red-600 text-white animate-pulse'
+                                    : 'bg-green-600 hover:bg-green-700 text-white'
+                                    }`}
+                            >
+                                {streamActive ? "⏹ Stream" : "▶ Stream"}
+                            </button>
+                            <button
+                                onClick={toggleRecord}
+                                className={`px-2 py-1 rounded text-xs font-medium transition-all ${recordActive
+                                    ? 'bg-red-600 text-white animate-pulse'
+                                    : 'bg-gray-600 hover:bg-gray-500 text-white'
+                                    }`}
+                            >
+                                {recordActive ? "⏹ Rec" : "● Rec"}
+                            </button>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                            <button
+                                onClick={toggleAutoRecord}
+                                title="Auto-record: start OBS recording when Live Player turns on, stop when it turns off"
+                                className={`px-2 py-1 rounded text-xs font-medium transition-all ${autoRecord
+                                    ? 'bg-red-800 text-red-200 ring-1 ring-red-500'
+                                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                                    }`}
+                            >
+                                {autoRecord ? '⏺ Auto' : '○ Auto'}
+                            </button>
+                            <button
+                                onClick={toggleVirtualCam}
+                                className={`px-2 py-1 rounded text-xs font-medium transition-all ${virtualCamActive
+                                    ? 'bg-yellow-600 text-white'
+                                    : 'bg-gray-600 hover:bg-gray-500 text-white'
+                                    }`}
+                            >
+                                {virtualCamActive ? "⏹ VCam" : "📷 VCam"}
+                            </button>
+                            <button
+                                onClick={toggleMonitor1}
+                                className={`px-2 py-1 rounded text-xs font-medium transition-all ${monitor1Enabled
+                                    ? 'bg-cyan-600 text-white'
+                                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                                    }`}
+                            >
+                                Mon1 {monitor1Enabled ? '●' : '○'}
+                            </button>
+                            <button
+                                onClick={toggleMonitor2}
+                                className={`px-2 py-1 rounded text-xs font-medium transition-all ${monitor2Enabled
+                                    ? 'bg-cyan-600 text-white'
+                                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                                    }`}
+                            >
+                                Mon2 {monitor2Enabled ? '●' : '○'}
+                            </button>
+                        </div>
+                    </div>
+                </HeaderGroup>
+
+                <div className="w-px self-stretch bg-gray-700/70" />
+
+                {/* Settings/backup */}
+                <SettingsBackup />
+
+                <div className="w-px self-stretch bg-gray-700/70" />
+
+                {/* Setup / Notifications / Channels stacked in one column — the very last group, rightmost */}
+                <div className="relative flex flex-col items-end gap-1.5">
+                    <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-500'}`} />
+                        <span className="text-xs text-cyan-400 font-semibold">OBS</span>
+                        <button
+                            onClick={() => setShowOBSSetup(v => !v)}
+                            title="OBS WebSocket Setup"
+                            className={`px-1.5 py-0.5 rounded text-xs font-medium transition-all ${showOBSSetup ? 'bg-cyan-700 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}
+                        >
+                            ⚙ Setup
+                        </button>
+                    </div>
+
+                    <NotificationSettings />
+                    <ChannelManager />
 
                 {showOBSSetup && (
-                    <div className="bg-gray-900 border border-cyan-700/50 rounded-lg p-3 mb-1 w-64 text-xs">
-                        {/* OBS Auto-Setup launcher */}
-                        <div className="mb-3">
-                            <div className="flex items-center justify-between mb-2">
-                                <p className="text-cyan-400 font-semibold">OBS Auto-Setup</p>
-                                <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${isConnected ? 'bg-green-900/60 text-green-400' : 'bg-red-900/60 text-red-400'}`}>
-                                    <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-500'}`} />
-                                    {isConnected ? 'Connected' : 'Not Connected'}
-                                </span>
+                    <div className="absolute right-0 top-full mt-1 z-20 bg-gray-900 border border-cyan-700/50 rounded-lg p-3 w-64 text-xs shadow-xl">
+                            {/* OBS Auto-Setup launcher */}
+                            <div className="mb-3">
+                                <div className="flex items-center justify-between mb-2">
+                                    <p className="text-cyan-400 font-semibold">OBS Auto-Setup</p>
+                                    <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${isConnected ? 'bg-green-900/60 text-green-400' : 'bg-red-900/60 text-red-400'}`}>
+                                        <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-500'}`} />
+                                        {isConnected ? 'Connected' : 'Not Connected'}
+                                    </span>
+                                </div>
+                                <p className="text-gray-500 mb-2 leading-relaxed">
+                                    Auto-configure OBS sources, encoder, and RTMP settings for SMK TV.
+                                </p>
+                                <button
+                                    onClick={() => window.open('/obs-auto-setup.html', '_blank', 'width=600,height=700')}
+                                    className="w-full py-1.5 bg-indigo-700 hover:bg-indigo-600 text-white rounded font-medium text-xs transition-all flex items-center justify-center gap-1.5"
+                                >
+                                    🚀 Open OBS Auto-Setup
+                                </button>
+                                {!isConnected && (
+                                    <p className="text-yellow-600 mt-1.5 text-xs">⚠ OBS not connected — auto-setup will try to connect on its own.</p>
+                                )}
                             </div>
-                            <p className="text-gray-500 mb-2 leading-relaxed">
-                                Auto-configure OBS sources, encoder, and RTMP settings for SMK TV.
+
+                            {/* Divider */}
+                            <div className="border-t border-gray-700 my-2" />
+
+                            {/* WebSocket Config */}
+                            <p className="text-gray-400 font-semibold mb-2">WS Connection</p>
+                            <div className="flex flex-col gap-2">
+                                <div className="flex items-center gap-2">
+                                    <label className="text-gray-400 w-10 flex-shrink-0">Host</label>
+                                    <input
+                                        value={obsHost}
+                                        onChange={e => setObsHost(e.target.value)}
+                                        className="flex-1 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white text-xs"
+                                        placeholder="localhost"
+                                    />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <label className="text-gray-400 w-10 flex-shrink-0">Port</label>
+                                    <input
+                                        value={obsPort}
+                                        onChange={e => setObsPort(e.target.value)}
+                                        className="flex-1 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white text-xs"
+                                        placeholder="4455"
+                                        type="number"
+                                    />
+                                </div>
+                                <div className="flex gap-2 mt-1">
+                                    <button onClick={handleOBSSave} className="flex-1 bg-cyan-700 hover:bg-cyan-600 text-white rounded px-2 py-1 text-xs font-medium">
+                                        Save & Reconnect
+                                    </button>
+                                    <button onClick={() => setShowOBSSetup(false)} className="bg-gray-700 hover:bg-gray-600 text-gray-300 rounded px-2 py-1 text-xs">
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                            <p className="text-gray-500 mt-2">
+                                Current: {obsSettings?.host || 'localhost'}:{obsSettings?.port || 4455}
                             </p>
-                            <button
-                                onClick={() => window.open('/obs-auto-setup.html', '_blank', 'width=600,height=700')}
-                                className="w-full py-1.5 bg-indigo-700 hover:bg-indigo-600 text-white rounded font-medium text-xs transition-all flex items-center justify-center gap-1.5"
-                            >
-                                🚀 Open OBS Auto-Setup
-                            </button>
-                            {!isConnected && (
-                                <p className="text-yellow-600 mt-1.5 text-xs">⚠ OBS not connected — auto-setup will try to connect on its own.</p>
-                            )}
                         </div>
-
-                        {/* Divider */}
-                        <div className="border-t border-gray-700 my-2" />
-
-                        {/* WebSocket Config */}
-                        <p className="text-gray-400 font-semibold mb-2">WS Connection</p>
-                        <div className="flex flex-col gap-2">
-                            <div className="flex items-center gap-2">
-                                <label className="text-gray-400 w-10 flex-shrink-0">Host</label>
-                                <input
-                                    value={obsHost}
-                                    onChange={e => setObsHost(e.target.value)}
-                                    className="flex-1 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white text-xs"
-                                    placeholder="localhost"
-                                />
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <label className="text-gray-400 w-10 flex-shrink-0">Port</label>
-                                <input
-                                    value={obsPort}
-                                    onChange={e => setObsPort(e.target.value)}
-                                    className="flex-1 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white text-xs"
-                                    placeholder="4455"
-                                    type="number"
-                                />
-                            </div>
-                            <div className="flex gap-2 mt-1">
-                                <button onClick={handleOBSSave} className="flex-1 bg-cyan-700 hover:bg-cyan-600 text-white rounded px-2 py-1 text-xs font-medium">
-                                    Save & Reconnect
-                                </button>
-                                <button onClick={() => setShowOBSSetup(false)} className="bg-gray-700 hover:bg-gray-600 text-gray-300 rounded px-2 py-1 text-xs">
-                                    Cancel
-                                </button>
-                            </div>
-                        </div>
-                        <p className="text-gray-500 mt-2">
-                            Current: {obsSettings?.host || 'localhost'}:{obsSettings?.port || 4455}
-                        </p>
-                    </div>
-                )}
-
-                <div className="flex gap-1">
-                    <button
-                        onClick={toggleStream}
-                        className={`px-2 py-1 rounded text-xs font-medium transition-all ${streamActive
-                            ? 'bg-red-600 text-white animate-pulse'
-                            : 'bg-green-600 hover:bg-green-700 text-white'
-                            }`}
-                    >
-                        {streamActive ? "⏹ Stream" : "▶ Stream"}
-                    </button>
-                    <button
-                        onClick={toggleRecord}
-                        className={`px-2 py-1 rounded text-xs font-medium transition-all ${recordActive
-                            ? 'bg-red-600 text-white animate-pulse'
-                            : 'bg-gray-600 hover:bg-gray-500 text-white'
-                            }`}
-                    >
-                        {recordActive ? "⏹ Rec" : "● Rec"}
-                    </button>
-                    <button
-                        onClick={toggleAutoRecord}
-                        title="Auto-record: start OBS recording when Live Player turns on, stop when it turns off"
-                        className={`px-2 py-1 rounded text-xs font-medium transition-all ${autoRecord
-                            ? 'bg-red-800 text-red-200 ring-1 ring-red-500'
-                            : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                            }`}
-                    >
-                        {autoRecord ? '⏺ Auto' : '○ Auto'}
-                    </button>
-                    <button
-                        onClick={toggleVirtualCam}
-                        className={`px-2 py-1 rounded text-xs font-medium transition-all ${virtualCamActive
-                            ? 'bg-yellow-600 text-white'
-                            : 'bg-gray-600 hover:bg-gray-500 text-white'
-                            }`}
-                    >
-                        {virtualCamActive ? "⏹ VCam" : "📷 VCam"}
-                    </button>
-                </div>
-                <div className="flex gap-1 mt-1">
-                    <button
-                        onClick={toggleMonitor1}
-                        className={`px-2 py-1 rounded text-xs font-medium transition-all ${monitor1Enabled
-                            ? 'bg-cyan-600 text-white'
-                            : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                            }`}
-                    >
-                        Mon1 {monitor1Enabled ? '●' : '○'}
-                    </button>
-                    <button
-                        onClick={toggleMonitor2}
-                        className={`px-2 py-1 rounded text-xs font-medium transition-all ${monitor2Enabled
-                            ? 'bg-cyan-600 text-white'
-                            : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                            }`}
-                    >
-                        Mon2 {monitor2Enabled ? '●' : '○'}
-                    </button>
+                    )}
                 </div>
             </div>
-
-            {/* Settings Export / Import */}
-            <SettingsBackup />
-
-            {/* Push Notification Settings */}
-            <NotificationSettings />
         </div>
     );
 };

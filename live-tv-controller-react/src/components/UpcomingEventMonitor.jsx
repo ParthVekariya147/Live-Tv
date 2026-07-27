@@ -54,8 +54,8 @@ const UpcomingEventMonitor = ({ enabled, data, error }) => {
             thumbnail: data.thumbnailUrl || "https://placehold.co/280x157.5/333333/FFFFFF?text=No+Thumbnail",
             title: data.title || "Unknown",
             videoId: data.videoId || "N/A",
-            channelName: "Swaminarayan",
-            channelUrl: "https://www.youtube.com/@swaminarayan",
+            channelName: data.channelName || "Unknown",
+            channelUrl: data.channelUrl || null,
             startTime: formatStartTime(data.startTime),
             isError: false
         };

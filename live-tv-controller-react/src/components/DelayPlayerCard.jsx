@@ -1,8 +1,9 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useOBS } from '../context/OBSContext';
 import { sendPlayerCommand, timeToSeconds, secondsToHMS, DELAY_PLAYER_EVENT_KEY } from '../utils/core-utils';
-import { usePlayerTime } from '../utils/usePlayerHooks';
+import { usePlayerTime, usePlayerEvents } from '../utils/usePlayerHooks';
+import { LOOP_AUTOMATION_LOCAL_KEY } from './LoopPlaylistAutomation';
 import { useVideoInfo } from '../hooks/useVideoInfo';
 import { logVideoLoad, logVideoPlay } from '../utils/logger';
 import { setStateValue } from '../utils/state-api';
@@ -66,7 +67,7 @@ function findKeywordSkipRanges(description, keywords) {
 }
 
 const DelayPlayerCard = () => {
-    const { sourceState } = useOBS();
+    const { sourceState, setSourceVisibility } = useOBS();
     const isVisible = sourceState["Delay Live"];
     const isInitialized = useRef(false);
     const hasUserData = useRef(false); // Track if we have actual user data to save
@@ -89,6 +90,27 @@ const DelayPlayerCard = () => {
     const [keywordSkipEnabled, setKeywordSkipEnabled] = useState(false);
     const [skipKeyword, setSkipKeyword] = useState("");
 
+    // "On Finish, Start Group" — when this video ends, automatically start the picked Loop
+    // Playlist Automation Group (see LoopPlaylistAutomation.jsx's loopAutomationStartGroup
+    // listener). Blank = do nothing, current behavior unchanged.
+    const [endGroupId, setEndGroupId] = useState("");
+    const endGroupIdRef = useRef(endGroupId);
+    useEffect(() => { endGroupIdRef.current = endGroupId; }, [endGroupId]);
+    const [automationGroups, setAutomationGroups] = useState([]);
+    useEffect(() => {
+        const loadGroups = () => {
+            try {
+                const saved = localStorage.getItem(LOOP_AUTOMATION_LOCAL_KEY);
+                const parsed = saved ? JSON.parse(saved) : [];
+                setAutomationGroups(Array.isArray(parsed) ? parsed : []);
+            } catch { setAutomationGroups([]); }
+        };
+        loadGroups();
+        const onStorage = (e) => { if (e.key === LOOP_AUTOMATION_LOCAL_KEY) loadGroups(); };
+        window.addEventListener('storage', onStorage);
+        return () => window.removeEventListener('storage', onStorage);
+    }, []);
+
     const { title: videoTitle, thumbnail: videoThumbnail, loading: thumbLoading } = useVideoInfo(videoId);
     const [statusText, setStatusText] = useState("Not loaded");
 
@@ -110,6 +132,7 @@ const DelayPlayerCard = () => {
                     setIsStopped(parsed.isStopped ?? false);
                     setKeywordSkipEnabled(parsed.keywordSkipEnabled ?? false);
                     setSkipKeyword(parsed.skipKeyword || "");
+                    setEndGroupId(parsed.endGroupId || "");
                     hasUserData.current = true; // Mark that we have valid user data
                 }
             } catch (e) { }
@@ -152,10 +175,10 @@ const DelayPlayerCard = () => {
             hasUserData.current = true;
         }
 
-        const state = { videoId, startTime, endTime, isPlaying, isMuted, isStopped, keywordSkipEnabled, skipKeyword };
+        const state = { videoId, startTime, endTime, isPlaying, isMuted, isStopped, keywordSkipEnabled, skipKeyword, endGroupId };
         localStorage.setItem('delayPlayerState', JSON.stringify(state));
         setStateValue('player.delay', state);
-    }, [videoId, startTime, endTime, isPlaying, isMuted, isStopped, keywordSkipEnabled, skipKeyword]);
+    }, [videoId, startTime, endTime, isPlaying, isMuted, isStopped, keywordSkipEnabled, skipKeyword, endGroupId]);
 
     // Always-current ref to flush current state on demand (pre-backup / pre-export)
     const flushStateRef = useRef(null);
@@ -163,7 +186,7 @@ const DelayPlayerCard = () => {
         flushStateRef.current = () => {
             if (!isInitialized.current) return;
             if (!hasUserData.current && !videoId) return;
-            const state = { videoId, startTime, endTime, isPlaying, isMuted, isStopped, keywordSkipEnabled, skipKeyword };
+            const state = { videoId, startTime, endTime, isPlaying, isMuted, isStopped, keywordSkipEnabled, skipKeyword, endGroupId };
             localStorage.setItem('delayPlayerState', JSON.stringify(state));
             setStateValue('player.delay', state);
         };
@@ -209,6 +232,29 @@ const DelayPlayerCard = () => {
             setStatusText("Delay Player Paused");
         }
     }, [isVisible]);
+
+    // Refs so the videoEnded handler below always sees the latest OBS state/setter without
+    // being recreated on every OBS poll tick (same pattern as LocalPlayerCard/MonitorManager).
+    const sourceStateRef = useRef(sourceState);
+    useEffect(() => { sourceStateRef.current = sourceState; }, [sourceState]);
+    const setSourceVisibilityRef = useRef(setSourceVisibility);
+    useEffect(() => { setSourceVisibilityRef.current = setSourceVisibility; }, [setSourceVisibility]);
+
+    // When the delayed video finishes, hand off to Loop Player (mirrors Local Player's
+    // end-of-playlist scene switch) and tell the automation engine which Group to start,
+    // if one was picked below. Blank selection = no-op, same as before this feature existed.
+    const handleDelayVideoEnded = useCallback(() => {
+        const groupId = endGroupIdRef.current;
+        if (!groupId) return;
+        const setSrcVis = setSourceVisibilityRef.current ?? setSourceVisibility;
+        if (sourceStateRef.current["Live Player"]) setSrcVis("Live Player", false);
+        setSrcVis("Loop Player", true);
+        setStatusText("Finished — switched to Loop Player");
+        window.dispatchEvent(new CustomEvent('loopAutomationStartGroup', {
+            detail: { groupId, label: 'Delay Player finished' },
+        }));
+    }, [setSourceVisibility]);
+    usePlayerEvents(DELAY_PLAYER_EVENT_KEY, 'delay', handleDelayVideoEnded);
 
     // Resume playback of existing video without modifying state
     const resumePlayback = () => {
@@ -397,6 +443,20 @@ const DelayPlayerCard = () => {
                     onChange={(e) => setSkipKeyword(e.target.value)}
                 />
             )}
+
+            <label className="flex flex-col gap-1 mt-2 text-xs text-gray-400">
+                On Finish, Start Group:
+                <select
+                    className="input-field"
+                    value={endGroupId}
+                    onChange={(e) => setEndGroupId(e.target.value)}
+                >
+                    <option value="">— None (do nothing) —</option>
+                    {automationGroups.map(g => (
+                        <option key={g.id} value={g.id}>{g.serial ? `${g.serial} - ` : ''}{g.name || 'Unnamed Group'}</option>
+                    ))}
+                </select>
+            </label>
 
             <div className="btn-group mt-2">
                 <PlayerControlBtn
