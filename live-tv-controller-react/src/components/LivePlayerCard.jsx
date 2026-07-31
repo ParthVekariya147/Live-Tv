@@ -8,7 +8,10 @@ import { logVideoLoad, logVideoPlay, logError, LogCategory, LogType } from '../u
 import { setStateValue } from '../utils/state-api';
 import PlayerControlBtn from './common/PlayerControlBtn';
 import ThumbnailLoader from './common/ThumbnailLoader';
-import { LOOP_AUTOMATION_LOCAL_KEY } from './LoopPlaylistAutomation';
+import LiveEndRulesManager from './LiveEndRulesManager';
+import {
+    LIVE_END_RULES_LOCAL_KEY, LIVE_END_RULES_UPDATED_EVENT, resolveLiveEndTarget, migrateLegacyEndGroup,
+} from '../utils/liveEndRules';
 
 const DEFAULT_LIVE_VIDEO_ID = "T3wvnwSSw8g";
 const API_BASE = '';
@@ -24,25 +27,30 @@ const LivePlayerCard = () => {
     const videoTitleRef = useRef('');
     const [priority, setPriority] = useState("matchSearchTerms");
 
-    // "On Stream End, Start Group" — when the live stream goes offline (YouTube reports
-    // ENDED), automatically hand off to Loop Player and start the picked Group. Blank = do
-    // nothing, same as before this feature existed.
-    const [endGroupId, setEndGroupId] = useState("");
-    const endGroupIdRef = useRef(endGroupId);
-    useEffect(() => { endGroupIdRef.current = endGroupId; }, [endGroupId]);
-    const [automationGroups, setAutomationGroups] = useState([]);
+    // "Stream-End Rules" — when the live stream goes offline (YouTube reports ENDED), match
+    // its ended title against saved keyword rules and hand off to Loop Player, starting
+    // whichever Group/Playlist that rule points at. See LiveEndRulesManager.jsx for the
+    // matching logic and the manager UI. No match (or an empty rule list) = do nothing, same
+    // as leaving the old fixed dropdown on "None".
+    const [liveEndRules, setLiveEndRules] = useState([]);
+    const liveEndRulesRef = useRef(liveEndRules);
+    useEffect(() => { liveEndRulesRef.current = liveEndRules; }, [liveEndRules]);
     useEffect(() => {
-        const loadGroups = () => {
+        const loadRules = () => {
             try {
-                const saved = localStorage.getItem(LOOP_AUTOMATION_LOCAL_KEY);
+                const saved = localStorage.getItem(LIVE_END_RULES_LOCAL_KEY);
                 const parsed = saved ? JSON.parse(saved) : [];
-                setAutomationGroups(Array.isArray(parsed) ? parsed : []);
-            } catch { setAutomationGroups([]); }
+                setLiveEndRules(Array.isArray(parsed) ? parsed : []);
+            } catch { setLiveEndRules([]); }
         };
-        loadGroups();
-        const onStorage = (e) => { if (e.key === LOOP_AUTOMATION_LOCAL_KEY) loadGroups(); };
+        loadRules();
+        const onStorage = (e) => { if (e.key === LIVE_END_RULES_LOCAL_KEY) loadRules(); };
         window.addEventListener('storage', onStorage);
-        return () => window.removeEventListener('storage', onStorage);
+        window.addEventListener(LIVE_END_RULES_UPDATED_EVENT, loadRules);
+        return () => {
+            window.removeEventListener('storage', onStorage);
+            window.removeEventListener(LIVE_END_RULES_UPDATED_EVENT, loadRules);
+        };
     }, []);
 
     // Playback
@@ -103,7 +111,7 @@ const LivePlayerCard = () => {
                 setIsPlaying(parsed.isPlaying ?? true);
                 setIsMuted(parsed.isMuted ?? false);
                 setIsStopped(parsed.isStopped ?? false);
-                setEndGroupId(parsed.endGroupId || "");
+                migrateLegacyEndGroup(parsed.endGroupId);
             } catch { /* ignore malformed localStorage */ }
         }
         isInitialized.current = true;
@@ -112,17 +120,17 @@ const LivePlayerCard = () => {
     // Save state to localStorage and server
     useEffect(() => {
         if (!isInitialized.current) return;
-        const state = { videoId, priority, isPlaying, isMuted, isStopped, endGroupId };
+        const state = { videoId, priority, isPlaying, isMuted, isStopped };
         localStorage.setItem('livePlayerState', JSON.stringify(state));
         setStateValue('player.live', state);
-    }, [videoId, priority, isPlaying, isMuted, isStopped, endGroupId]);
+    }, [videoId, priority, isPlaying, isMuted, isStopped]);
 
     // Always-current ref to flush current state on demand (pre-backup / pre-export)
     const flushStateRef = useRef(null);
     useEffect(() => {
         flushStateRef.current = () => {
             if (!isInitialized.current) return;
-            const state = { videoId, priority, isPlaying, isMuted, isStopped, endGroupId };
+            const state = { videoId, priority, isPlaying, isMuted, isStopped };
             localStorage.setItem('livePlayerState', JSON.stringify(state));
             setStateValue('player.live', state);
         };
@@ -309,14 +317,14 @@ const LivePlayerCard = () => {
     // When the live stream goes offline (YouTube reports ENDED), hand off to Loop Player and
     // tell the automation engine which Group to start, if one was picked below.
     const handleLiveVideoEnded = useCallback(() => {
-        const groupId = endGroupIdRef.current;
-        if (!groupId) return;
+        const target = resolveLiveEndTarget(liveEndRulesRef.current, videoTitleRef.current);
+        if (!target) return;
         const setSrcVis = setSourceVisibilityRef.current ?? setSourceVisibility;
         setSrcVis("Live Player", false);
         setSrcVis("Loop Player", true);
         setStatusText("Stream ended — switched to Loop Player");
         window.dispatchEvent(new CustomEvent('loopAutomationStartGroup', {
-            detail: { groupId, label: 'Live Player stream ended' },
+            detail: { groupId: target.groupId, listId: target.listId, label: 'Live Player stream ended' },
         }));
     }, [setSourceVisibility]);
     usePlayerEvents(LIVE_PLAYER_EVENT_KEY, 'live', handleLiveVideoEnded);
@@ -596,19 +604,10 @@ const LivePlayerCard = () => {
                 </select>
             </div>
 
-            <label className="flex flex-col gap-1 mt-2 px-2 text-xs text-gray-400 w-full">
-                On Stream End, Start Group:
-                <select
-                    className="input-field"
-                    value={endGroupId}
-                    onChange={(e) => setEndGroupId(e.target.value)}
-                >
-                    <option value="">— None (do nothing) —</option>
-                    {automationGroups.map(g => (
-                        <option key={g.id} value={g.id}>{g.serial ? `${g.serial} - ` : ''}{g.name || 'Unnamed Group'}</option>
-                    ))}
-                </select>
-            </label>
+            <div className="flex flex-col gap-1 mt-2 px-2 text-xs text-gray-400 w-full">
+                On Stream End:
+                <LiveEndRulesManager />
+            </div>
 
             <div className="btn-group mt-2">
                 <PlayerControlBtn

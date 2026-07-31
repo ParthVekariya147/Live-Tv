@@ -1,5 +1,10 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { LOOP_AUTOMATION_LOCAL_KEY } from './LoopPlaylistAutomation';
+import { LIVE_END_RULES_LOCAL_KEY, LIVE_END_RULES_SERVER_KEY } from '../utils/liveEndRules';
+
+// live-tv-api is a separate local service (channels.json lives there, not in this
+// app's data/ dir) — same base URL ChannelManager/MonitorManager use to reach it.
+const LOCAL_API_BASE = import.meta.env.VITE_LOCAL_API_BASE || "http://localhost:3000";
 
 // All localStorage keys used across the app (excludes logs)
 const LS_KEYS = [
@@ -8,6 +13,7 @@ const LS_KEYS = [
     'delayPlayerState',
     'localPCPlayerState',
     'localPCPlayerEndActions',
+    'localPCPlayerEndActionGroups',
     'localPCPlayerFolderPath',
     'liveAutoRecord',
     'savedSearchTitles1',
@@ -15,6 +21,7 @@ const LS_KEYS = [
     'liveMonitorEnabled1',
     'liveMonitorEnabled2',
     'liveSelectedChannelId',
+    LIVE_END_RULES_LOCAL_KEY,
 ];
 
 function readLocalStorage() {
@@ -348,12 +355,28 @@ export default function SettingsBackup() {
             console.warn('[Export] Validation warnings:', validationWarnings);
         }
 
+        // Channel list (name + YouTube channel ID) lives in the separate live-tv-api
+        // service, not in this app's data/ dir — fetch it directly so it round-trips
+        // through the same backup file instead of silently being left out.
+        let channels = null;
+        try {
+            const chRes = await fetch(`${LOCAL_API_BASE}/api/channels`, { cache: 'no-store' });
+            if (chRes.ok) {
+                const chData = await chRes.json();
+                channels = Array.isArray(chData.channels) ? chData.channels : null;
+            }
+        } catch (err) {
+            console.warn('[Export] Failed to fetch channels from live-tv-api:', err.message);
+            validationWarnings.push('Channels: could not reach live-tv-api — channel list NOT included in this backup');
+        }
+
         const fullExport = {
             exportedAt: new Date().toISOString(),
             version: '2.0',
             serverState: serverData.state,
             schedules: serverData.schedules,
             localStorage: localStorageData,
+            channels,
             validation: {
                 warnings: validationWarnings,
                 playerKeys: Object.keys(localStorageData),
@@ -425,9 +448,41 @@ export default function SettingsBackup() {
             } catch (_) { /* quota etc — server copy already restored */ }
         }
 
+        // Stream-End Rules (keyword → Loop Automation Group/Playlist) has the same dual
+        // local+server persistence — LiveEndRulesManager prefers its localStorage copy over
+        // the server value, so that copy must be overwritten here or a restore appears to
+        // silently drop the keyword rules.
+        if (serverState && Array.isArray(serverState[LIVE_END_RULES_SERVER_KEY])) {
+            try {
+                localStorage.setItem(LIVE_END_RULES_LOCAL_KEY, JSON.stringify(serverState[LIVE_END_RULES_SERVER_KEY]));
+            } catch (_) { /* quota etc — server copy already restored */ }
+        }
+
+        // Channel list (name + YouTube channel ID) lives in the separate live-tv-api
+        // service — restore it there too so channel IDs come back with everything else.
+        let channelsRestored = 0;
+        if (Array.isArray(json.channels)) {
+            try {
+                const chRes = await fetch(`${LOCAL_API_BASE}/api/channels`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channels: json.channels }),
+                });
+                if (chRes.ok) {
+                    const chData = await chRes.json();
+                    channelsRestored = Array.isArray(chData.channels) ? chData.channels.length : 0;
+                } else {
+                    repairWarnings.push('Channels: live-tv-api rejected the restore — channel list left unchanged');
+                }
+            } catch (err) {
+                repairWarnings.push(`Channels: could not reach live-tv-api (${err.message}) — channel list left unchanged`);
+            }
+        }
+
         return {
             lsCount: Object.keys(lsData).length,
             schedulesCount: data.schedulesCount,
+            channelsRestored,
             repairWarnings
         };
     }
@@ -503,12 +558,13 @@ export default function SettingsBackup() {
             const backupJson = await getRes.json();
 
             // Perform the exact same import logic
-            const { lsCount, schedulesCount, repairWarnings } = await performImport(backupJson);
+            const { lsCount, schedulesCount, channelsRestored, repairWarnings } = await performImport(backupJson);
 
             const warnSuffix = repairWarnings.length > 0
                 ? ` — ${repairWarnings.length} field${repairWarnings.length > 1 ? 's' : ''} repaired`
                 : '';
-            flash('success', `Restored ${lsCount} settings + ${schedulesCount} schedules${warnSuffix} from ${filename}. Reloading...`);
+            const channelsSuffix = channelsRestored > 0 ? ` + ${channelsRestored} channel(s)` : '';
+            flash('success', `Restored ${lsCount} settings + ${schedulesCount} schedules${channelsSuffix}${warnSuffix} from ${filename}. Reloading...`);
             setTimeout(() => window.location.reload(), 1500);
         } catch (e) {
             flash('error', `Restore failed: ${e.message}`);
@@ -610,12 +666,13 @@ export default function SettingsBackup() {
             const text = await file.text();
             const json = JSON.parse(text);
 
-            const { lsCount, schedulesCount, repairWarnings } = await performImport(json);
+            const { lsCount, schedulesCount, channelsRestored, repairWarnings } = await performImport(json);
 
             const warnSuffix = repairWarnings.length > 0
                 ? ` — ${repairWarnings.length} field${repairWarnings.length > 1 ? 's' : ''} repaired`
                 : '';
-            flash('success', `Imported ${lsCount} settings + ${schedulesCount} schedules${warnSuffix}. Reloading...`);
+            const channelsSuffix = channelsRestored > 0 ? ` + ${channelsRestored} channel(s)` : '';
+            flash('success', `Imported ${lsCount} settings + ${schedulesCount} schedules${channelsSuffix}${warnSuffix}. Reloading...`);
             setTimeout(() => window.location.reload(), 1500);
         } catch (e) {
             flash('error', `Import failed: ${e.message}`);

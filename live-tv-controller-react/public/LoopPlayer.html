@@ -110,13 +110,14 @@
           console.log(`LoopPlayer: Loading new video ID: ${data.videoId}`);
           pendingPlayWhenVisible = false; // fresh video — any earlier deferred play no longer applies
           if (sourceVisible) {
-            player.loadVideoById({ videoId: data.videoId });
+            player.loadVideoById({ videoId: data.videoId, suggestedQuality: "hd1080" });
           } else {
             // cueVideoById loads without autoplaying — loadVideoById always plays
             // immediately regardless of any "autoplay" field, which is what let
             // videos start in the background while this source was hidden.
-            player.cueVideoById({ videoId: data.videoId });
+            player.cueVideoById({ videoId: data.videoId, suggestedQuality: "hd1080" });
           }
+          startQualityBurst();
           break;
       }
     }
@@ -188,11 +189,13 @@
                     rel: 0,
                     fs: 1,
                     iv_load_policy: 3,
+                    vq: "hd1080", // best-effort initial quality hint — see enforceHighestQuality
                   },
                   events: {
                     onReady: onPlayerReady,
                     onStateChange: onPlayerStateChange,
                     onError: onPlayerError,
+                    onPlaybackQualityChange: onQualityChange,
                   },
                 });
               } else {
@@ -224,11 +227,57 @@
       if (sourceVisible) {
         event.target.playVideo(); // Autoplay on ready — only when actually the visible source
       }
+      enforceHighestQuality(event.target);
+      startQualityBurst();
       // Replay any play/mute/seek/etc. commands that arrived before the player's
       // control methods were attached, in the order they arrived.
       const queued = pendingCommands;
       pendingCommands = [];
       queued.forEach(applyCommand);
+    }
+
+    // YouTube's IFrame API treats quality as a hint, not a guarantee — it can still
+    // downgrade under bandwidth pressure. This runs on a fixed gigabit LAN with no
+    // such constraint, so always pin to the highest tier YouTube offers for the
+    // current video. getAvailableQualityLevels() is sorted highest → lowest (e.g.
+    // hd2160, hd1440, hd1080, hd720, large, medium, small, tiny) but is only
+    // populated once the video actually starts buffering, so this alone can't
+    // always land the very first frame at the top tier — onQualityChange below
+    // re-asserts it the moment YouTube reports its own (usually lower) auto-pick.
+    function enforceHighestQuality(target) {
+      try {
+        const levels = target.getAvailableQualityLevels();
+        target.setPlaybackQuality(levels && levels.length ? levels[0] : "highres");
+      } catch (e) {
+        console.warn("LoopPlayer: could not set playback quality:", e);
+      }
+    }
+
+    // YouTube is most likely to silently downgrade quality in the first few
+    // seconds after a video (re)loads, while it's still probing. The 1s backstop
+    // in the timeUpdate interval below only catches this every second — during
+    // this window, check every 250ms instead so a downgrade gets reverted almost
+    // immediately rather than sitting at the wrong tier for up to a second.
+    let qualityBurstTimer = null;
+    function startQualityBurst() {
+      if (qualityBurstTimer) clearInterval(qualityBurstTimer);
+      const deadline = Date.now() + 8000;
+      qualityBurstTimer = setInterval(() => {
+        if (!player || Date.now() > deadline) {
+          clearInterval(qualityBurstTimer);
+          qualityBurstTimer = null;
+          return;
+        }
+        enforceHighestQuality(player);
+      }, 250);
+    }
+
+    function onQualityChange(event) {
+      if (!player) return;
+      const levels = player.getAvailableQualityLevels();
+      if (levels && levels.length && event.data !== levels[0]) {
+        player.setPlaybackQuality(levels[0]);
+      }
     }
 
     function onPlayerStateChange(event) {
@@ -253,12 +302,14 @@
         case YT.PlayerState.PLAYING:
           state = "playing";
           isLoadingVideo = false; // Video started playing, loading complete
+          startQualityBurst(); // YouTube often re-picks quality right as playback actually starts
           break;
         case YT.PlayerState.PAUSED:
           state = "paused";
           break;
         case YT.PlayerState.BUFFERING:
           state = "buffering";
+          startQualityBurst(); // and again when it re-buffers (a common downgrade trigger)
           break;
         case YT.PlayerState.CUED:
           state = "cued";
@@ -339,6 +390,13 @@
           duration,
           remainingTime: Math.max(0, duration - currentTime)
         });
+        // onPlaybackQualityChange doesn't always fire when YouTube silently
+        // holds a video at a lower tier, so piggyback a re-check on this
+        // already-running 1s tick as a backstop to the event-driven enforcement.
+        const levels = player.getAvailableQualityLevels();
+        if (levels && levels.length && player.getPlaybackQuality() !== levels[0]) {
+          player.setPlaybackQuality(levels[0]);
+        }
       }
     }, 1000);
 

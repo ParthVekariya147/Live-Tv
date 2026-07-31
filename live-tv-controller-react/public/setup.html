@@ -240,10 +240,14 @@
       if (s.ready) {
         d('d-server', `✓ ready (${s.activeDevices} device${s.activeDevices !== 1 ? 's' : ''})`, 'diag-ok');
       } else {
-        d('d-server', '✗ NOT ready — restart the server', 'diag-fail');
+        // s.ready reflects whether Firebase Admin initialized on the server — the
+        // fact this fetch succeeded at all already proves the server IS reachable,
+        // so never tell the user to restart it here; that only fixes a live server
+        // problem, not missing/invalid push credentials.
+        d('d-server', '✗ push service not configured' + (s.initError ? ` (${s.initError})` : ' — contact the app admin'), 'diag-fail');
       }
     } catch {
-      d('d-server', '✗ server not reachable', 'diag-fail');
+      d('d-server', '✗ server not reachable — check your connection and try again', 'diag-fail');
     }
 
     // Show test button if already registered
@@ -415,7 +419,7 @@
         const ss = await sr.json();
         d('d-server', ss.ready
           ? `✓ ready (${ss.activeDevices} device${ss.activeDevices !== 1 ? 's' : ''})`
-          : '✗ NOT ready — restart server', ss.ready ? 'diag-ok' : 'diag-fail');
+          : '✗ push service not configured' + (ss.initError ? ` (${ss.initError})` : ''), ss.ready ? 'diag-ok' : 'diag-fail');
       } catch (_) {}
 
       showStatus('success',

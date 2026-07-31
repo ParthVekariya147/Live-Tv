@@ -76,6 +76,7 @@ function newGroup() {
         activeDays: [],
         isExpanded: true,
         enabled: true,
+        isDefault: false,
         lists: [],
     };
 }
@@ -372,6 +373,21 @@ export default function LoopPlaylistAutomation() {
         setEngineStatus('Automation stopped — Loop Player controls are back in your hands');
     }, []);
 
+    // Falls back to the single starred (★ default) Group whenever automation goes idle with
+    // nowhere else to go — Loop Player showing with no run yet, or a chain reaching a dead end.
+    // Never called after a manual Stop (see the Stop button handler) — Stop means stop until
+    // the user acts again, it's not itself treated as "idle".
+    const tryStartDefaultGroup = useCallback((label) => {
+        const defaultGroup = groupsRef.current.find(g => g.isDefault);
+        if (!defaultGroup) return false;
+        if (defaultGroup.enabled === false) { setEngineStatus(`Default group "${defaultGroup.name || 'Group'}" is disabled — staying idle`); return false; }
+        const first = enterGroup(groupsRef.current, defaultGroup.id);
+        if (!first) { setEngineStatus(`Default group "${defaultGroup.name || 'Group'}" has no playable list — staying idle`); return false; }
+        applySkips(first.skipped);
+        activateRun(first.groupId, first.listId, label);
+        return true;
+    }, [activateRun, applySkips]);
+
     // ---- Engine: react to the Loop Player's videoEnded broadcasts while a run is active ----
     useEffect(() => {
         const handleStorage = (e) => {
@@ -407,13 +423,27 @@ export default function LoopPlaylistAutomation() {
             if (next) {
                 applySkips(next.skipped);
                 activateRun(next.groupId, next.listId, 'Chained');
-            } else {
+            } else if (!tryStartDefaultGroup('Default')) {
                 stopAutomation();
             }
         };
         window.addEventListener('storage', handleStorage);
         return () => window.removeEventListener('storage', handleStorage);
-    }, [activateRun, stopAutomation, advanceResumePointer, applySkips]);
+    }, [activateRun, stopAutomation, advanceResumePointer, applySkips, tryStartDefaultGroup]);
+
+    // ---- Engine: idle fallback — start the ★ default Group when Loop Player becomes visible
+    // with nothing already running (fresh page load, or the source shown manually with no
+    // scheduler/live-event/chain trigger having fired yet). Only fires on the false→true edge,
+    // not on every OBS poll tick that confirms it's still visible.
+    const wasLoopVisibleRef = useRef(false);
+    useEffect(() => {
+        const isVisible = !!sourceState['Loop Player'];
+        const wasVisible = wasLoopVisibleRef.current;
+        wasLoopVisibleRef.current = isVisible;
+        if (!loaded || !isVisible || wasVisible || activeRunRef.current) return;
+        const timer = setTimeout(() => tryStartDefaultGroup('Idle fallback'), 0);
+        return () => clearTimeout(timer);
+    }, [sourceState, loaded, tryStartDefaultGroup]);
 
     // ---- Engine: live-event trigger — reacts to the same detection Live Player's monitor already uses ----
     useEffect(() => {
@@ -527,6 +557,9 @@ export default function LoopPlaylistAutomation() {
     };
 
     const updateGroup = (groupId, patch) => setGroups(prev => prev.map(g => g.id === groupId ? { ...g, ...patch } : g));
+    // Star is single-select — starring a Group un-stars whatever was previously starred, so
+    // there's always exactly one (or zero) fallback, never an ambiguous multi-way pick.
+    const setDefaultGroup = (groupId) => setGroups(prev => prev.map(g => ({ ...g, isDefault: g.id === groupId ? !g.isDefault : false })));
     const updateList = (groupId, listId, patch) => setGroups(prev => prev.map(g =>
         g.id !== groupId ? g : { ...g, lists: g.lists.map(l => l.id === listId ? { ...l, ...patch } : l) }
     ));
@@ -643,6 +676,7 @@ export default function LoopPlaylistAutomation() {
                             isActive={activeRun?.groupId === group.id}
                             activeListId={activeRun?.listId}
                             onUpdate={(patch) => updateGroup(group.id, patch)}
+                            onSetDefault={() => setDefaultGroup(group.id)}
                             onDelete={() => deleteGroup(group.id)}
                             onAddList={() => addList(group.id)}
                             onDeleteList={(listId) => deleteList(group.id, listId)}
@@ -677,7 +711,7 @@ export default function LoopPlaylistAutomation() {
 // ============================================================================
 function GroupEditor({
     group, index, groups, schedules, isDuplicate, isActive, activeListId,
-    onUpdate, onDelete, onAddList, onDeleteList, onUpdateList,
+    onUpdate, onSetDefault, onDelete, onAddList, onDeleteList, onUpdateList,
     onImportListVideos, onClearListVideos, onDragStart, onDragOver, onDrop,
     onAddSchedule, onToggleSchedule, onDeleteSchedule,
     onActivateGroup, onActivateList,
@@ -710,6 +744,15 @@ function GroupEditor({
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                     <span className="bg-gray-700 px-2 py-0.5 rounded">{group.lists.length} list(s)</span>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onSetDefault(); }}
+                        title={group.isDefault
+                            ? 'Default Group — auto-plays whenever Loop Player is idle with nothing else running (startup, or a chain reaching a dead end). Click to unset.'
+                            : 'Set as default Group — click to make this the fallback that auto-plays whenever Loop Player is idle with nothing else running.'}
+                        className={`px-1.5 py-1 rounded ${group.isDefault ? 'text-amber-400' : 'text-gray-600 hover:text-gray-400'}`}
+                    >
+                        {group.isDefault ? '★' : '☆'}
+                    </button>
                     <button
                         onClick={(e) => { e.stopPropagation(); onUpdate({ enabled: isDisabled ? true : false }); }}
                         title={isDisabled ? 'Disabled — excluded from scheduler/live-event/chain triggers. Click to enable.' : 'Enabled. Click to disable — this Group will be skipped by automation (manual Activate still works).'}

@@ -80,18 +80,24 @@ export default function NotificationSettings() {
         } catch (_) {} finally { setRefreshing(false) }
     }, [])
 
+    // qrLoading only ever covers the very first fetch after the panel opens — the
+    // background poll below (which upgrades LAN → tunnel) must never touch it, or
+    // the whole QR block blanks out and re-renders every 8s while waiting for the
+    // tunnel, which is exactly what reads as "the warning keeps reappearing".
     const loadSetupUrl = useCallback(async () => {
-        setQrLoading(true)
         try {
             const res = await fetch('/api/notifications/setup-url')
             if (res.ok) setSetup(await res.json())
-        } catch (_) {} finally { setQrLoading(false) }
+            else setSetup({ error: true })
+        } catch (_) { setSetup({ error: true }) }
     }, [])
 
     useEffect(() => {
         if (open) {
             load()
-            loadSetupUrl()
+            setQrLoading(true)
+            setSetup(null)
+            loadSetupUrl().finally(() => setQrLoading(false))
         }
     }, [open, load, loadSetupUrl])
 
@@ -99,11 +105,21 @@ export default function NotificationSettings() {
     // subdomain — see tunnel-manager.cjs) and can take a few seconds after the app
     // launches. Poll while the panel is open and not yet on the tunnel URL so the
     // QR code upgrades itself instead of leaving the user stuck on the one-shot
-    // fallback fetched when the panel first opened.
+    // fallback fetched when the panel first opened. Backs off from 8s to 30s after
+    // about a minute so a slow/never-connecting tunnel doesn't hammer the endpoint
+    // (and doesn't need to — the poll no longer touches qrLoading, so it's silent
+    // in the UI unless the underlying state actually changes).
     useEffect(() => {
         if (!open || setup?.tunnel) return
-        const timer = setInterval(loadSetupUrl, 8000)
-        return () => clearInterval(timer)
+        let attempts = 0
+        let timer
+        const tick = () => {
+            attempts += 1
+            loadSetupUrl()
+            timer = setTimeout(tick, attempts < 8 ? 8000 : 30000)
+        }
+        timer = setTimeout(tick, 8000)
+        return () => clearTimeout(timer)
     }, [open, setup?.tunnel, loadSetupUrl])
 
     async function retryTunnel() {
@@ -257,9 +273,18 @@ export default function NotificationSettings() {
                     <div className="border border-gray-700 rounded-lg p-2 mb-3 bg-gray-800/50">
                         <p className="text-gray-400 font-medium mb-2">📱 Add Device via QR Code</p>
                         {qrLoading && (
-                            <p className="text-gray-600 italic text-center py-2">Loading…</p>
+                            <p className="text-gray-600 italic text-center py-2">
+                                <span className="inline-block animate-spin mr-1">⏳</span>
+                                Creating pairing link…
+                            </p>
                         )}
-                        {!qrLoading && setup?.qrDataUrl && (
+                        {!qrLoading && setup?.pending && (
+                            <p className="text-gray-600 italic text-center py-2">
+                                <span className="inline-block animate-spin mr-1">⏳</span>
+                                Starting the secure connection… this can take a few seconds right after launch.
+                            </p>
+                        )}
+                        {!qrLoading && !setup?.pending && setup?.qrDataUrl && (
                             <div className="flex flex-col items-center gap-2">
                                 <img
                                     src={setup.qrDataUrl}
@@ -268,13 +293,18 @@ export default function NotificationSettings() {
                                     style={{ width: 120, height: 120 }}
                                 />
                                 {setup.tunnel ? (
-                                    <p className="text-green-400 text-center" style={{ fontSize: 10 }}>
-                                        ✓ Tunnel active — scan with any device on any network.
-                                    </p>
+                                    <div className="text-green-400 text-center" style={{ fontSize: 10 }}>
+                                        <p>✓ Tunnel active — scan with any device on any network.</p>
+                                        <p className="text-gray-500 mt-1">
+                                            First time on a new network (e.g. mobile data), the phone may show a
+                                            "Tunnel website ahead" warning page first — that's the free tunnel
+                                            provider's one-time notice, not a failure. Tap <b>Continue</b> to proceed.
+                                        </p>
+                                    </div>
                                 ) : (
                                     <div className="text-yellow-500 text-center bg-yellow-900/20 rounded p-1" style={{ fontSize: 10 }}>
-                                        <p>⚠ Self-signed cert — Chrome may block the service worker on other networks.</p>
-                                        <p className="text-gray-500 mt-1">Connecting a secure tunnel automatically in the background — this can take a few seconds after startup.</p>
+                                        <p>⚠ This link only works on the same Wi-Fi as this PC — it won't work over mobile data yet.</p>
+                                        <p className="text-gray-500 mt-1">Connecting a secure tunnel automatically in the background so it works from anywhere — this can take a few seconds after startup.</p>
                                         <button
                                             onClick={retryTunnel}
                                             disabled={tunnelRetrying}
@@ -294,10 +324,16 @@ export default function NotificationSettings() {
                                 </p>
                             </div>
                         )}
-                        {!qrLoading && !setup && (
-                            <p className="text-gray-600 italic text-center py-1">
-                                HTTPS server not available
-                            </p>
+                        {!qrLoading && setup?.error && (
+                            <div className="text-center py-1">
+                                <p className="text-red-400">Couldn't create the pairing link.</p>
+                                <button
+                                    onClick={loadSetupUrl}
+                                    className="mt-1 px-2 py-0.5 rounded bg-gray-700 hover:bg-gray-600 text-cyan-400"
+                                >
+                                    Retry
+                                </button>
+                            </div>
                         )}
                     </div>
 

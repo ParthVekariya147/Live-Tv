@@ -3,6 +3,2856 @@
   "maxEntries": 500,
   "entries": [
     {
+      "id": "410a30a4-a743-477c-936d-d982e3a842b5",
+      "sentAt": "2026-07-31T17:59:52.952Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "e43e39f3-b041-4467-9d1d-1c7db98c1427",
+      "sentAt": "2026-07-31T17:58:54.821Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "abdb15cf-bb04-4459-8c93-7438e4eb5e9a",
+      "sentAt": "2026-07-31T17:52:41.470Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "f213f86d-47fc-42ff-864b-a48ceead21b9",
+      "sentAt": "2026-07-31T17:51:15.982Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "359a6232-9c39-43ab-9e20-29df259316cd",
+      "sentAt": "2026-07-31T17:50:18.039Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "1ffc9e7c-091f-4a11-97d6-e57145c1c24d",
+      "sentAt": "2026-07-31T17:48:41.286Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "dc762ff6-6b75-4246-ac6e-df25dc3c8d30",
+      "sentAt": "2026-07-31T17:47:55.567Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"1 Missed Schedule(s) Detected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "2a244425-c8aa-4b77-be60-c0779a8d3a84",
+      "sentAt": "2026-07-31T16:57:25.628Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "b2940357-0494-4f61-821c-7ad3982e5a09",
+      "sentAt": "2026-07-31T16:55:49.863Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "47ef6038-8a87-4bc8-8244-023b5959e1ed",
+      "sentAt": "2026-07-31T16:55:43.964Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "0b0fcfd9-5ee6-43e2-a234-5df46f778f8d",
+      "sentAt": "2026-07-31T16:55:43.014Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "18a37483-80b3-4fc2-b89c-f68351018924",
+      "sentAt": "2026-07-31T16:46:49.731Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "4235d62a-1baa-4658-98d5-3f496996e69a",
+      "sentAt": "2026-07-31T16:43:59.672Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "ac597da4-5081-4099-8c0c-9895571c3b0b",
+      "sentAt": "2026-07-31T16:43:34.156Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "951a5027-2018-4cbe-9ac3-68b8a1a520de",
+      "sentAt": "2026-07-31T16:43:24.178Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "0c7f9b29-2ffa-4303-b717-6f8951ae8574",
+      "sentAt": "2026-07-31T16:43:03.391Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "c50f9c10-824f-4609-812c-8494408ee829",
+      "sentAt": "2026-07-31T16:42:53.397Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "10085c17-f86b-413e-9143-909dd2643277",
+      "sentAt": "2026-07-31T16:42:43.469Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "76611c30-594a-46dd-a518-8c3517bebcea",
+      "sentAt": "2026-07-31T16:42:32.524Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "d73d187c-e054-48b8-ba8d-50d9272be5a2",
+      "sentAt": "2026-07-31T16:42:30.053Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "23ee9543-47ae-4377-905f-aee86fc22d33",
+      "sentAt": "2026-07-31T16:42:30.044Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "7e3b4125-de92-40f0-b6e9-c02b51bdec7a",
+      "sentAt": "2026-07-31T16:42:30.034Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "429ed4fc-b355-49f1-9292-4ea979bcc57f",
+      "sentAt": "2026-07-31T16:42:30.025Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "50bc7a85-6f2c-452e-8798-351e4ad5654e",
+      "sentAt": "2026-07-31T16:42:30.014Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "a9e233a4-c39b-44c5-bfc8-445e4c0cb011",
+      "sentAt": "2026-07-31T16:42:30.002Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "33919000-e467-4c22-aa41-4d93ecc01d86",
+      "sentAt": "2026-07-31T16:42:29.992Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "1f90b105-dbd7-434d-b114-4513d1cb1f14",
+      "sentAt": "2026-07-31T16:42:29.975Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "1d238f22-5a5c-47ee-ac87-30191872da33",
+      "sentAt": "2026-07-31T16:42:29.962Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "0ad56176-6ba5-438c-b86b-eab3737274f3",
+      "sentAt": "2026-07-31T16:42:29.949Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "5ebcb4c0-fb27-4cd7-9384-a161156fbee8",
+      "sentAt": "2026-07-31T16:42:29.942Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "7e9eab1c-f63e-4825-8b57-59f6c072154f",
+      "sentAt": "2026-07-31T16:42:29.936Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "dcb14d67-7c34-44ee-a9e5-eec7a2ffede5",
+      "sentAt": "2026-07-31T16:42:29.928Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "789e9738-3ca3-44b8-b2a0-22a47469c0b0",
+      "sentAt": "2026-07-31T16:42:29.921Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "50991861-1014-4edc-b2bd-c3cfdae7226e",
+      "sentAt": "2026-07-31T16:42:29.912Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "fee71a1b-a238-425f-b898-58b4a9303f98",
+      "sentAt": "2026-07-31T16:42:29.904Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "9b3fc484-1fbb-4ff5-aa34-c64e62469107",
+      "sentAt": "2026-07-31T16:42:29.894Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "1d251923-d055-46ff-8aa8-c35f477fc8e5",
+      "sentAt": "2026-07-31T16:42:29.884Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "14a5b89e-27f8-40c8-b7db-ff79eb4132e6",
+      "sentAt": "2026-07-31T16:42:29.877Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "123d6440-9eeb-4786-acc4-ab2b09b4e989",
+      "sentAt": "2026-07-31T16:42:29.872Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "f6a444c8-6ce1-449e-a20d-ea63025e5505",
+      "sentAt": "2026-07-31T16:42:29.866Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "0e83fe51-caa2-4a72-acd8-334b4a5971a6",
+      "sentAt": "2026-07-31T16:42:29.859Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "4c916f34-12a6-4152-9757-1e8c9be16cab",
+      "sentAt": "2026-07-31T16:42:29.852Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "48009500-83aa-4776-a246-a5a0aad4876a",
+      "sentAt": "2026-07-31T16:42:29.847Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "28ce6944-3ebd-4d65-9bfe-159ddb25954f",
+      "sentAt": "2026-07-31T16:42:29.841Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "ca0255a7-55c6-4e29-9214-5bd4e724800f",
+      "sentAt": "2026-07-31T16:42:29.835Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "63d10927-9edd-4a1b-abf0-59845cbbc173",
+      "sentAt": "2026-07-31T16:42:29.829Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "8196af90-4b64-4eb0-a30e-3e4ca1f36284",
+      "sentAt": "2026-07-31T16:42:29.823Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "60ca3cac-f200-495f-b2ec-a27b9f12178b",
+      "sentAt": "2026-07-31T16:42:29.814Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "d99a4292-81f1-4e72-baec-5d3c962fdf07",
+      "sentAt": "2026-07-31T16:42:29.806Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "ff542482-44b5-4f33-9bc8-753cc500eaa7",
+      "sentAt": "2026-07-31T16:42:29.801Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "d5ae568b-0047-4142-ae28-8569263bed10",
+      "sentAt": "2026-07-31T16:42:29.797Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "3e300406-ce9d-487a-8453-931d58544dfa",
+      "sentAt": "2026-07-31T16:42:29.789Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "cc61a424-7163-46e9-99e1-f6ec46e7861b",
+      "sentAt": "2026-07-31T16:42:29.783Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "e9da139c-6031-46d3-90aa-5d6bf28194bd",
+      "sentAt": "2026-07-31T16:42:29.777Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "0f736293-cbcd-4137-865c-8d801803109a",
+      "sentAt": "2026-07-31T16:42:29.771Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "a5c49b17-65a9-4421-b06a-6ad0f796d763",
+      "sentAt": "2026-07-31T16:42:29.766Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "330ca89f-2aea-4556-923e-07790baf1399",
+      "sentAt": "2026-07-31T16:42:29.761Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "fa31f076-e2e4-4393-b93c-9c8045ca8749",
+      "sentAt": "2026-07-31T16:42:29.752Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "7ae4df28-3da2-497e-8f50-9c84bb3f7474",
+      "sentAt": "2026-07-31T16:42:29.746Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "bd763de2-c1ca-459a-8456-15c66e53097c",
+      "sentAt": "2026-07-31T16:42:29.741Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "ae67e90c-7e57-4f35-a7fa-8034f58909f2",
+      "sentAt": "2026-07-31T16:42:29.735Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "4c792abf-3780-4d97-b588-b0b04dce6f8d",
+      "sentAt": "2026-07-31T16:42:29.729Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "ea3073de-5007-42d0-b19f-c84e04bb5e0e",
+      "sentAt": "2026-07-31T16:42:29.723Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "92267d80-c7c5-4215-accd-0081061afaf1",
+      "sentAt": "2026-07-31T16:42:29.717Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "edbd9893-3b76-429f-b460-c076a62d12b7",
+      "sentAt": "2026-07-31T16:42:29.710Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "1a00e90b-71c5-45aa-812e-466a434d653f",
+      "sentAt": "2026-07-31T16:42:29.704Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "471d3189-094a-43f0-ab75-6a50177c0315",
+      "sentAt": "2026-07-31T16:42:29.698Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "d9dc68ea-8089-4e31-ba6f-3ce46db16a0e",
+      "sentAt": "2026-07-31T16:42:29.692Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "c78b199c-63cf-43ae-a083-861a8808b89d",
+      "sentAt": "2026-07-31T16:42:29.686Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "a645be16-39fb-4f43-8694-d13ecdc574c3",
+      "sentAt": "2026-07-31T16:42:29.681Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "1eae11f1-90b1-4abd-9b6f-095524c077ec",
+      "sentAt": "2026-07-31T16:42:29.675Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "9ee462b6-7d20-44c2-8e2d-b9c44356c527",
+      "sentAt": "2026-07-31T16:42:29.670Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "c54a2a96-ce10-4060-a195-e3e46fc526d1",
+      "sentAt": "2026-07-31T16:42:29.664Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "ca39956d-d112-45e1-bdbf-1b8eb1fda413",
+      "sentAt": "2026-07-31T16:42:29.658Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "46e6c821-6dad-45da-9340-2c36be9b699e",
+      "sentAt": "2026-07-31T16:42:29.653Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "1bd7425d-477a-40fc-bff0-b37fa1b2ce66",
+      "sentAt": "2026-07-31T16:42:29.648Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "c399ad77-dd96-4db4-a58e-4fbf4d1fe439",
+      "sentAt": "2026-07-31T16:42:29.640Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "802c004f-5656-4a37-97b8-8cd7ac4bb38a",
+      "sentAt": "2026-07-31T16:42:29.633Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "156b4b51-bce9-45a7-955b-495d88c9c611",
+      "sentAt": "2026-07-31T16:42:29.627Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "14a786ae-a694-4349-8bae-5ce2af8beceb",
+      "sentAt": "2026-07-31T16:42:29.622Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "6c8579f4-bf1d-4f1d-a8b8-4388fb67dcd5",
+      "sentAt": "2026-07-31T16:42:29.615Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "dcdd9eab-6723-4c4a-9112-cd1e470e6270",
+      "sentAt": "2026-07-31T16:42:29.609Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "806fdc4b-46f2-4907-b625-0138d853a2a3",
+      "sentAt": "2026-07-31T16:42:29.603Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "0276814b-0d2a-436e-aaa4-935397928253",
+      "sentAt": "2026-07-31T16:42:29.597Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "ce3aea41-df55-4c88-9124-f6be27c3e479",
+      "sentAt": "2026-07-31T16:42:29.592Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "8602eab2-e7a5-4726-8884-bdaeb9bebbce",
+      "sentAt": "2026-07-31T16:42:29.587Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "a2ae67eb-f481-4587-8794-a1817ad8d157",
+      "sentAt": "2026-07-31T16:42:29.581Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "674682c7-9fb7-46e8-9d40-f9fc9b61e4b0",
+      "sentAt": "2026-07-31T16:42:29.576Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "8515e13e-a8ea-4d18-80a8-2a87420fa279",
+      "sentAt": "2026-07-31T16:42:29.571Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "ed2c219a-d59f-4b01-9420-940ffe70336a",
+      "sentAt": "2026-07-31T16:42:29.566Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "1bbfb223-b438-498f-a407-eb8327e6cab0",
+      "sentAt": "2026-07-31T16:42:29.561Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "f47b23b4-8020-4247-ad7c-889bff3ac304",
+      "sentAt": "2026-07-31T16:42:29.555Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "8dd68388-8b96-49d1-ba13-a09bc87ca189",
+      "sentAt": "2026-07-31T16:42:29.548Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "a337326c-84c5-4a0d-93bf-6ade73db8b43",
+      "sentAt": "2026-07-31T16:42:29.543Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "2c79bbf3-b218-4f50-8aea-d9af42ef6725",
+      "sentAt": "2026-07-31T16:42:29.537Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "f23aaa39-0602-4ab5-82fd-51f2d130fe7e",
+      "sentAt": "2026-07-31T16:42:29.531Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "1eb4953c-2363-42fd-96d9-d263abe5c476",
+      "sentAt": "2026-07-31T16:42:29.525Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "0af0c3e1-95e7-473a-a189-1cc10b452304",
+      "sentAt": "2026-07-31T16:42:29.520Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "707faf6e-dd7f-4448-8bc9-63ef004e6ce0",
+      "sentAt": "2026-07-31T16:42:29.515Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "457f12ad-aeb5-446b-8b24-8e9c9694661a",
+      "sentAt": "2026-07-31T16:42:29.509Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "cbf4e43d-e2fe-4ed5-9c34-120d753ddeb9",
+      "sentAt": "2026-07-31T16:42:29.501Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "cf4270f5-205a-4998-b872-8fc072dbcad6",
+      "sentAt": "2026-07-31T16:42:29.496Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "f709ad9d-0520-4e76-a61e-d807d62fb332",
+      "sentAt": "2026-07-31T16:42:29.490Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "0c880fb6-ca67-46ac-8d4c-3ef32ba70572",
+      "sentAt": "2026-07-31T16:42:29.485Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "c4a2f6ec-dce3-4b6a-8b8b-0678b9aa3430",
+      "sentAt": "2026-07-31T16:42:29.479Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "03037812-f927-48dc-96cf-b2ba15fe63e1",
+      "sentAt": "2026-07-31T16:42:29.474Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "ea2d8eb1-d099-4f67-b977-b0667f684423",
+      "sentAt": "2026-07-31T16:42:29.468Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "1e4dd89f-7aa9-4bcd-b15e-08a192e74080",
+      "sentAt": "2026-07-31T16:42:29.463Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "17e58b87-c3de-4e33-8e74-aae9e360c8c7",
+      "sentAt": "2026-07-31T16:42:29.457Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "9157cd88-3e61-4e02-8eb8-3430f3aede07",
+      "sentAt": "2026-07-31T16:42:29.452Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "2bb5cd3a-821c-4006-9a63-0bbe10001fe9",
+      "sentAt": "2026-07-31T16:42:29.447Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "6df777c5-c9a5-4b24-84b2-b126e49c57ba",
+      "sentAt": "2026-07-31T16:42:29.442Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "6af2857c-581c-4c15-ad73-b21122eeacfa",
+      "sentAt": "2026-07-31T16:42:29.436Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "725066e6-6619-46e2-ae01-f7b80bea66ed",
+      "sentAt": "2026-07-31T16:42:29.431Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "c9e1ca1e-b915-4270-9f79-15d6cec1b70b",
+      "sentAt": "2026-07-31T16:42:29.425Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "0c2c699a-9e89-4265-8f19-1a22b9036353",
+      "sentAt": "2026-07-31T16:42:29.419Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "75caedbf-8e41-4eea-b5f8-455c5f1ae14d",
+      "sentAt": "2026-07-31T16:42:29.413Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "762b467d-005f-4694-8106-bf326cc0dab1",
+      "sentAt": "2026-07-31T16:42:29.407Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "04b75270-29a4-4944-a0bb-138aa668df86",
+      "sentAt": "2026-07-31T16:42:29.401Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "8a3f4ba7-914c-4e78-b412-aaa11eb85f96",
+      "sentAt": "2026-07-31T16:42:29.395Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "cca096f6-02a0-46b5-a0ec-31002a554dbc",
+      "sentAt": "2026-07-31T16:42:29.389Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "6556060a-2112-43a4-8b3f-930606d1700d",
+      "sentAt": "2026-07-31T16:42:29.383Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "8fbcf88f-054e-47c9-9e85-73f4c84a4f22",
+      "sentAt": "2026-07-31T16:42:29.378Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "7003f9cb-9f66-4131-b268-3f4874f5ee89",
+      "sentAt": "2026-07-31T16:42:29.371Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "bacf35b4-c0a8-437f-80e0-2826d2514f95",
+      "sentAt": "2026-07-31T16:42:29.364Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "5fe74f1f-fbd6-439e-bc2c-ed2f9c4efef6",
+      "sentAt": "2026-07-31T16:42:29.356Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "90adab1a-0707-4b5e-90fb-100ad87e0084",
+      "sentAt": "2026-07-31T16:42:29.344Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "1929eb52-8a9a-4f60-9a7e-61a615ffc3d2",
+      "sentAt": "2026-07-31T16:42:29.336Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "06823d34-93e6-4ceb-bdf3-c88a0441f517",
+      "sentAt": "2026-07-31T16:42:29.330Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "dd57dfd5-7c66-4144-a6fe-737ab195926b",
+      "sentAt": "2026-07-31T16:42:29.322Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "6b87798e-06d8-4a97-9f9e-d0d31a2dcf9e",
+      "sentAt": "2026-07-31T16:42:29.314Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "4c12fc9a-53d7-4e42-82f8-cb57f1d4bcdd",
+      "sentAt": "2026-07-31T16:42:29.305Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "ee62a840-dd16-405d-872b-5f5ca9e77673",
+      "sentAt": "2026-07-31T16:42:29.296Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "6fc470d3-57ea-4dd7-9568-54f8cba1e229",
+      "sentAt": "2026-07-31T16:42:29.281Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "9fc439f1-50de-4588-bce4-a0456b3a70ea",
+      "sentAt": "2026-07-31T16:42:29.267Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "fa20d97b-d962-429e-ba37-6d4579fcd714",
+      "sentAt": "2026-07-31T16:42:29.258Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "59f8a01a-5cda-43d2-b0d9-3b27b540ed47",
+      "sentAt": "2026-07-31T16:42:29.250Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "cd4faba7-c246-4487-83ce-f802709299c0",
+      "sentAt": "2026-07-31T16:42:29.241Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "81b78ef3-fe3a-4b59-be17-5c9de0742cff",
+      "sentAt": "2026-07-31T16:42:29.223Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "599e4bc6-0d5b-408d-b5ce-2f3b48b613e2",
+      "sentAt": "2026-07-31T16:42:29.201Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "89eda965-ee5a-44f0-b33d-7a51a1991bf8",
+      "sentAt": "2026-07-31T16:42:29.192Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "289f1279-beba-4b63-a368-2ed61b9ed934",
+      "sentAt": "2026-07-31T16:42:29.183Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "9659a8e0-b298-46e3-846b-3f47ad0971a2",
+      "sentAt": "2026-07-31T16:42:29.174Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "62203161-e8b1-4b96-ab8b-844c38d3b70c",
+      "sentAt": "2026-07-31T16:42:29.167Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "721e1861-87ad-43db-8bb4-8ffc5181da04",
+      "sentAt": "2026-07-31T16:42:29.157Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "1bc4ec94-02f6-4ec9-8e46-31ba9e365a68",
+      "sentAt": "2026-07-31T16:42:29.145Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "98986edc-70c2-4197-9e36-8322100c9e10",
+      "sentAt": "2026-07-31T16:42:29.132Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "0c1f3c24-8f95-44cb-82a3-5c80802985d4",
+      "sentAt": "2026-07-31T16:42:29.121Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "2da77eaf-5e54-433f-9f7a-72a3b05b8d93",
+      "sentAt": "2026-07-31T16:42:29.110Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "7e1c35a1-4d84-4bbc-abf9-dc0ef7772697",
+      "sentAt": "2026-07-31T16:42:29.099Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "41a2506a-2abf-4e10-89b0-4d362b9edbd4",
+      "sentAt": "2026-07-31T16:42:29.091Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "990cdd16-969e-4175-a2c9-c85a1291479c",
+      "sentAt": "2026-07-31T16:42:29.078Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "0641befe-41d4-48b6-b76e-9b8aa792649b",
+      "sentAt": "2026-07-31T16:42:29.035Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "6ae7ae6c-a5dc-4111-84bd-4c5345ccec29",
+      "sentAt": "2026-07-31T16:42:29.007Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "fa623ec3-a451-44b4-afe5-cfa25dba1ca1",
+      "sentAt": "2026-07-31T16:42:28.981Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "409ebb4b-b8a8-4740-b190-58f13ec10531",
+      "sentAt": "2026-07-31T16:42:28.966Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "a44630b5-29b1-47ea-a8fd-3a81a844f651",
+      "sentAt": "2026-07-31T16:42:28.951Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "4cd70db3-5fbe-427b-b62a-b74c1d98c12c",
+      "sentAt": "2026-07-31T16:42:28.918Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "48711ea2-079a-4b41-9951-63d48f4153ea",
+      "sentAt": "2026-07-31T16:42:28.878Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "5d78c1c1-dbc6-40f9-a6f3-c321fe801389",
+      "sentAt": "2026-07-31T16:42:28.830Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "d8c35a8b-43d4-45f8-af3b-9f50f4adfba0",
+      "sentAt": "2026-07-31T16:42:28.815Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "e9755bff-c917-409a-832c-cb6eabdbc5cb",
+      "sentAt": "2026-07-31T16:42:28.797Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "288d67a0-4738-4600-803e-c510ebc7a4ed",
+      "sentAt": "2026-07-31T16:42:28.782Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "c98a37ca-0b6e-40e9-addf-22df4e58f313",
+      "sentAt": "2026-07-31T16:42:28.772Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "aab50beb-97f3-4a85-8dd2-781bfce26cf1",
+      "sentAt": "2026-07-31T16:42:28.758Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "261d77c8-f03f-4b2d-aafb-250ecabc4bc0",
+      "sentAt": "2026-07-31T16:42:28.746Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "b676b5bb-18a3-4452-ae4a-e98bbd554888",
+      "sentAt": "2026-07-31T16:42:28.731Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "61b9dfcc-56b6-486c-98f6-12d9e7e44869",
+      "sentAt": "2026-07-31T16:42:28.713Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "fb5f6151-710c-4c4f-b0d6-73222c2a43c1",
+      "sentAt": "2026-07-31T16:42:28.701Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "c8874d6d-fbaa-4173-bb74-2242d064a42f",
+      "sentAt": "2026-07-31T16:42:28.689Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "079dbbaa-3bec-4ec4-9e22-5c2c3bca4f2d",
+      "sentAt": "2026-07-31T16:42:28.676Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "d3b85dbd-b531-42fa-8088-6b5c62c96b1f",
+      "sentAt": "2026-07-31T16:42:28.664Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "947434b0-ce77-4061-b35c-d63639aebaef",
+      "sentAt": "2026-07-31T16:42:28.653Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "b055964f-a4c2-4eb4-8906-5d364ef822d8",
+      "sentAt": "2026-07-31T16:42:28.638Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "2bab88f5-9dfb-4217-949a-1ea418f59e4a",
+      "sentAt": "2026-07-31T16:42:28.621Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "38409ae8-6ae7-4fcf-9d63-569cd5f958b5",
+      "sentAt": "2026-07-31T16:42:28.610Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "6867beda-48c6-4657-94a5-a7cf5063f3c0",
+      "sentAt": "2026-07-31T16:42:28.595Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "2c0136fb-e747-414e-ba22-94a7a7cde414",
+      "sentAt": "2026-07-31T16:42:28.580Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "bd363387-abfb-4710-b2ea-1c70a44311b5",
+      "sentAt": "2026-07-31T16:42:28.567Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "1e66e2e5-ac77-4655-8d96-1462a69ae16e",
+      "sentAt": "2026-07-31T16:42:28.550Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "5b334355-528f-440b-b20c-061000f5d205",
+      "sentAt": "2026-07-31T16:42:28.535Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "c84868f9-01c4-4b57-ad3c-0e510d707f7b",
+      "sentAt": "2026-07-31T16:42:28.509Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "28212bdc-86a3-49ed-b355-fc1b70729adb",
+      "sentAt": "2026-07-31T16:42:28.490Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "96b999c0-6c04-4964-a09b-6fbf1b55b17b",
+      "sentAt": "2026-07-31T16:42:28.477Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "5c38bab5-5c23-47f6-8308-56d8a01912c7",
+      "sentAt": "2026-07-31T16:42:28.457Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "5c0611b5-5bed-420c-828c-ae131aa3bdb9",
+      "sentAt": "2026-07-31T16:42:28.442Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "95348ee3-9952-45fd-a1e2-97f4df062195",
+      "sentAt": "2026-07-31T16:42:28.428Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "6f2edac0-4757-4214-984d-54dd03b5c1df",
+      "sentAt": "2026-07-31T16:42:28.414Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "5488856a-4caa-48fd-99ce-41c9b6173f1f",
+      "sentAt": "2026-07-31T16:42:28.399Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "95a92a90-6730-4973-b0d9-b56c5f39aa69",
+      "sentAt": "2026-07-31T16:42:28.384Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "58078cd1-1ecd-4890-b53f-0ed5010e07fd",
+      "sentAt": "2026-07-31T16:42:28.364Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "0b7f1548-236b-4e44-9fde-d0775112a23a",
+      "sentAt": "2026-07-31T16:42:28.340Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "3f94daa7-ed07-49c6-b942-be6f28b9dd4a",
+      "sentAt": "2026-07-31T16:42:28.320Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "37fb8dad-992c-4b3f-9c8e-99ba2625d2da",
+      "sentAt": "2026-07-31T16:42:28.290Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "3ce36497-3599-45d3-84c5-0da7955347cd",
+      "sentAt": "2026-07-31T16:42:28.254Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "6e0c10b6-016e-4ae1-abe0-f4e7ff88bdbc",
+      "sentAt": "2026-07-31T16:42:28.224Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "30fbedd7-e2b8-4ab4-923f-496f8b4722e0",
+      "sentAt": "2026-07-31T16:42:28.195Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "4220241e-694a-4380-88c4-05e53d324cbe",
+      "sentAt": "2026-07-31T16:42:28.177Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "7b3d0a4b-f36f-447e-93ba-f0e6cdb731d8",
+      "sentAt": "2026-07-31T16:42:28.153Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "65882a08-174c-4f21-a9ff-c121b99e64b5",
+      "sentAt": "2026-07-31T16:42:28.123Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "232248fb-befd-47d7-a8b7-9e8b77509773",
+      "sentAt": "2026-07-31T16:42:28.107Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "19b5d731-ac30-4665-9a3d-3817dd04367e",
+      "sentAt": "2026-07-31T16:42:28.082Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "d81b93de-24b6-470a-a4ab-dc09a6dd0246",
+      "sentAt": "2026-07-31T16:42:28.052Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "6a14a071-1858-4303-91a4-b9e46c83bacf",
+      "sentAt": "2026-07-31T16:42:28.009Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "9ad03fa0-dd59-4075-83b7-8a6b86a1cd16",
+      "sentAt": "2026-07-31T16:42:27.980Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "906b623f-39ad-4811-92df-827401e112ba",
+      "sentAt": "2026-07-31T16:42:27.954Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "5e0cdb9f-43e1-4972-9ce9-e7b717db8abc",
+      "sentAt": "2026-07-31T16:42:27.929Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "823aae43-5ca5-45c6-a260-5965ea1c2f42",
+      "sentAt": "2026-07-31T16:42:27.913Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "ca2d7243-90c2-46c7-808c-1e6877681146",
+      "sentAt": "2026-07-31T16:42:27.896Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "1f182625-6964-4088-8954-87ecc369df7b",
+      "sentAt": "2026-07-31T16:42:27.869Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "645faf2f-4483-40a4-8565-8603b0f1e53f",
+      "sentAt": "2026-07-31T16:42:27.841Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "8965363f-e09f-40fb-8a12-37d2c915f1c2",
+      "sentAt": "2026-07-31T16:42:27.818Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "5c21edc7-1d6a-4780-919b-a44deba06998",
+      "sentAt": "2026-07-31T16:42:27.791Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "24e66c52-f06b-4d72-ab5b-add10f5b8bed",
+      "sentAt": "2026-07-31T16:42:27.762Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "c9d84a8a-bd30-4764-95b3-ad824129a941",
+      "sentAt": "2026-07-31T16:42:27.652Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "6f6b5781-a57b-401b-9f87-6b9df9943368",
+      "sentAt": "2026-07-31T16:42:27.561Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "7fcd78ed-ff6a-4cc8-8fed-1335d1474e84",
+      "sentAt": "2026-07-31T16:42:27.535Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "e52f4232-5242-4d81-80bd-4dbb4077ef3d",
+      "sentAt": "2026-07-31T16:42:27.492Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "5203aa80-d40c-436c-b8d0-a3d2b50a7610",
+      "sentAt": "2026-07-31T16:42:27.460Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "f6be253b-64a9-40b1-8714-26bf75387779",
+      "sentAt": "2026-07-31T16:42:27.417Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "ccbbe4b4-00e0-447b-a4ab-935feb729ddb",
+      "sentAt": "2026-07-31T16:42:27.381Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "0ff673c7-1bf9-4990-996d-4436cd7c52dc",
+      "sentAt": "2026-07-31T16:42:27.367Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "0048bcd3-6a92-4778-a30e-742128951909",
+      "sentAt": "2026-07-31T16:42:27.339Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "6346e80c-06fe-43ca-afad-f5e34e91a23d",
+      "sentAt": "2026-07-31T16:42:27.327Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "31b464d5-17d2-4bde-ac55-6c419bea164d",
+      "sentAt": "2026-07-31T16:42:27.291Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "2623e277-5f9b-4bd8-8505-15c668f36e3b",
+      "sentAt": "2026-07-31T16:42:27.269Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "2f88647b-075e-41df-b2c3-54fd02d1df66",
+      "sentAt": "2026-07-31T16:42:27.248Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "b204ec2d-b4d2-4cdc-9d90-a6e64393b73c",
+      "sentAt": "2026-07-31T16:42:27.230Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "6dca1530-738b-42ac-9d4b-a28638b036a8",
+      "sentAt": "2026-07-31T16:42:27.195Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "ca5b0d38-3f18-43b9-98ad-c40b2cf35ad4",
+      "sentAt": "2026-07-31T16:42:27.150Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "2dcf65e3-b9db-4e7f-82dc-7bab59bbd43f",
+      "sentAt": "2026-07-31T16:42:27.131Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "4e31e1db-785a-45ba-b66c-16a634e8baea",
+      "sentAt": "2026-07-31T16:42:27.109Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "7523f6fe-8044-496a-a54b-149c05905876",
+      "sentAt": "2026-07-31T16:42:27.069Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "51422d71-7ffc-4d4a-b312-2fff6ce51112",
+      "sentAt": "2026-07-31T16:42:27.040Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "033ea149-a1d4-40df-86f2-7f18449aed96",
+      "sentAt": "2026-07-31T16:42:26.994Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "49227151-88b5-4d06-b3e5-41b879bc6def",
+      "sentAt": "2026-07-31T16:42:26.972Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "2ebbce94-33f9-4224-846a-041e2f99f12b",
+      "sentAt": "2026-07-31T16:42:26.957Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "cf28b917-7e79-4b9c-aab0-d930da3b5b54",
+      "sentAt": "2026-07-31T16:42:26.939Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "eb82902f-11cc-499a-b6aa-84b78f21ccc5",
+      "sentAt": "2026-07-31T16:42:26.904Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "65b57f7c-a7de-479c-92cf-96a111782cff",
+      "sentAt": "2026-07-31T16:42:26.894Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "8c89c5b4-3243-4d82-8576-26574a54a9bd",
+      "sentAt": "2026-07-31T16:42:26.861Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "647948ea-0281-49cc-a3ce-f153ee0ac631",
+      "sentAt": "2026-07-31T16:42:26.851Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "c628317a-6cfb-4918-aa54-fe46f2e3be64",
+      "sentAt": "2026-07-31T16:42:26.819Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "c7222722-e589-4a38-b20b-f593c02bd7a7",
+      "sentAt": "2026-07-31T16:42:26.792Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "fa772052-f1af-4938-b001-98d1ae7bd8e9",
+      "sentAt": "2026-07-31T16:42:26.761Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "b70ec606-87e8-4f03-9bee-664c0a3aed8e",
+      "sentAt": "2026-07-31T16:42:26.729Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "1f952808-d15b-4c48-9e7b-d26c83c578d4",
+      "sentAt": "2026-07-31T16:42:26.690Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "926a814d-2aa2-4f9c-8fe3-05145d1f0bf5",
+      "sentAt": "2026-07-31T16:42:26.656Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "0e5fe035-e29f-4ae1-a550-67d0b9463d27",
+      "sentAt": "2026-07-31T16:42:26.636Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "7fde567f-6d50-4b80-9a2e-3a850f73dda4",
+      "sentAt": "2026-07-31T16:42:26.622Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "bb9dbf1f-261b-4b9c-86c8-1b96a1134dba",
+      "sentAt": "2026-07-31T16:42:26.599Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "01c89359-6dbc-48db-bfa0-ea108b5ecb88",
+      "sentAt": "2026-07-31T16:42:26.575Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "6f16e43a-4cff-42a7-b0ff-509ae8605579",
+      "sentAt": "2026-07-31T16:42:26.561Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "ebfc5637-0b7e-4980-b033-1bdc04f2eedb",
+      "sentAt": "2026-07-31T16:42:26.516Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "26383d5e-8e07-47ef-8646-1a657f459b27",
+      "sentAt": "2026-07-31T16:42:26.501Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "d22f301c-0b22-4544-a7e4-e709bb5d4d2d",
+      "sentAt": "2026-07-31T16:42:26.481Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "89224612-8aca-43ad-9436-db5a16275ba7",
+      "sentAt": "2026-07-31T16:42:26.464Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "11d23c78-bd0a-40d8-a9db-02585d82d348",
+      "sentAt": "2026-07-31T16:42:26.448Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "65a8e635-595f-472d-9e4f-109cb77e9cf0",
+      "sentAt": "2026-07-31T16:42:26.399Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "00500957-fac2-4db0-90a8-e082f3c18d65",
+      "sentAt": "2026-07-31T16:42:26.359Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "9b197cca-0ef1-46db-99c4-0097853ec326",
+      "sentAt": "2026-07-31T16:42:26.343Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "15166211-093e-4670-ac08-5b87cf9ae299",
+      "sentAt": "2026-07-31T16:42:26.319Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "8d260ea0-3177-4f71-8820-472f5db4acb6",
+      "sentAt": "2026-07-31T16:42:26.300Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "ecc662af-e672-4e32-90e7-5eb9cc62d5e4",
+      "sentAt": "2026-07-31T16:42:26.248Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "ceda1278-29cb-416c-a6e6-bc688b48e6c0",
+      "sentAt": "2026-07-31T15:20:28.519Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "ed658638-50c3-47b8-a384-132d974754d6",
+      "sentAt": "2026-07-31T14:18:42.101Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "f204e708-069c-4348-81e5-d0f15c8d019a",
+      "sentAt": "2026-07-31T14:18:24.959Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "0aaaa515-2279-41fe-a281-080546414131",
+      "sentAt": "2026-07-31T14:18:12.981Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "c63f843d-53a5-474c-9222-46f6c5b76e82",
+      "sentAt": "2026-07-31T14:18:03.311Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
+      "id": "8c9708ee-30e8-4148-8978-d4d9a9eaa049",
+      "sentAt": "2026-07-31T13:46:26.951Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "f555de15-0552-495b-bd0f-a2dae1125533",
+      "sentAt": "2026-07-31T13:20:00.895Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "7281e021-647d-4f64-b2a7-b066ad8230d6",
+      "sentAt": "2026-07-31T13:19:32.127Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "fdd10ddc-bc53-4990-a7ad-0b6bc63fa3f7",
+      "sentAt": "2026-07-31T13:17:55.773Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "f4555226-6c10-45cb-98a1-d2ea1f3798bc",
+      "sentAt": "2026-07-31T12:43:05.096Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "7160b8fc-ca49-4a94-b0af-a8d23bbdd459",
+      "sentAt": "2026-07-31T12:38:48.880Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "497c6547-cdef-4acd-a8b3-fb81ada1966f",
+      "sentAt": "2026-07-31T12:38:25.625Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "e0e5a94f-0f7b-4b5c-a0aa-a99bdce5fd5d",
+      "sentAt": "2026-07-31T12:37:35.687Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "d81b95ec-c0fb-4bf5-99fb-b5a74d476047",
+      "sentAt": "2026-07-31T12:36:07.784Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "d28ef0ec-ff82-4195-b26a-f1a3da98381c",
+      "sentAt": "2026-07-31T12:33:10.987Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "3d845bff-807a-4eec-bc63-1a8135a121e7",
+      "sentAt": "2026-07-31T12:30:19.160Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "22b40a82-6183-456c-b17d-5b6d678b12d8",
+      "sentAt": "2026-07-31T12:27:53.389Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "571a632c-4d63-4624-903f-e337336b7ec8",
+      "sentAt": "2026-07-31T12:24:33.901Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "b7241f29-841b-45e8-9a58-6ae35abbda79",
+      "sentAt": "2026-07-31T12:24:29.432Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "35566972-8a4f-427b-86ea-71ad2a5d85ec",
+      "sentAt": "2026-07-31T12:21:34.561Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "89e8f70b-0579-483b-a0b0-5940276d7897",
+      "sentAt": "2026-07-30T13:45:06.581Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"OBS Disconnected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 0,
+      "tokensFailed": 1
+    },
+    {
       "id": "3220ecf6-1ad8-4849-b084-8ccada38982e",
       "sentAt": "2026-07-27T17:59:53.909Z",
       "event": "SCHEDULER_ALERT",
@@ -2150,936 +5000,6 @@
       "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
       "tokensAttempted": 1,
       "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "178b9df7-2b47-443c-906d-98df93fca30b",
-      "sentAt": "2026-07-23T12:58:27.018Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Local Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "d6386ba9-c180-4dc5-aa54-8d053f5f7b5b",
-      "sentAt": "2026-07-23T12:58:26.683Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Loop Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "8e40b2a9-f0d6-497c-bef7-2895ed2fa629",
-      "sentAt": "2026-07-23T12:58:26.540Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Loop Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "6c8f314f-766f-41ff-9e4b-0fc3cb24ac33",
-      "sentAt": "2026-07-23T12:58:26.341Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Live Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "7b218e17-4e38-401c-9f17-8ecc8a5eb1f9",
-      "sentAt": "2026-07-23T12:58:26.087Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Local Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "61ada393-a451-4b15-aea0-7e8b354f3a6d",
-      "sentAt": "2026-07-23T12:58:25.821Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Live Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "74f55a81-e559-41fd-afd3-8e31dc508f79",
-      "sentAt": "2026-07-23T12:58:25.607Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Delay did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "5f28f9ec-bf10-4c2f-a9a8-e3f27603ea35",
-      "sentAt": "2026-07-23T12:56:19.824Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"19 Missed Schedule(s) Detected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "8c530bed-4c5d-49f0-9ace-88f9f6b754e1",
-      "sentAt": "2026-07-21T13:55:23.622Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "d2b7b6cc-e0b1-49d5-86d4-8ed6842d9070",
-      "sentAt": "2026-07-21T13:52:56.376Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "fdef89b1-dfde-4736-8527-669f30ffd5c8",
-      "sentAt": "2026-07-21T13:50:29.761Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "fc009505-5424-477c-8217-27f0f0312da0",
-      "sentAt": "2026-07-21T13:27:40.914Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "fbb0795d-9390-4da3-9315-e0dfb2f9993e",
-      "sentAt": "2026-07-21T13:22:18.414Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "3833015c-b645-4628-a1eb-039bd5dff065",
-      "sentAt": "2026-07-21T13:04:24.667Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "68bd808e-08fc-4815-9c03-04ed69e97bf5",
-      "sentAt": "2026-07-21T13:04:13.948Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "dd461470-2772-49a2-996d-4a0bacf4ca88",
-      "sentAt": "2026-07-21T12:59:54.576Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "d4e2ebc5-79db-4bce-ba91-05fd376614cc",
-      "sentAt": "2026-07-21T12:57:25.948Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "35afc938-93a6-42a8-a25d-501972322a70",
-      "sentAt": "2026-07-21T12:55:58.526Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "abbeb41a-9f3d-4e73-bb26-dd46871f6ef7",
-      "sentAt": "2026-07-21T12:54:58.719Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "5d1d584e-1b77-4104-852a-28f816390b00",
-      "sentAt": "2026-07-21T12:54:10.275Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "283f39fa-1b79-4b63-ba6d-789b303d60e5",
-      "sentAt": "2026-07-21T12:54:04.025Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "1e9c668c-061d-4ad2-b16a-b4945bcf5301",
-      "sentAt": "2026-07-21T12:53:48.051Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "70df53a0-09d1-48c2-b8ef-8aedf5885673",
-      "sentAt": "2026-07-21T12:52:32.285Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "b69d174d-f897-4071-9a29-106554de98ed",
-      "sentAt": "2026-07-21T12:50:42.379Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "b6e99801-fa56-4dcf-89cf-81023fef1f41",
-      "sentAt": "2026-07-21T12:50:10.033Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "473ef609-43d2-479b-a06a-6f38858fc8c6",
-      "sentAt": "2026-07-21T12:47:39.280Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "ca995f5d-b135-48d8-9416-de376b571afa",
-      "sentAt": "2026-07-21T12:47:17.889Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Delay Live did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "00155c9f-86fd-44e6-9c54-03793f13ff34",
-      "sentAt": "2026-07-21T12:47:17.684Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Live Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "bbf69b4c-9da7-49d7-8ada-b3552a5d9f3d",
-      "sentAt": "2026-07-21T12:47:17.497Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Loop Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "fc703ab7-f844-460b-a149-36d87195fb86",
-      "sentAt": "2026-07-21T12:47:17.288Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Delay Live did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "82cd0838-867c-45e8-ba07-84af96f62e3d",
-      "sentAt": "2026-07-21T12:47:17.143Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Local Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "e1d5bc0d-2076-40ac-98a8-1810e8d8ce13",
-      "sentAt": "2026-07-21T12:47:16.958Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Delay Live did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "cefc0d38-95ae-4977-94f5-e98c054bc04d",
-      "sentAt": "2026-07-21T12:47:16.712Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Loop Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "487066f7-e6c5-4fae-ab13-726c8dff8a19",
-      "sentAt": "2026-07-21T12:47:16.561Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Local Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "c72c84f1-109c-4ec2-9fe6-4d6f64795491",
-      "sentAt": "2026-07-21T12:47:16.401Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Live Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "51d2beef-66e7-4b00-84fe-57915549d3fb",
-      "sentAt": "2026-07-21T12:47:16.292Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Local Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "215def64-b0fa-4ff7-82e9-c5cc0c57aa62",
-      "sentAt": "2026-07-21T12:47:16.139Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Delay Live did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "921e4340-a17b-4e26-8eb5-4a0345dc3deb",
-      "sentAt": "2026-07-21T12:47:15.953Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Local Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "01f843fd-8e08-4008-857b-fe194530b0ab",
-      "sentAt": "2026-07-21T12:47:15.653Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Local Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "f510e5f5-54b2-45a7-8c5d-5cf5087d0a38",
-      "sentAt": "2026-07-21T12:47:15.505Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Loop Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "330bbe82-2dca-409f-ac13-ac7de77610ed",
-      "sentAt": "2026-07-21T12:47:15.294Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Loop Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "b8291038-671a-4a1b-b55c-f1f89a84898c",
-      "sentAt": "2026-07-21T12:47:15.112Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Live Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "0a11bc6b-0f9c-4832-8bba-2e668757ce31",
-      "sentAt": "2026-07-21T12:47:15.048Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Local Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "ce392cf4-5493-4610-8918-63549e8869f1",
-      "sentAt": "2026-07-21T12:47:14.914Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Live Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "5cd854f3-e990-4504-a76f-6e85e62504eb",
-      "sentAt": "2026-07-21T12:47:14.715Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Delay did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "df822e71-96c2-4020-8767-2f92b632de54",
-      "sentAt": "2026-07-21T12:45:08.777Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"19 Missed Schedule(s) Detected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "4acd318e-a611-4988-b75a-61e5d42d76e6",
-      "sentAt": "2026-07-20T17:08:43.840Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "dd37ecd3-98fb-419f-90b6-0b32a616c67c",
-      "sentAt": "2026-07-20T17:06:51.212Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "77cca16e-8fbd-4ca7-a3da-d2cc4b4ef894",
-      "sentAt": "2026-07-20T17:04:22.385Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "247e055a-bd75-4c96-b4d1-59237afaad8c",
-      "sentAt": "2026-07-20T17:03:37.750Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "e2916738-023b-444d-b477-2af0da8d7ccf",
-      "sentAt": "2026-07-20T16:35:12.290Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "9bcb7fed-f1cf-4e07-b73a-278d3fd6c1f5",
-      "sentAt": "2026-07-20T16:30:10.252Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "622892b8-6477-4949-9c60-2791c35baa9c",
-      "sentAt": "2026-07-20T16:28:29.903Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "52792629-e2df-41c6-ab6a-26a58685d952",
-      "sentAt": "2026-07-20T16:27:27.083Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "1ff83bb4-c639-4f75-86ee-190800d04cd9",
-      "sentAt": "2026-07-20T16:24:26.700Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "f264445a-8568-442d-82b2-d6c7a6a2d449",
-      "sentAt": "2026-07-20T16:19:09.669Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "a9d3fc03-7206-4d41-b248-fdfafd13d9b3",
-      "sentAt": "2026-07-20T16:16:52.056Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "2f756c18-4262-4c8a-b863-7d0c91412b07",
-      "sentAt": "2026-07-20T16:11:40.446Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "faa36f2e-04ff-49d5-8c09-ab312fda77a1",
-      "sentAt": "2026-07-20T16:11:01.205Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Refresh Katha Content did not run",
-      "body": "\"katha_refresh\" failed: Live Player is active/visible",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "c1987dc9-500a-4443-9c6b-9261a25050aa",
-      "sentAt": "2026-07-20T16:11:01.199Z",
-      "event": "SCHEDULER_TRIGGER",
-      "title": "Scheduler: Refresh Katha Content",
-      "body": "Action \"katha_refresh\" at 9:41:00 pm",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "b37fcbd8-f36b-4943-a586-f1ce4719f6f8",
-      "sentAt": "2026-07-20T16:11:01.106Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Refresh Katha Content did not run",
-      "body": "\"katha_refresh\" failed: Live Player is active/visible",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "6cd4b010-75be-4a0a-b1ef-4b0f9aaa7d2c",
-      "sentAt": "2026-07-20T16:10:50.037Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "5fe780db-d945-4f63-bead-16d79f70140c",
-      "sentAt": "2026-07-20T16:09:01.664Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Load Katha to Delay Player did not run",
-      "body": "\"katha_player\" failed: Live Player is active/visible",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "840c785d-2445-443a-906c-16807ad15af9",
-      "sentAt": "2026-07-20T16:09:01.655Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Load Katha to Delay Player did not run",
-      "body": "\"katha_player\" failed: Live Player is active/visible",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "d71bb176-2ccf-402b-bd3d-75c9412e0369",
-      "sentAt": "2026-07-20T16:09:01.636Z",
-      "event": "SCHEDULER_TRIGGER",
-      "title": "Scheduler: Load Katha to Delay Player",
-      "body": "Action \"katha_player\" at 9:39:00 pm",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "477f3d29-5c3d-4811-a379-ac67d8219594",
-      "sentAt": "2026-07-20T16:07:51.900Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "81858b48-fd09-4903-a5e6-dc425fa224f2",
-      "sentAt": "2026-07-20T16:06:18.078Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "46e5ca63-1316-41d1-bd23-fac70af73b78",
-      "sentAt": "2026-07-20T16:00:13.411Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "df685f3e-878a-498c-938c-a9e975dc0f15",
-      "sentAt": "2026-07-20T15:52:11.272Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Live did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "8c1b404a-f8d3-422a-b5a9-7c3bd6f9621c",
-      "sentAt": "2026-07-20T14:59:38.067Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "3bb03fc9-30bc-41d8-b310-153259fb2bf9",
-      "sentAt": "2026-07-20T14:50:09.044Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "9e088a32-f667-467a-9819-0dfdadd5015a",
-      "sentAt": "2026-07-20T14:49:56.966Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "913af35f-5222-45d5-b8f3-9c44d395e128",
-      "sentAt": "2026-07-20T14:49:50.745Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"OBS Disconnected\" failed  times",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 1,
-      "tokensFailed": 1
-    },
-    {
-      "id": "7f419dfa-d9bc-43d5-909d-6ec7ad58b65d",
-      "sentAt": "2026-07-13T12:26:40.613Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Loop Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "ed79f32a-59f5-4c3d-abd3-4f0974aefb6d",
-      "sentAt": "2026-07-13T12:26:40.458Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Delay Live did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "46c69798-7dc9-45d3-8646-ed29ab380122",
-      "sentAt": "2026-07-13T12:26:40.298Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Live Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "71abe927-ff2c-45a1-a80b-2d0ece2c5d6c",
-      "sentAt": "2026-07-13T12:26:40.271Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Loop Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "4bc522ab-e4d4-4181-b142-1d28507c5fa7",
-      "sentAt": "2026-07-13T12:26:40.176Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Delay Live did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "79e455e4-28a1-4b56-9aac-c906f764071f",
-      "sentAt": "2026-07-13T12:26:40.141Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Local Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "4c6ae2c7-c6cb-4b73-8283-082e9505bacc",
-      "sentAt": "2026-07-13T12:26:40.097Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Delay Live did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "2bcd9c2c-c358-49a2-9c7c-2cddae850ecd",
-      "sentAt": "2026-07-13T12:26:39.865Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Local Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "799142e5-04c7-4d02-b690-d4f8ca4c3e05",
-      "sentAt": "2026-07-13T12:26:39.851Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Live Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "68d64d2f-d5d5-4164-b931-f7cbea082973",
-      "sentAt": "2026-07-13T12:26:39.805Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Local Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "b2446ab5-8834-421c-98d8-06433a868a3f",
-      "sentAt": "2026-07-13T12:26:39.751Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Delay Live did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "aa911557-c054-4634-8175-0d6e0e221886",
-      "sentAt": "2026-07-13T12:26:39.664Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Local Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "10faec45-c360-45cf-a729-33d97e6fbb17",
-      "sentAt": "2026-07-13T12:26:39.616Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Local Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "2802ac42-1c7c-4e38-bef5-b20f6ab9de4b",
-      "sentAt": "2026-07-13T12:26:39.562Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Loop Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "cc8a1b7d-f895-48d3-89b5-21c9666526b7",
-      "sentAt": "2026-07-13T12:26:39.452Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Loop Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "25b29166-85ad-448e-9b48-5d5db87bb25c",
-      "sentAt": "2026-07-13T12:26:39.321Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Live Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "b89a9181-5bbc-4efa-be38-0ed6a075c579",
-      "sentAt": "2026-07-13T12:26:39.278Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Local Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "a62683e8-55da-45fa-bd52-5548e806d3da",
-      "sentAt": "2026-07-13T12:26:39.141Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Live Player did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "fb20be07-5d4a-4ebc-9936-07d6269729be",
-      "sentAt": "2026-07-13T12:26:39.059Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "⚠ Delay did not run",
-      "body": "\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
-      "tokensFailed": 0
-    },
-    {
-      "id": "b6c8af1d-6cc7-4b11-8a1a-f0a1908163f7",
-      "sentAt": "2026-07-13T12:24:30.947Z",
-      "event": "SCHEDULER_ALERT",
-      "title": "Scheduler Alert",
-      "body": "\"19 Missed Schedule(s) Detected\" failed  times",
-      "tokensAttempted": 2,
-      "tokensSucceeded": 2,
       "tokensFailed": 0
     }
   ]

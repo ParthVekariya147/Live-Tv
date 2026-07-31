@@ -18,6 +18,12 @@ const certManager    = require('./cert-manager.cjs');
 const ipDetector     = require('./ip-detector.cjs');
 const tunnelManager  = require('./tunnel-manager.cjs');
 
+// Whether the self-signed LAN HTTPS listener actually bound successfully.
+// /api/notifications/setup-url must not hand out a pairing link pointing at
+// an HTTPS port that never came up (cert generation failure, EADDRINUSE, etc)
+// — the QR would "generate" fine client-side but fail to connect on the phone.
+let httpsListening = false;
+
 // Same safety net as live-tv-api/server.js: without this, ANY single unhandled
 // exception anywhere in this file — a bad request, a locked file, a bind
 // failure on a background listener — kills the whole process, taking the API
@@ -1242,7 +1248,34 @@ class BackupService {
         return files;
     }
 
-    createBackup(type = 'manual', clientPayload = null, prefix = 'backup') {
+    // live-tv-api is a separate local service (channels.json lives there, not in
+    // this app's data/ dir) — reach it over HTTP so headless auto-backups (which
+    // have no browser to fetch channels through) still capture the channel list.
+    async _fetchChannels() {
+        try {
+            const apiPort = process.env.API_PORT || 3000;
+            const res = await fetch(`http://localhost:${apiPort}/api/channels`, { signal: AbortSignal.timeout(5000) });
+            if (!res.ok) return null;
+            const data = await res.json();
+            return Array.isArray(data.channels) ? data.channels : null;
+        } catch (_) { return null; }
+    }
+
+    async _restoreChannels(channels) {
+        if (!Array.isArray(channels)) return false;
+        try {
+            const apiPort = process.env.API_PORT || 3000;
+            const res = await fetch(`http://localhost:${apiPort}/api/channels`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ channels }),
+                signal: AbortSignal.timeout(5000),
+            });
+            return res.ok;
+        } catch (_) { return false; }
+    }
+
+    async createBackup(type = 'manual', clientPayload = null, prefix = 'backup') {
         const dir = type === 'manual' ? this.manualDir : this.autoDir;
         const ts  = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
         const filename = `${prefix}_${ts}.json`;
@@ -1253,6 +1286,9 @@ class BackupService {
             payload = clientPayload;
             if (!payload.exportedAt) {
                 payload.exportedAt = new Date().toISOString();
+            }
+            if (payload.channels === undefined) {
+                payload.channels = await this._fetchChannels();
             }
         } else {
             // Reconstruct the exact same format as Export/Backup version 2.0
@@ -1270,7 +1306,8 @@ class BackupService {
                 'monitor.1.enabled': 'liveMonitorEnabled1',
                 'monitor.2.enabled': 'liveMonitorEnabled2',
                 'monitor.1.searchTerms': 'savedSearchTitles1',
-                'monitor.2.searchTerms': 'savedSearchTitles2'
+                'monitor.2.searchTerms': 'savedSearchTitles2',
+                'player.live.endRules': 'liveEndRules'
             };
             
             for (const [serverKey, lsKey] of Object.entries(mapping)) {
@@ -1286,6 +1323,7 @@ class BackupService {
                 serverState: serverState,
                 schedules: schedules,
                 localStorage: localStorageData,
+                channels: await this._fetchChannels(),
                 validation: {
                     warnings: [],
                     playerKeys: Object.keys(localStorageData)
@@ -1338,7 +1376,7 @@ class BackupService {
         } catch (_) { return []; }
     }
 
-    restoreBackup(type, filename) {
+    async restoreBackup(type, filename) {
         if (!filename || filename.includes('/') || filename.includes('\\') || filename.includes('..') || !filename.endsWith('.json')) {
             throw new Error('Invalid backup filename');
         }
@@ -1349,7 +1387,9 @@ class BackupService {
         }
 
         const payload = JSON.parse(fs.readFileSync(filepath, 'utf8'));
-        
+        const channelsRestored = Array.isArray(payload.channels) && (await this._restoreChannels(payload.channels))
+            ? payload.channels.length : 0;
+
         // Support both old format (with .files mapping) and new unified format
         if (payload.files) {
             let restored = 0;
@@ -1358,12 +1398,12 @@ class BackupService {
                 fs.writeFileSync(path.join(this.dataDir, fname), JSON.stringify(content, null, 2), 'utf8');
                 restored++;
             }
-            return { restored, backedUpAt: payload.backedUpAt };
+            return { restored, channelsRestored, backedUpAt: payload.backedUpAt };
         } else {
             // New unified format: payload is the client-compatible JSON structure
             const serverState = payload.serverState || payload.state || {};
             const schedules = payload.schedules || [];
-            
+
             if (serverState && typeof serverState === 'object') {
                 const skip = new Set(['obs.connected']);
                 Object.entries(serverState).forEach(([k, v]) => {
@@ -1373,7 +1413,7 @@ class BackupService {
             if (Array.isArray(schedules)) {
                 scheduler.setAllSchedules(schedules);
             }
-            return { restored: 2, backedUpAt: payload.exportedAt || payload.backedUpAt };
+            return { restored: 2, channelsRestored, backedUpAt: payload.exportedAt || payload.backedUpAt };
         }
     }
 
@@ -1421,7 +1461,7 @@ class BackupService {
                 if (fire) {
                     broadcast('FLUSH_STATE_FOR_BACKUP', {});
                     await new Promise(r => setTimeout(r, 600));
-                    this.createBackup('auto');
+                    await this.createBackup('auto');
                     notificationService.send('BACKUP_COMPLETED', { type: 'auto' }).catch(() => {});
                 }
             } catch (e) { console.error('[Backup] Auto-backup error:', e.message); }
@@ -1462,6 +1502,28 @@ function formatFileSize(bytes) {
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+}
+
+// Shared by RecordingService and the live-stream-manifest endpoint below.
+// [FIX E2] Verify the executable actually exists before returning it — if not
+// found synchronously, spawn would succeed but immediately emit an ENOENT
+// error event instead of a clean, immediate failure.
+function findYtDlpBinary() {
+    const check = (p) => { try { return fs.existsSync(p) ? p : null; } catch { return null; } };
+
+    if (process.pkg) {
+        const exeDir = path.dirname(process.execPath);
+        return check(path.join(exeDir, 'yt-dlp.exe'))
+            || check(path.join(exeDir, 'yt-dlp'))
+            || null; // not found — caller returns a clear error
+    }
+    // Development: the same binary that ships next to the packaged EXE also
+    // lives in the repo's windows/exe/ folder, which isn't on PATH — check
+    // there directly instead of hoping the bare name resolves via PATH.
+    const repoRoot = path.resolve(__dirname, '..');
+    const devCandidate = check(path.join(repoRoot, 'windows', 'exe', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'));
+    if (devCandidate) return devCandidate;
+    return process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
 }
 
 class RecordingService {
@@ -1528,21 +1590,7 @@ class RecordingService {
     }
 
     _findYtDlp() {
-        // [FIX E2] Verify the executable actually exists before returning it.
-        // If not found synchronously, spawn would succeed but immediately emit
-        // an ENOENT error event, leaving the client in a false isRecording=true
-        // state for up to 2 seconds until the poll corrects it.
-        const check = (p) => { try { return fs.existsSync(p) ? p : null; } catch { return null; } };
-
-        if (process.pkg) {
-            const exeDir = path.dirname(process.execPath);
-            return check(path.join(exeDir, 'yt-dlp.exe'))
-                || check(path.join(exeDir, 'yt-dlp'))
-                || null; // not found — start() will return a clear error
-        }
-        // Development: look on PATH. We can't verify PATH availability without
-        // spawning, so return the bare name and let start() handle spawn errors.
-        return process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+        return findYtDlpBinary();
     }
 
     start(videoId, onEvent, title) {
@@ -1711,11 +1759,11 @@ const backupService = new BackupService({ dataDir, backupBaseDir });
 // ============================================
 
 // POST /api/backup/manual — save a manual backup right now
-app.post('/api/backup/manual', (req, res) => {
+app.post('/api/backup/manual', async (req, res) => {
     try {
         const clientPayload = req.body?.backupData || null;
         const prefix = req.body?.prefix || 'backup';
-        const result = backupService.createBackup('manual', clientPayload, prefix);
+        const result = await backupService.createBackup('manual', clientPayload, prefix);
         notificationService.send('BACKUP_COMPLETED', { type: 'manual' }).catch(() => {});
         res.json({ success: true, ...result });
     } catch (e) {
@@ -1745,11 +1793,11 @@ app.get('/api/backup/list', (req, res) => {
 
 // POST /api/backup/restore — restore from a backup file
 // body: { type: 'manual'|'auto', filename: 'backup_YYYY-MM-DDTHH-MM.json' }
-app.post('/api/backup/restore', (req, res) => {
+app.post('/api/backup/restore', async (req, res) => {
     const { type, filename } = req.body || {};
     if (!filename) return res.status(400).json({ success: false, error: 'filename required' });
     try {
-        const result = backupService.restoreBackup(type || 'manual', filename);
+        const result = await backupService.restoreBackup(type || 'manual', filename);
         // Reload scheduler with the restored schedules
         scheduler.loadSchedules();
         broadcast('SCHEDULES_UPDATED', { schedules: scheduler.getAllSchedules() });
@@ -2130,6 +2178,29 @@ app.get('/api/notifications/setup-url', async (req, res) => {
             tunnelManager.forceReconnect();
             tunnelBase = '';
         }
+
+        // Neither a working tunnel nor a bound LAN HTTPS listener exists yet (both
+        // can still be starting up right after boot, or the LAN listener failed to
+        // bind at all — see cert-manager/EADDRINUSE handling below). Returning a
+        // link at this point would look "created" in the UI but fail to connect on
+        // the phone, so tell the client to keep showing its loader and poll again
+        // instead of handing back a broken URL.
+        if (!tunnelBase && !httpsListening) {
+            return res.json({ pending: true, tunnel: false });
+        }
+
+        // Give the tunnel a grace window before falling back to the LAN-only link.
+        // Historically it connects within a few seconds of a fresh attempt cycle —
+        // only fall back once that window has actually elapsed (e.g. the network
+        // is blocking the tunnel outright), instead of showing the LAN link the
+        // instant a reconnect cycle (boot, retry button, post-drop) begins.
+        const TUNNEL_GRACE_MS = 20000;
+        const connectingSince = tunnelManager.getConnectingSince();
+        const stillWithinGrace = connectingSince && (Date.now() - connectingSince < TUNNEL_GRACE_MS);
+        if (!tunnelBase && httpsListening && stillWithinGrace) {
+            return res.json({ pending: true, tunnel: false });
+        }
+
         const primaryUrl = tunnelBase
             ? `${tunnelBase}/setup`
             : `https://${primaryIP}:${HTTPS_PORT_VAL}/setup`;
@@ -2139,7 +2210,10 @@ app.get('/api/notifications/setup-url', async (req, res) => {
             : allIPs.map(ip => `https://${ip}:${HTTPS_PORT_VAL}/setup`);
 
         const qrDataUrl = await qrcode.toDataURL(primaryUrl, { width: 240, margin: 2 });
-        res.json({ primaryUrl, allUrls, qrDataUrl, port: HTTPS_PORT_VAL, tunnel: !!tunnelBase });
+        // lanOnly tells the UI this link only works on the same WiFi network as this
+        // PC — the tunnel (which makes it work over mobile data / anywhere) hasn't
+        // connected yet. tunnelManager keeps retrying in the background regardless.
+        res.json({ primaryUrl, allUrls, qrDataUrl, port: HTTPS_PORT_VAL, tunnel: !!tunnelBase, lanOnly: !tunnelBase });
     } catch (err) {
         res.status(500).json({ error: 'Failed to generate setup URL: ' + err.message });
     }
@@ -2263,9 +2337,11 @@ server.listen(PORT, () => {
                 // process (API server, WebSocket, everything) instead of just leaving
                 // HTTPS/phone-setup unavailable for this run.
                 httpsServer.on('error', (err) => {
+                    httpsListening = false;
                     console.warn(`[HTTPS] Failed to listen on port ${HTTPS_PORT}: ${err.message} — continuing without HTTPS (phone setup / push notifications over LAN HTTPS won't be available this run)`);
                 });
                 httpsServer.listen(HTTPS_PORT, () => {
+                    httpsListening = true;
                     console.log(`[HTTPS] Listening on port ${HTTPS_PORT}`);
                 });
             } else {
@@ -2275,13 +2351,13 @@ server.listen(PORT, () => {
             console.warn('[HTTPS] Failed to start HTTPS server:', err.message);
         }
 
-        // 2. Auto-start localtunnel for trusted HTTPS (bypasses self-signed cert issue on phones)
-        // A pinned subdomain keeps the URL stable across restarts, so phones that
-        // registered earlier don't hit "503 Tunnel Unavailable" on a dead random URL.
-        const tunnelSubdomain = (process.env.TUNNEL_SUBDOMAIN || '').trim()
-            || 'smk-tv-' + require('crypto').createHash('md5').update(require('os').hostname()).digest('hex').slice(0, 8);
-        console.log(`[Tunnel] Auto-starting localtunnel (subdomain: ${tunnelSubdomain})…`);
-        await tunnelManager.startTunnel(PORT, { subdomain: tunnelSubdomain });
+        // 2. Auto-start a Cloudflare Quick Tunnel for trusted HTTPS (bypasses the
+        // self-signed cert issue on phones). Quick Tunnels don't support a pinned
+        // subdomain (that requires a real Cloudflare account + owned domain), so
+        // the address changes on every fresh connection cycle — phones must
+        // re-scan the QR after a restart or a drop-and-reconnect.
+        console.log('[Tunnel] Auto-starting Cloudflare Quick Tunnel…');
+        tunnelManager.startTunnel(PORT);
     })();
 
     const primaryIP = ipDetector.getPrimaryLANIP();

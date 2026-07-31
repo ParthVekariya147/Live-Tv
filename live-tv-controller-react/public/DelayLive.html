@@ -78,11 +78,13 @@
           showinfo: 0, // Hide video title and uploader info
           start: startSeconds || 0, // Start time in seconds
           end: endSeconds || undefined, // End time in seconds, or undefined if not set
+          vq: "hd1080", // best-effort initial quality hint — see enforceHighestQuality
         },
         events: {
           onReady: onPlayerReady,
           onStateChange: onPlayerStateChange,
           onError: onPlayerError,
+          onPlaybackQualityChange: onQualityChange,
         },
       });
     }
@@ -90,8 +92,54 @@
     function onPlayerReady(event) {
       console.log("DelayLivePlayer is ready!");
       event.target.playVideo(); // Autoplay on ready
+      enforceHighestQuality(event.target);
+      startQualityBurst();
       // Use stored times instead of re-reading from localStorage
       startDurationTimer(event.target, currentStartSeconds, currentEndSeconds);
+    }
+
+    // YouTube's IFrame API treats quality as a hint, not a guarantee — it can still
+    // downgrade under bandwidth pressure. This runs on a fixed gigabit LAN with no
+    // such constraint, so always pin to the highest tier YouTube offers for the
+    // current video. getAvailableQualityLevels() is sorted highest → lowest (e.g.
+    // hd2160, hd1440, hd1080, hd720, large, medium, small, tiny) but is only
+    // populated once the video actually starts buffering, so this alone can't
+    // always land the very first frame at the top tier — onQualityChange below
+    // re-asserts it the moment YouTube reports its own (usually lower) auto-pick.
+    function enforceHighestQuality(target) {
+      try {
+        const levels = target.getAvailableQualityLevels();
+        target.setPlaybackQuality(levels && levels.length ? levels[0] : "highres");
+      } catch (e) {
+        console.warn("DelayLivePlayer: could not set playback quality:", e);
+      }
+    }
+
+    // YouTube is most likely to silently downgrade quality in the first few
+    // seconds after a video (re)loads, while it's still probing. The 1s backstop
+    // further below only catches this every second — during this window, check
+    // every 250ms instead so a downgrade gets reverted almost immediately rather
+    // than sitting at the wrong tier for up to a second.
+    let qualityBurstTimer = null;
+    function startQualityBurst() {
+      if (qualityBurstTimer) clearInterval(qualityBurstTimer);
+      const deadline = Date.now() + 8000;
+      qualityBurstTimer = setInterval(() => {
+        if (!player || Date.now() > deadline) {
+          clearInterval(qualityBurstTimer);
+          qualityBurstTimer = null;
+          return;
+        }
+        enforceHighestQuality(player);
+      }, 250);
+    }
+
+    function onQualityChange(event) {
+      if (!player) return;
+      const levels = player.getAvailableQualityLevels();
+      if (levels && levels.length && event.data !== levels[0]) {
+        player.setPlaybackQuality(levels[0]);
+      }
     }
 
     function onPlayerStateChange(event) {
@@ -120,6 +168,7 @@
         case YT.PlayerState.PLAYING:
           state = "playing";
           isLoadingVideo = false; // Video started playing, loading complete
+          startQualityBurst(); // YouTube often re-picks quality right as playback actually starts
           // Use stored times instead of re-reading from localStorage
           startDurationTimer(event.target, currentStartSeconds, currentEndSeconds);
           break;
@@ -129,6 +178,7 @@
           break;
         case YT.PlayerState.BUFFERING:
           state = "buffering";
+          startQualityBurst(); // and again when it re-buffers (a common downgrade trigger)
           break;
         case YT.PlayerState.CUED:
           state = "cued";
@@ -263,8 +313,10 @@
                     player.loadVideoById({
                       videoId: videoId,
                       startSeconds: startSeconds,
-                      endSeconds: endSeconds || undefined
+                      endSeconds: endSeconds || undefined,
+                      suggestedQuality: "hd1080" // best-effort initial quality hint
                     });
+                    startQualityBurst();
                     // Start duration timer for custom end handling
                     startDurationTimer(player, startSeconds, endSeconds);
                   } else {
@@ -386,6 +438,13 @@
           duration,
           remainingTime: Math.max(0, duration - currentTime)
         });
+        // onPlaybackQualityChange doesn't always fire when YouTube silently
+        // holds a video at a lower tier, so piggyback a re-check on this
+        // already-running 1s tick as a backstop to the event-driven enforcement.
+        const levels = player.getAvailableQualityLevels();
+        if (levels && levels.length && player.getPlaybackQuality() !== levels[0]) {
+          player.setPlaybackQuality(levels[0]);
+        }
       }
     }, 1000);
 
