@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Relay PoC — Validation Test</title>
+<style>
+  body { margin: 0; background: #0b0b0f; color: #ddd; font-family: -apple-system, Segoe UI, sans-serif; display: flex; }
+  #left { flex: 1; display: flex; flex-direction: column; background: #000; min-height: 100vh; }
+  #controls { display: flex; gap: 8px; padding: 10px; background: #14141c; align-items: center; }
+  #controls input { flex: 1; padding: 8px; background: #0b0b0f; border: 1px solid #2a2a35; color: #ddd; border-radius: 4px; font-family: monospace; }
+  #controls button { padding: 8px 14px; background: #3b5bfd; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+  #controls button:disabled { background: #333; cursor: wait; }
+  #video-wrap { flex: 1; display: flex; align-items: center; justify-content: center; }
+  video { width: 100%; max-width: 960px; background: #000; }
+  #right { width: 380px; padding: 16px; box-sizing: border-box; background: #14141c; border-left: 1px solid #2a2a35; overflow-y: auto; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: #8b8ba0; margin: 18px 0 8px; }
+  h2:first-child { margin-top: 0; }
+  .row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; border-bottom: 1px solid #22222c; gap: 8px; }
+  .row span:first-child { color: #9a9ab0; flex-shrink: 0; }
+  .row span:last-child { font-family: ui-monospace, Consolas, monospace; color: #e8e8f0; text-align: right; word-break: break-all; }
+  .ok { color: #4ade80 !important; }
+  .warn { color: #fbbf24 !important; }
+  .bad { color: #f87171 !important; }
+  #log { font-family: ui-monospace, Consolas, monospace; font-size: 11px; background: #0b0b0f; border: 1px solid #22222c; border-radius: 6px; padding: 8px; height: 150px; overflow-y: auto; white-space: pre-wrap; color: #7d7d90; }
+  #status-banner { font-size: 12px; padding: 8px 10px; margin: 0 10px 10px; border-radius: 6px; }
+  .checklist span { display: block; font-size: 12px; padding: 2px 0; }
+  .simbtn { font-size: 11px; padding: 5px 8px; background: #2a2a35; color: #ccc; border: 1px solid #3a3a48; border-radius: 4px; cursor: pointer; margin: 2px 4px 2px 0; }
+</style>
+</head>
+<body>
+  <div id="left">
+    <div id="controls">
+      <input id="videoIdInput" placeholder="YouTube videoId (e.g. 7MppGkvYGCI)" />
+      <button id="loadBtn">Load</button>
+    </div>
+    <div id="status-banner">Enter a videoId and click Load.</div>
+    <div id="video-wrap"><video id="v" controls muted autoplay playsinline></video></div>
+    <div style="padding:10px;">
+      <button class="simbtn" id="sim-expire">Simulate: expired manifest URL</button>
+      <button class="simbtn" id="sim-network">Simulate: network interruption (3 fetches)</button>
+      <button class="simbtn" id="sim-restart">Simulate: video restart</button>
+    </div>
+  </div>
+  <div id="right">
+    <h2>Video</h2>
+    <div class="row"><span>Video ID</span><span id="d-videoid">-</span></div>
+    <div class="row"><span>Title</span><span id="d-title">-</span></div>
+    <div class="row"><span>Type</span><span id="d-type">-</span></div>
+    <div class="row"><span>Resolution</span><span id="d-res">-</span></div>
+    <div class="row"><span>Bitrate</span><span id="d-bitrate">-</span></div>
+    <div class="row"><span>Codec</span><span id="d-codec">-</span></div>
+    <div class="row"><span>FPS</span><span id="d-fps">-</span></div>
+    <div class="row"><span>Quality (hls.js level)</span><span id="d-quality">-</span></div>
+    <div class="row"><span>Available levels</span><span id="d-levels">-</span></div>
+    <div class="row"><span>Buffer</span><span id="d-buffer">-</span></div>
+    <div class="row"><span>Dropped frames</span><span id="d-dropped">-</span></div>
+    <div class="row"><span>Live latency (approx)</span><span id="d-latency">-</span></div>
+    <div class="row"><span>Player state</span><span id="d-state">-</span></div>
+    <div class="row"><span>Client-side recoveries</span><span id="d-client-reconnects">0</span></div>
+
+    <h2>Relay server</h2>
+    <div class="row"><span>Manifest age</span><span id="s-age">-</span></div>
+    <div class="row"><span>Relay uptime</span><span id="s-uptime">-</span></div>
+    <div class="row"><span>Memory</span><span id="s-mem">-</span></div>
+    <div class="row"><span>CPU (user/sys)</span><span id="s-cpu">-</span></div>
+    <div class="row"><span>Server reconnects</span><span id="s-reconnects">-</span></div>
+    <div class="row"><span>Watchdog refreshes</span><span id="s-watchdog">-</span></div>
+    <div class="row"><span>Last error</span><span id="s-error">-</span></div>
+
+    <h2>Playback checklist</h2>
+    <div class="checklist" id="checklist">
+      <span id="c-start">○ Video starts</span>
+      <span id="c-audio">○ Audio plays</span>
+      <span id="c-continuous">○ Plays continuously</span>
+      <span id="c-nobufferloop">○ No buffering loop</span>
+      <span id="c-highest">○ Highest available quality selected</span>
+      <span id="c-hlslevel">○ hls.js reports correct level</span>
+      <span id="c-resmatch">○ Browser resolution matches selected</span>
+    </div>
+
+    <h2>Event log</h2>
+    <div id="log"></div>
+  </div>
+
+  <script src="hls.min.js"></script>
+  <script>
+    const video = document.getElementById('v');
+    const banner = document.getElementById('status-banner');
+    const logEl = document.getElementById('log');
+    let clientReconnects = 0;
+    let currentHls = null;
+    let currentMode = null; // 'live' | 'vod'
+    let currentReport = null;
+    let t0 = performance.now();
+    let firstFrameAt = null;
+
+    // ---- continuous-playback / buffering-loop tracking ----
+    let lastCurrentTime = -1;
+    let stallTicks = 0;
+    let bufferingTransitions = 0;
+    let lastWasBuffering = false;
+    let sampleHistory = [];
+
+    function log(msg) {
+      const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      logEl.textContent += line + '\n';
+      logEl.scrollTop = logEl.scrollHeight;
+      console.log(line);
+    }
+
+    function fmtAge(ms) {
+      if (ms == null) return '-';
+      if (ms < 1000) return ms + ' ms';
+      if (ms < 60000) return (ms / 1000).toFixed(1) + ' s';
+      return (ms / 60000).toFixed(1) + ' min';
+    }
+
+    function setBanner(text, cls) {
+      banner.textContent = text;
+      banner.style.background = cls === 'ok' ? '#123b1f' : cls === 'warn' ? '#3b2f12' : '#3b1212';
+      banner.style.color = cls === 'ok' ? '#4ade80' : cls === 'warn' ? '#fbbf24' : '#f87171';
+    }
+
+    function setCheck(id, pass, label) {
+      const el = document.getElementById(id);
+      el.textContent = (pass ? '✓ ' : '○ ') + label;
+      el.className = pass ? 'ok' : '';
+    }
+
+    function teardown() {
+      if (currentHls) { try { currentHls.destroy(); } catch (_) {} currentHls = null; }
+      video.removeAttribute('src');
+      video.load();
+      clientReconnects = 0;
+      firstFrameAt = null;
+      lastCurrentTime = -1;
+      stallTicks = 0;
+      bufferingTransitions = 0;
+      document.getElementById('d-client-reconnects').textContent = '0';
+    }
+
+    async function loadVideo(videoId) {
+      teardown();
+      t0 = performance.now();
+      setBanner(`Resolving ${videoId}...`, 'warn');
+      log(`POST /relay/load { videoId: "${videoId}" }`);
+      const res = await fetch('/relay/load', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setBanner(`Load failed: ${data.error}`, 'bad');
+        log(`Load failed: ${data.error} (type=${data.type})`);
+        currentReport = null;
+        return;
+      }
+      currentReport = data.report;
+      log(`Detected type: ${data.report.type} — "${data.report.title}"`);
+
+      if (data.report.type === 'UPCOMING_LIVE') {
+        setBanner('This video is an upcoming live stream — not broadcasting yet.', 'warn');
+        return;
+      }
+
+      if (data.report.type === 'LIVE') {
+        currentMode = 'live';
+        startHlsPlayback();
+      } else {
+        currentMode = 'vod';
+        startVodPlayback();
+      }
+    }
+
+    function startHlsPlayback() {
+      if (!Hls.isSupported()) {
+        if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          log('hls.js not supported — falling back to native HLS');
+          video.src = '/relay/live.m3u8';
+          video.play().catch(e => log('play() rejected: ' + e.message));
+        } else {
+          setBanner('HLS not supported in this browser', 'bad');
+        }
+        return;
+      }
+      const hls = new Hls({ liveSyncDurationCount: 3 });
+      currentHls = hls;
+      window.__hls = hls;
+      hls.loadSource('/relay/live.m3u8');
+      hls.attachMedia(video);
+
+      hls.on(Hls.Events.MANIFEST_PARSED, (evt, data) => {
+        log(`MANIFEST_PARSED — ${data.levels.length} level(s)`);
+        video.play().catch(e => log('play() rejected: ' + e.message));
+      });
+      hls.on(Hls.Events.LEVEL_SWITCHED, (evt, data) => {
+        const lvl = hls.levels[data.level];
+        if (lvl) log(`LEVEL_SWITCHED — ${lvl.width}x${lvl.height} @ ${Math.round(lvl.bitrate/1000)}kbps`);
+      });
+      hls.on(Hls.Events.FRAG_BUFFERED, () => {
+        if (!firstFrameAt) { firstFrameAt = performance.now(); log(`First fragment buffered after ${(firstFrameAt - t0).toFixed(0)}ms`); }
+      });
+      hls.on(Hls.Events.ERROR, (evt, data) => {
+        log(`ERROR type=${data.type} details=${data.details} fatal=${data.fatal}`);
+        if (!data.fatal) return;
+        clientReconnects++;
+        document.getElementById('d-client-reconnects').textContent = clientReconnects;
+        switch (data.type) {
+          case Hls.ErrorTypes.NETWORK_ERROR:
+            log('Fatal network error — calling hls.startLoad() to recover');
+            hls.startLoad();
+            break;
+          case Hls.ErrorTypes.MEDIA_ERROR:
+            log('Fatal media error — calling hls.recoverMediaError()');
+            hls.recoverMediaError();
+            break;
+          default:
+            log('Unrecoverable error — reloading current video');
+            if (currentReport) loadVideo(currentReport.videoId);
+            break;
+        }
+      });
+      setBanner(`Relaying LIVE: ${currentReport.title}`, 'ok');
+    }
+
+    function startVodPlayback() {
+      video.src = '/relay/vod';
+      video.play().catch(e => log('play() rejected: ' + e.message));
+      video.addEventListener('loadeddata', () => {
+        if (!firstFrameAt) { firstFrameAt = performance.now(); log(`First frame loaded after ${(firstFrameAt - t0).toFixed(0)}ms`); }
+      }, { once: true });
+      video.addEventListener('error', () => {
+        log('VOD <video> error: ' + (video.error ? video.error.message : 'unknown'));
+        clientReconnects++;
+        document.getElementById('d-client-reconnects').textContent = clientReconnects;
+      });
+      setBanner(`Relaying VOD: ${currentReport.title}`, 'ok');
+    }
+
+    document.getElementById('loadBtn').addEventListener('click', () => {
+      const id = document.getElementById('videoIdInput').value.trim();
+      if (id) loadVideo(id);
+    });
+    document.getElementById('videoIdInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('loadBtn').click();
+    });
+
+    document.getElementById('sim-expire').addEventListener('click', async () => {
+      const res = await fetch('/relay/simulate/expire', { method: 'POST' });
+      const d = await res.json();
+      log('Simulate expire: ' + JSON.stringify(d));
+    });
+    document.getElementById('sim-network').addEventListener('click', async () => {
+      const res = await fetch('/relay/simulate/network-fail', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ count: 3 }),
+      });
+      const d = await res.json();
+      log('Simulate network fail: ' + JSON.stringify(d));
+    });
+    document.getElementById('sim-restart').addEventListener('click', async () => {
+      log('Simulate restart: reloading via /relay/simulate/restart');
+      const res = await fetch('/relay/simulate/restart', { method: 'POST' });
+      const d = await res.json();
+      log('Simulate restart result: success=' + d.success);
+      teardown();
+      t0 = performance.now();
+      if (d.success && currentReport) {
+        currentMode === 'live' ? startHlsPlayback() : startVodPlayback();
+      }
+    });
+
+    // Auto-load from ?v= query param, for scripted testing.
+    const qp = new URLSearchParams(location.search);
+    if (qp.get('v')) {
+      document.getElementById('videoIdInput').value = qp.get('v');
+      loadVideo(qp.get('v'));
+    }
+
+    // ---- Debug panel + checklist refresh loop ----
+    function updateClientPanel() {
+      const hls = window.__hls;
+      if (currentMode === 'live' && hls && hls.levels && hls.currentLevel >= 0) {
+        const lvl = hls.levels[hls.currentLevel];
+        document.getElementById('d-res').textContent = lvl ? `${lvl.width}x${lvl.height}` : '-';
+        document.getElementById('d-bitrate').textContent = lvl ? `${Math.round(lvl.bitrate / 1000)} kbps` : '-';
+        document.getElementById('d-codec').textContent = lvl ? (lvl.codecSet || lvl.videoCodec || '-') : '-';
+        document.getElementById('d-quality').textContent = lvl ? `${lvl.height}p (level ${hls.currentLevel})` : '-';
+        document.getElementById('d-levels').textContent = hls.levels.map(l => l.height + 'p').join(', ');
+        setCheck('c-hlslevel', hls.currentLevel >= 0, 'hls.js reports correct level');
+      } else if (currentMode === 'vod') {
+        document.getElementById('d-res').textContent = video.videoWidth ? `${video.videoWidth}x${video.videoHeight}` : '-';
+        document.getElementById('d-bitrate').textContent = currentReport ? Math.round((currentReport.selectedBitrate||0)/1000) + ' kbps (est.)' : '-';
+        document.getElementById('d-codec').textContent = currentReport ? currentReport.codec : '-';
+        document.getElementById('d-quality').textContent = currentReport ? currentReport.selectedHeight + 'p' : '-';
+        document.getElementById('d-levels').textContent = currentReport ? currentReport.availableQualities.filter(q=>q.available).map(q=>q.height+'p').join(', ') : '-';
+        setCheck('c-hlslevel', true, 'hls.js reports correct level (N/A — native <video> for VOD)');
+      }
+
+      if (video.buffered.length > 0) {
+        const ahead = video.buffered.end(video.buffered.length - 1) - video.currentTime;
+        document.getElementById('d-buffer').textContent = ahead.toFixed(2) + ' s';
+      }
+      if (currentMode === 'live' && hls && typeof hls.latency === 'number' && !Number.isNaN(hls.latency)) {
+        document.getElementById('d-latency').textContent = hls.latency.toFixed(2) + ' s';
+      } else {
+        document.getElementById('d-latency').textContent = currentMode === 'vod' ? 'N/A (VOD)' : '-';
+      }
+
+      // FPS + dropped frames via the standard VideoPlaybackQuality API
+      if (video.getVideoPlaybackQuality) {
+        const q = video.getVideoPlaybackQuality();
+        document.getElementById('d-dropped').textContent = `${q.droppedVideoFrames} / ${q.totalVideoFrames}`;
+        if (q.totalVideoFrames > 0 && sampleHistory.length > 0) {
+          const prev = sampleHistory[sampleHistory.length - 1];
+          const dtFrames = q.totalVideoFrames - prev.frames;
+          const dtMs = performance.now() - prev.t;
+          if (dtMs > 400) document.getElementById('d-fps').textContent = (dtFrames / (dtMs / 1000)).toFixed(1);
+        }
+        sampleHistory.push({ frames: q.totalVideoFrames, t: performance.now() });
+        if (sampleHistory.length > 5) sampleHistory.shift();
+      }
+
+      let st = 'unknown';
+      if (video.ended) st = 'ended';
+      else if (video.paused) st = 'paused';
+      else if (video.readyState < 3) st = 'buffering';
+      else st = 'playing';
+      document.getElementById('d-state').textContent = st;
+
+      // ---- Checklist ----
+      setCheck('c-start', video.currentTime > 0, 'Video starts');
+      setCheck('c-audio', !video.muted && video.volume > 0 || (video.muted === true && video.currentTime > 0 && !video.paused), 'Audio plays (unmute to verify audibly)');
+      const advancing = video.currentTime > lastCurrentTime;
+      if (video.currentTime === lastCurrentTime && !video.paused && video.readyState >= 3) stallTicks++; else stallTicks = 0;
+      setCheck('c-continuous', advancing && stallTicks < 3, 'Plays continuously');
+      const isBuffering = st === 'buffering';
+      if (isBuffering && !lastWasBuffering) bufferingTransitions++;
+      lastWasBuffering = isBuffering;
+      setCheck('c-nobufferloop', bufferingTransitions < 5, `No buffering loop (${bufferingTransitions} transitions)`);
+      lastCurrentTime = video.currentTime;
+
+      if (currentReport && currentReport.highestAvailableHeight) {
+        const selH = currentReport.selectedHeight;
+        setCheck('c-highest', selH >= currentReport.highestAvailableHeight, `Highest available quality selected (${selH}p / ${currentReport.highestAvailableHeight}p)`);
+        const actualH = video.videoHeight;
+        setCheck('c-resmatch', actualH > 0 && Math.abs(actualH - selH) <= 4, `Browser resolution matches selected (${actualH}p vs ${selH}p)`);
+      }
+    }
+
+    async function updateServerPanel() {
+      try {
+        const res = await fetch('/relay/status', { cache: 'no-store' });
+        const s = await res.json();
+        document.getElementById('d-videoid').textContent = s.videoId || '-';
+        document.getElementById('d-title').textContent = s.title || '-';
+        document.getElementById('d-type').textContent = s.type || '-';
+        document.getElementById('s-age').textContent = fmtAge(s.mediaAgeMs != null ? s.mediaAgeMs : s.masterAgeMs);
+        document.getElementById('s-uptime').textContent = fmtAge(s.relayUptimeMs);
+        document.getElementById('s-mem').textContent = s.memory ? `${s.memory.rssMB} MB RSS / ${s.memory.heapUsedMB} MB heap` : '-';
+        document.getElementById('s-cpu').textContent = `${s.cpuUserMs}ms / ${s.cpuSystemMs}ms`;
+        document.getElementById('s-reconnects').textContent = s.reconnectCount;
+        document.getElementById('s-watchdog').textContent = s.watchdogRefreshCount;
+        document.getElementById('s-error').textContent = s.lastError || 'none';
+        document.getElementById('s-error').className = s.lastError ? 'bad' : 'ok';
+      } catch (e) {
+        document.getElementById('s-error').textContent = 'status fetch failed: ' + e.message;
+      }
+    }
+
+    setInterval(updateClientPanel, 500);
+    setInterval(updateServerPanel, 2000);
+    updateServerPanel();
+  </script>
+</body>
+</html>

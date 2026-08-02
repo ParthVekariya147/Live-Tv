@@ -32,6 +32,88 @@
     const LIVE_PLAYER_EVENT_KEY = 'livePlayerEvent';
     let isLoadingVideo = false; // Flag to prevent videoEnded during loading
     let timeUpdateInterval = null; // 24/7 Reliability: Track interval for cleanup
+    // Manual quality override from the controller's "Quality" dropdown ("setQuality"
+    // command). 'auto' = old behavior (always chase the top tier YT offers). Any other
+    // value ('hd1080', 'hd720', 'large', ...) pins to that exact tier when YouTube's
+    // getAvailableQualityLevels() actually offers it for the current stream — falls
+    // back to the top available tier otherwise (e.g. a live stream that hasn't
+    // published that rendition yet). Persists across video loads on this page; a
+    // fresh page load (OBS reloading the browser source) resets to 'auto'.
+    let desiredQuality = "auto";
+
+    // ============================================================================
+    // QUALITY DIAGNOSTIC INSTRUMENTATION — pure observability, changes no behavior.
+    // Every entry also lands in window.__qualityDebugLog (capped at 2000) so you can
+    // pull the full structured trail out of DevTools after the fact, e.g.:
+    //   copy(JSON.stringify(window.__qualityDebugLog))
+    // Filter the console on "[QUALITY" to see just this instrumentation.
+    // ============================================================================
+    window.__qualityDebugLog = [];
+    window.__qualityLevelsEverSeen = new Set(); // every distinct tier YT has EVER reported as available
+    function QLOG(tag, data) {
+      const entry = { t: Date.now(), iso: new Date().toISOString(), tag, ...data };
+      window.__qualityDebugLog.push(entry);
+      if (window.__qualityDebugLog.length > 2000) window.__qualityDebugLog.shift();
+      console.log("[QUALITY][" + tag + "]", entry);
+      return entry;
+    }
+    function safeCall(fn, fallback) {
+      try { return fn(); } catch (e) { return fallback !== undefined ? fallback : ("ERROR: " + e.message); }
+    }
+    // Records every level YT has ever reported as available, and shouts the first time
+    // each of the 8 standard tiers (hd2160 down to tiny) is or isn't ever seen — this is
+    // the direct evidence for "does YouTube ever expose hd1080 for this video/stream".
+    const ALL_KNOWN_TIERS = ["hd2160", "hd1440", "hd1080", "hd720", "large", "medium", "small", "tiny"];
+    function trackLevels(levels, source) {
+      if (!levels || !levels.length) return;
+      let newOnes = [];
+      levels.forEach((lvl) => {
+        if (!window.__qualityLevelsEverSeen.has(lvl)) {
+          window.__qualityLevelsEverSeen.add(lvl);
+          newOnes.push(lvl);
+        }
+      });
+      if (newOnes.length) {
+        QLOG("NEW_LEVEL_OBSERVED", {
+          source,
+          newlyObserved: newOnes,
+          allEverSeen: Array.from(window.__qualityLevelsEverSeen),
+          tierPresence: Object.fromEntries(ALL_KNOWN_TIERS.map(t => [t, window.__qualityLevelsEverSeen.has(t)])),
+        });
+      }
+    }
+    // Full player snapshot per the requested diagnostic spec: quality, available levels,
+    // loaded fraction, player state, and video data (id/title/author) all at once.
+    function snapshotPlayer(target, label) {
+      const quality = safeCall(() => target.getPlaybackQuality());
+      const levels = safeCall(() => target.getAvailableQualityLevels(), []);
+      const loadedFraction = safeCall(() => target.getVideoLoadedFraction());
+      const state = safeCall(() => target.getPlayerState());
+      const videoData = safeCall(() => target.getVideoData());
+      trackLevels(levels, label);
+      return QLOG("SNAPSHOT", { label, quality, availableLevels: levels, loadedFraction, playerState: state, videoData });
+    }
+    // Wraps EVERY setPlaybackQuality call (from any call site) with before/after logging
+    // plus delayed re-checks at +100/+500/+1000/+3000ms, to catch YouTube silently
+    // reverting the request shortly after we make it (conclusion B) vs. our own later
+    // code stepping on it (conclusion C, traceable via the "callSite" tag on each entry).
+    function wrappedSetPlaybackQuality(target, requested, callSite) {
+      if (!target) { QLOG("QUALITY_REQUEST_SKIPPED_NO_TARGET", { callSite, requested }); return; }
+      const before = safeCall(() => target.getPlaybackQuality());
+      const availableBefore = safeCall(() => target.getAvailableQualityLevels(), []);
+      trackLevels(availableBefore, callSite);
+      QLOG("QUALITY_REQUEST", { callSite, requested, before, availableBefore });
+      target.setPlaybackQuality(requested);
+      [100, 500, 1000, 3000].forEach((delay) => {
+        setTimeout(() => {
+          if (!target) return;
+          const after = safeCall(() => target.getPlaybackQuality());
+          const availableAfter = safeCall(() => target.getAvailableQualityLevels(), []);
+          trackLevels(availableAfter, callSite + "+" + delay + "ms");
+          QLOG("QUALITY_REQUEST_FOLLOWUP", { callSite, requested, delayMs: delay, after, availableAfter, matchedRequest: after === requested });
+        }, delay);
+      });
+    }
     // See LoopPlayer.html for why this queue exists: a freshly-constructed YT.Player's
     // control methods aren't attached until onReady fires, so "play"/"unmute" commands
     // that immediately follow the "loadVideo" that created it can throw "is not a
@@ -66,28 +148,48 @@
             player.seekTo(data.seconds, true);
           }
           break;
+        case "setQuality":
+          if (data.quality) {
+            desiredQuality = data.quality;
+            console.log("[LivePlayer][Quality] Desired quality set to:", desiredQuality);
+            applyQualityTarget(player);
+            startQualityBurst();
+          }
+          break;
         case "destroy":
+          QLOG("PLAYER_DESTROY", {});
           if (timeUpdateInterval) {
             clearInterval(timeUpdateInterval);
             timeUpdateInterval = null;
+          }
+          if (qualityHeartbeatInterval) {
+            clearInterval(qualityHeartbeatInterval);
+            qualityHeartbeatInterval = null;
           }
           player.destroy();
           player = null;
           playerReady = false;
           pendingCommands = [];
           break;
-        case "loadVideo":
+        case "loadVideo": {
           // loadVideoById() does not accept a playerVars object — that's only
           // valid in the new YT.Player() constructor. This used to nest vq
           // inside playerVars here, which YouTube silently ignored on every
           // video switch after the first; suggestedQuality is the documented
           // field for this call and the one YouTube actually reads.
+          const suggestedQuality = (desiredQuality !== "auto") ? desiredQuality : "hd1080";
+          const beforeLoad = snapshotPlayer(player, "before-loadVideoById");
+          QLOG("LOAD_VIDEO_BY_ID", { videoId: data.videoId, suggestedQuality, beforeQuality: beforeLoad.quality, beforeAvailable: beforeLoad.availableLevels });
           player.loadVideoById({
             videoId: data.videoId,
-            suggestedQuality: "hd1080", // best-effort quality hint — see enforceHighestQuality
+            suggestedQuality, // best-effort quality hint — see applyQualityTarget
+          });
+          [100, 500, 1000, 3000].forEach((delay) => {
+            setTimeout(() => { if (player) snapshotPlayer(player, "loadVideoById+" + delay + "ms"); }, delay);
           });
           startQualityBurst();
           break;
+        }
       }
     }
 
@@ -112,7 +214,19 @@
             data
           );
 
-          if (data.command === "loadVideo" && data.videoId) {
+          if (data.command === "setQuality") {
+            // Handled here too (not just in applyCommand) so the desired quality is
+            // remembered even before any video has ever been loaded on this page —
+            // applyQualityTarget() picks it up automatically once a player exists.
+            if (data.quality) {
+              desiredQuality = data.quality;
+              console.log("[LivePlayer][Quality] Desired quality set to:", desiredQuality);
+              if (player && playerReady) {
+                applyQualityTarget(player);
+                startQualityBurst();
+              }
+            }
+          } else if (data.command === "loadVideo" && data.videoId) {
             isLoadingVideo = true; // Set loading flag
             if (player) {
               // Same readiness gap as any other command: if this player was
@@ -131,6 +245,11 @@
               }
               playerReady = false;
               pendingCommands = [];
+              // vq only accepts YouTube's quality-tier tokens (small/medium/large/
+              // hd720/hd1080/highres) — 'auto' isn't one, so fall back to the hd1080
+              // hint in that case, same as before manual override existed.
+              const initialQualityHint = (desiredQuality !== "auto") ? desiredQuality : "hd1080";
+              QLOG("NEW_YT_PLAYER", { videoId: data.videoId, vqHint: initialQualityHint, desiredQuality });
               player = new YT.Player("player", {
                 videoId: data.videoId,
                 playerVars: {
@@ -141,13 +260,15 @@
                   rel: 0,
                   fs: 1,
                   iv_load_policy: 3,
-                  vq: "hd1080", // best-effort initial quality hint — see enforceHighestQuality
+                  vq: initialQualityHint, // best-effort initial quality hint — see applyQualityTarget
                 },
                 events: {
                   onReady: onPlayerReady,
                   onStateChange: onPlayerStateChange,
                   onError: onPlayerError,
-                  onPlaybackQualityChange: onQualityChange
+                  onPlaybackQualityChange: onQualityChange,
+                  onPlaybackRateChange: onPlaybackRateChange,
+                  onApiChange: onApiChange,
                 },
               });
             }
@@ -169,30 +290,51 @@
 
     function onPlayerReady(event) {
       console.log("LivePlayer is ready!");
+      QLOG("EVENT_onReady", {});
+      // Diagnostic spec item 1: full snapshot the instant the player becomes ready,
+      // before we've touched quality at all — this is the ground truth for "what does
+      // YouTube think is available right out of the gate".
+      snapshotPlayer(event.target, "onReady-immediate");
       playerReady = true;
       event.target.playVideo();
       // event.target.mute(); // Commented out to allow unmuted playback on load
-      enforceHighestQuality(event.target);
+      applyQualityTarget(event.target);
       startQualityBurst();
       const queued = pendingCommands;
       pendingCommands = [];
       queued.forEach(applyCommand);
     }
 
+    // Picks which tier to request: 'auto' always chases the top tier YouTube
+    // currently offers (levels[0] — getAvailableQualityLevels() is sorted
+    // highest → lowest, e.g. hd2160, hd1440, hd1080, hd720, large, medium,
+    // small, tiny). A manual desiredQuality is honored only if YouTube is
+    // actually offering that exact tier for this video/stream right now —
+    // live streams in particular often don't publish every tier immediately,
+    // so an unavailable manual pick falls back to the top available tier
+    // instead of silently doing nothing.
+    function pickQualityTarget(levels) {
+      if (desiredQuality !== "auto" && levels && levels.indexOf(desiredQuality) !== -1) {
+        return desiredQuality;
+      }
+      return (levels && levels.length) ? levels[0] : null;
+    }
+
     // YouTube's IFrame API treats quality as a hint, not a guarantee — it can still
     // downgrade under bandwidth pressure. This runs on a fixed gigabit LAN with no
-    // such constraint, so always pin to the highest tier YouTube offers for the
-    // current video. getAvailableQualityLevels() is sorted highest → lowest (e.g.
-    // hd2160, hd1440, hd1080, hd720, large, medium, small, tiny) but is only
-    // populated once the video actually starts buffering, so this alone can't
-    // always land the very first frame at the top tier — onQualityChange below
-    // re-asserts it the moment YouTube reports its own (usually lower) auto-pick.
-    function enforceHighestQuality(target) {
+    // such constraint, so this always pins to pickQualityTarget()'s pick. Logged
+    // under the [Quality] tag so it's easy to filter in DevTools while debugging
+    // why a stream is stuck at a lower tier — compare "available" (what YouTube is
+    // actually offering right now) against "target" (what we're asking for).
+    function applyQualityTarget(target) {
       try {
         const levels = target.getAvailableQualityLevels();
-        target.setPlaybackQuality(levels && levels.length ? levels[0] : "highres");
+        trackLevels(levels, "applyQualityTarget");
+        const pick = pickQualityTarget(levels) || "highres";
+        wrappedSetPlaybackQuality(target, pick, "applyQualityTarget");
       } catch (e) {
         console.warn("LivePlayer: could not set playback quality:", e);
+        QLOG("QUALITY_APPLY_ERROR", { error: e.message });
       }
     }
 
@@ -211,16 +353,31 @@
           qualityBurstTimer = null;
           return;
         }
-        enforceHighestQuality(player);
+        applyQualityTarget(player);
       }, 250);
     }
 
     function onQualityChange(event) {
+      // This event firing IS YouTube telling us it changed the quality — capture that
+      // fact plainly (conclusion A/B evidence) before we possibly correct it (which
+      // would be conclusion C/our-own-code evidence, traceable via callSite below).
+      QLOG("EVENT_onPlaybackQualityChange", { reportedQuality: event.data });
       if (!player) return;
       const levels = player.getAvailableQualityLevels();
-      if (levels && levels.length && event.data !== levels[0]) {
-        player.setPlaybackQuality(levels[0]);
+      trackLevels(levels, "onQualityChange");
+      const target = pickQualityTarget(levels);
+      if (target && event.data !== target) {
+        wrappedSetPlaybackQuality(player, target, "onQualityChange-correction");
       }
+    }
+
+    function onPlaybackRateChange(event) {
+      QLOG("EVENT_onPlaybackRateChange", { rate: event.data });
+    }
+
+    function onApiChange(event) {
+      const availableOptions = safeCall(() => player && player.getOptions ? player.getOptions() : undefined);
+      QLOG("EVENT_onApiChange", { availableOptions });
     }
 
     function onPlayerStateChange(event) {
@@ -263,9 +420,14 @@
           state = "unknown";
       }
       console.log("LivePlayer state changed:", state);
+      // Snapshot on every state transition — correlates BUFFERING/PLAYING transitions
+      // (YouTube's most common quality-downgrade trigger points) with quality at that instant.
+      if (player) snapshotPlayer(player, "onStateChange-" + state);
+      QLOG("EVENT_onStateChange", { rawState: event.data, state });
     }
 
     function onPlayerError(event) {
+      QLOG("EVENT_onError", { errorCode: event.data });
       let errorMessage = "Unknown error";
       switch (event.data) {
         case 2:
@@ -332,11 +494,36 @@
         // holds a video at a lower tier, so piggyback a re-check on this
         // already-running 1s tick as a backstop to the event-driven enforcement.
         const levels = player.getAvailableQualityLevels();
-        if (levels && levels.length && player.getPlaybackQuality() !== levels[0]) {
-          player.setPlaybackQuality(levels[0]);
+        trackLevels(levels, "backstopTick");
+        const current = player.getPlaybackQuality();
+        const target = pickQualityTarget(levels);
+        if (target && current !== target) {
+          wrappedSetPlaybackQuality(player, target, "backstopTick-correction");
         }
       }
     }, 1000);
+
+    // ============================================================================
+    // DIAGNOSTIC HEARTBEAT — spec item 5: logs full quality/state/buffer/rate info
+    // every second regardless of player state (not just while PLAYING, unlike the
+    // backstop above), so the record covers CUED/BUFFERING/PAUSED too. Read-only —
+    // makes no quality decisions or corrections of its own.
+    // ============================================================================
+    let qualityHeartbeatInterval = setInterval(() => {
+      if (!player || typeof player.getPlayerState !== "function") return;
+      const levels = safeCall(() => player.getAvailableQualityLevels(), []);
+      trackLevels(levels, "heartbeat");
+      QLOG("HEARTBEAT", {
+        quality: safeCall(() => player.getPlaybackQuality()),
+        availableLevels: levels,
+        playerState: safeCall(() => player.getPlayerState()),
+        currentTime: safeCall(() => player.getCurrentTime()),
+        videoLoadedFraction: safeCall(() => player.getVideoLoadedFraction()),
+        playbackRate: safeCall(() => player.getPlaybackRate()),
+        desiredQuality,
+      });
+    }, 1000);
+
     loadYouTubeAPI();
   </script>
 </body>

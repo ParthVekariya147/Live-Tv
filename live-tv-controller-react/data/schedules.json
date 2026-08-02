@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "lastModified": "2026-07-31T17:59:57.625Z",
+  "lastModified": "2026-08-02T07:49:08.099Z",
   "schedulerEnabled": true,
   "schedules": [
     {
@@ -99,8 +99,8 @@
       ],
       "title": "Loop: Prabhatiya",
       "enabled": true,
-      "lastTriggered": "2026-07-31-05:30",
-      "lastTriggeredAt": "2026-07-31T04:26:55.986Z",
+      "lastTriggered": "2026-08-02-05:30",
+      "lastTriggeredAt": "2026-08-02T05:45:04.617Z",
       "createdAt": "2026-07-29T09:59:40.004Z"
     },
     {
@@ -120,8 +120,8 @@
       ],
       "title": "Loop: PM",
       "enabled": true,
-      "lastTriggered": "2026-07-31-10:00",
-      "lastTriggeredAt": "2026-07-31T12:01:47.366Z",
+      "lastTriggered": "2026-08-02-10:00",
+      "lastTriggeredAt": "2026-08-02T05:45:04.727Z",
       "createdAt": "2026-07-29T09:59:54.127Z"
     },
     {
@@ -162,8 +162,8 @@
       ],
       "title": "Loop: Prabhatiya",
       "enabled": true,
-      "lastTriggered": "2026-07-31-05:30",
-      "lastTriggeredAt": "2026-07-31T04:26:56.170Z",
+      "lastTriggered": "2026-08-02-05:30",
+      "lastTriggeredAt": "2026-08-02T05:45:04.774Z",
       "createdAt": "2026-07-29T09:59:56.385Z"
     },
     {
@@ -235,60 +235,12 @@
       ],
       "title": "Loop: Prabhatiya",
       "enabled": true,
-      "lastTriggered": "2026-07-31-05:30",
-      "lastTriggeredAt": "2026-07-31T04:26:56.350Z",
+      "lastTriggered": "2026-08-02-05:30",
+      "lastTriggeredAt": "2026-08-02T05:45:04.829Z",
       "createdAt": "2026-07-30T15:41:32.632Z"
     }
   ],
   "executionHistory": [
-    {
-      "id": 1784811376835,
-      "timestamp": "2026-07-23T12:56:16.835Z",
-      "scheduleId": 1782761879770,
-      "source": "Local Player",
-      "action": "show",
-      "title": "",
-      "status": "success",
-      "reason": "catch-up",
-      "executionTimeMs": 109,
-      "error": null
-    },
-    {
-      "id": 1784811377039,
-      "timestamp": "2026-07-23T12:56:17.039Z",
-      "scheduleId": 1782762594091,
-      "source": "Delay Live",
-      "action": "show",
-      "title": "",
-      "status": "success",
-      "reason": "catch-up",
-      "executionTimeMs": 128,
-      "error": null
-    },
-    {
-      "id": 1784811377242,
-      "timestamp": "2026-07-23T12:56:17.242Z",
-      "scheduleId": 1782762631707,
-      "source": "Local Player",
-      "action": "show",
-      "title": "",
-      "status": "success",
-      "reason": "catch-up",
-      "executionTimeMs": 125,
-      "error": null
-    },
-    {
-      "id": 1784811377440,
-      "timestamp": "2026-07-23T12:56:17.440Z",
-      "scheduleId": 1782763892475,
-      "source": "Live Player",
-      "action": "show",
-      "title": "",
-      "status": "success",
-      "reason": "catch-up",
-      "executionTimeMs": 124,
-      "error": null
-    },
     {
       "id": 1784811377629,
       "timestamp": "2026-07-23T12:56:17.629Z",
@@ -1439,6 +1391,54 @@
       "status": "success",
       "reason": "catch-up",
       "executionTimeMs": 536,
+      "error": null
+    },
+    {
+      "id": 1785649504716,
+      "timestamp": "2026-08-02T05:45:04.716Z",
+      "scheduleId": "pa_id-51sdqp8zh_1785319179949_7rgk",
+      "source": "Playlist Automation",
+      "action": "playlist_automation",
+      "title": "Loop: Prabhatiya",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 102,
+      "error": null
+    },
+    {
+      "id": 1785649504762,
+      "timestamp": "2026-08-02T05:45:04.762Z",
+      "scheduleId": "pa_id-13leybpd4_1785319193903_msnx",
+      "source": "Playlist Automation",
+      "action": "playlist_automation",
+      "title": "Loop: PM",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 34,
+      "error": null
+    },
+    {
+      "id": 1785649504815,
+      "timestamp": "2026-08-02T05:45:04.815Z",
+      "scheduleId": "pa_id-51sdqp8zh_1785319196261_gmv3",
+      "source": "Playlist Automation",
+      "action": "playlist_automation",
+      "title": "Loop: Prabhatiya",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 41,
+      "error": null
+    },
+    {
+      "id": 1785649504869,
+      "timestamp": "2026-08-02T05:45:04.869Z",
+      "scheduleId": "pa_id-51sdqp8zh_1785426092541_cwut",
+      "source": "Playlist Automation",
+      "action": "playlist_automation",
+      "title": "Loop: Prabhatiya",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 40,
       "error": null
     }
   ]

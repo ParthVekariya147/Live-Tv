@@ -247,7 +247,10 @@
     function enforceHighestQuality(target) {
       try {
         const levels = target.getAvailableQualityLevels();
-        target.setPlaybackQuality(levels && levels.length ? levels[0] : "highres");
+        const current = (typeof target.getPlaybackQuality === "function") ? target.getPlaybackQuality() : undefined;
+        const pick = (levels && levels.length) ? levels[0] : "highres";
+        console.log("[LoopPlayer][Quality] available=[" + (levels || []).join(",") + "] current=" + current + " -> setting=" + pick);
+        target.setPlaybackQuality(pick);
       } catch (e) {
         console.warn("LoopPlayer: could not set playback quality:", e);
       }
@@ -275,6 +278,7 @@
     function onQualityChange(event) {
       if (!player) return;
       const levels = player.getAvailableQualityLevels();
+      console.log("[LoopPlayer][Quality] YouTube reported quality change -> " + event.data + " | available=[" + (levels || []).join(",") + "]");
       if (levels && levels.length && event.data !== levels[0]) {
         player.setPlaybackQuality(levels[0]);
       }
@@ -393,9 +397,13 @@
         // onPlaybackQualityChange doesn't always fire when YouTube silently
         // holds a video at a lower tier, so piggyback a re-check on this
         // already-running 1s tick as a backstop to the event-driven enforcement.
+        // Logged every tick under [Quality] — filter DevTools console on that tag.
         const levels = player.getAvailableQualityLevels();
-        if (levels && levels.length && player.getPlaybackQuality() !== levels[0]) {
-          player.setPlaybackQuality(levels[0]);
+        const current = player.getPlaybackQuality();
+        const target = (levels && levels.length) ? levels[0] : null;
+        console.log("[LoopPlayer][Quality] tick current=" + current + " target=" + target + " available=[" + (levels || []).join(",") + "]");
+        if (target && current !== target) {
+          player.setPlaybackQuality(target);
         }
       }
     }, 1000);

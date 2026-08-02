@@ -1,0 +1,8 @@
+{
+  "name": "live-relay-poc",
+  "private": true,
+  "description": "Standalone PoC — not part of the production app. See live-relay.cjs.",
+  "dependencies": {
+    "hls.js": "^1.6.16"
+  }
+}

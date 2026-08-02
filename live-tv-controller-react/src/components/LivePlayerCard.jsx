@@ -58,6 +58,21 @@ const LivePlayerCard = () => {
     const [isMuted, setIsMuted] = useState(false);
     const [isStopped, setIsStopped] = useState(false);
 
+    // Manual quality override — mirrors YouTube's own gear-icon quality picker. 'auto'
+    // (default) keeps LivePlayer.html's existing behavior of always chasing the top
+    // tier YouTube offers. Live streams in particular sometimes hold at a lower tier
+    // regardless, since YouTube doesn't always publish every rendition for a live
+    // broadcast — picking a specific tier here still only works if YouTube is actually
+    // offering it (see LivePlayer.html's pickQualityTarget), but gives a manual lever
+    // when the automatic top-tier chase isn't landing.
+    const [desiredQuality, setDesiredQuality] = useState("auto");
+    const desiredQualityRef = useRef(desiredQuality);
+    useEffect(() => { desiredQualityRef.current = desiredQuality; }, [desiredQuality]);
+    useEffect(() => {
+        if (!isInitialized.current) return;
+        sendPlayerCommand('livePlayerCommand', 'setQuality', null, null, null, null, { quality: desiredQuality });
+    }, [desiredQuality]);
+
     const { title: videoTitle, thumbnail: videoThumbnail, loading: thumbLoading } = useVideoInfo(videoId);
     useEffect(() => { videoTitleRef.current = videoTitle || ''; }, [videoTitle]);
     const [loadingAction, setLoadingAction] = useState(false);
@@ -111,6 +126,7 @@ const LivePlayerCard = () => {
                 setIsPlaying(parsed.isPlaying ?? true);
                 setIsMuted(parsed.isMuted ?? false);
                 setIsStopped(parsed.isStopped ?? false);
+                setDesiredQuality(parsed.desiredQuality || "auto");
                 migrateLegacyEndGroup(parsed.endGroupId);
             } catch { /* ignore malformed localStorage */ }
         }
@@ -120,17 +136,17 @@ const LivePlayerCard = () => {
     // Save state to localStorage and server
     useEffect(() => {
         if (!isInitialized.current) return;
-        const state = { videoId, priority, isPlaying, isMuted, isStopped };
+        const state = { videoId, priority, isPlaying, isMuted, isStopped, desiredQuality };
         localStorage.setItem('livePlayerState', JSON.stringify(state));
         setStateValue('player.live', state);
-    }, [videoId, priority, isPlaying, isMuted, isStopped]);
+    }, [videoId, priority, isPlaying, isMuted, isStopped, desiredQuality]);
 
     // Always-current ref to flush current state on demand (pre-backup / pre-export)
     const flushStateRef = useRef(null);
     useEffect(() => {
         flushStateRef.current = () => {
             if (!isInitialized.current) return;
-            const state = { videoId, priority, isPlaying, isMuted, isStopped };
+            const state = { videoId, priority, isPlaying, isMuted, isStopped, desiredQuality };
             localStorage.setItem('livePlayerState', JSON.stringify(state));
             setStateValue('player.live', state);
         };
@@ -294,6 +310,7 @@ const LivePlayerCard = () => {
                 }
                 setVideoId(newVideoId);
                 sendPlayerCommand('livePlayerCommand', 'loadVideo', newVideoId);
+                sendPlayerCommand('livePlayerCommand', 'setQuality', null, null, null, null, { quality: desiredQualityRef.current });
                 sendPlayerCommand('livePlayerCommand', 'play');
                 sendPlayerCommand('livePlayerCommand', 'unmute');
                 setIsPlaying(true);
@@ -334,6 +351,7 @@ const LivePlayerCard = () => {
         const vid = videoIdRef.current;
         if (vid) {
             sendPlayerCommand('livePlayerCommand', 'loadVideo', vid);
+            sendPlayerCommand('livePlayerCommand', 'setQuality', null, null, null, null, { quality: desiredQualityRef.current });
             sendPlayerCommand('livePlayerCommand', 'play');
             sendPlayerCommand('livePlayerCommand', 'unmute');
             setIsPlaying(true);
@@ -403,6 +421,7 @@ const LivePlayerCard = () => {
 
         if (isVisible) {
             sendPlayerCommand('livePlayerCommand', 'loadVideo', videoId);
+            sendPlayerCommand('livePlayerCommand', 'setQuality', null, null, null, null, { quality: desiredQualityRef.current });
             sendPlayerCommand('livePlayerCommand', 'play');
             sendPlayerCommand('livePlayerCommand', 'unmute');
             setIsPlaying(true);
@@ -601,6 +620,27 @@ const LivePlayerCard = () => {
                     <option value="firstLive">First Live Event</option>
                     <option value="secondLive">Second Live Event</option>
                     <option value="matchSearchTerms">Match Search Terms</option>
+                </select>
+            </div>
+
+            <div className="flex flex-col w-full px-2 mt-2">
+                <label className="live-monitor-label mb-1 text-center" title="Mirrors YouTube's own quality picker. 'Auto' keeps always chasing the highest tier YouTube offers (default). Picking a specific tier only takes effect when YouTube is actually offering it for this stream right now — check the browser console on the Live Player page (filter for &quot;[Quality]&quot;) to see what's actually available.">
+                    Quality:
+                </label>
+                <select
+                    className="input-field"
+                    value={desiredQuality}
+                    onChange={(e) => setDesiredQuality(e.target.value)}
+                >
+                    <option value="auto">Auto (always highest available)</option>
+                    <option value="hd2160">2160p (4K)</option>
+                    <option value="hd1440">1440p (2K)</option>
+                    <option value="hd1080">1080p (HD)</option>
+                    <option value="hd720">720p (HD)</option>
+                    <option value="large">480p</option>
+                    <option value="medium">360p</option>
+                    <option value="small">240p</option>
+                    <option value="tiny">144p</option>
                 </select>
             </div>
 
