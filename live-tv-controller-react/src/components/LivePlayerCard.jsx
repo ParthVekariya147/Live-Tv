@@ -73,6 +73,23 @@ const LivePlayerCard = () => {
         sendPlayerCommand('livePlayerCommand', 'setQuality', null, null, null, null, { quality: desiredQuality });
     }, [desiredQuality]);
 
+    // Direct Relay — bypasses the YouTube IFrame API's quality controls entirely
+    // (setPlaybackQuality/getAvailableQualityLevels/suggestedQuality are confirmed
+    // no-ops since ~2018) by having the server pull the actual HLS stream via
+    // yt-dlp and playing it through hls.js on LivePlayer.html. Only takes effect
+    // for streams that are actually LIVE right now — LivePlayer.html silently
+    // stays on the normal YouTube iframe otherwise (upcoming/ended/VOD, or if the
+    // relay fails for any reason), so leaving this on is safe even when it can't
+    // apply. Off by default since it's a bigger architectural departure than the
+    // Quality dropdown above.
+    const [useRelay, setUseRelay] = useState(false);
+    const useRelayRef = useRef(useRelay);
+    useEffect(() => { useRelayRef.current = useRelay; }, [useRelay]);
+    useEffect(() => {
+        if (!isInitialized.current) return;
+        sendPlayerCommand('livePlayerCommand', 'setRelayMode', null, null, null, null, { useRelay });
+    }, [useRelay]);
+
     const { title: videoTitle, thumbnail: videoThumbnail, loading: thumbLoading } = useVideoInfo(videoId);
     useEffect(() => { videoTitleRef.current = videoTitle || ''; }, [videoTitle]);
     const [loadingAction, setLoadingAction] = useState(false);
@@ -127,6 +144,7 @@ const LivePlayerCard = () => {
                 setIsMuted(parsed.isMuted ?? false);
                 setIsStopped(parsed.isStopped ?? false);
                 setDesiredQuality(parsed.desiredQuality || "auto");
+                setUseRelay(parsed.useRelay ?? false);
                 migrateLegacyEndGroup(parsed.endGroupId);
             } catch { /* ignore malformed localStorage */ }
         }
@@ -136,17 +154,17 @@ const LivePlayerCard = () => {
     // Save state to localStorage and server
     useEffect(() => {
         if (!isInitialized.current) return;
-        const state = { videoId, priority, isPlaying, isMuted, isStopped, desiredQuality };
+        const state = { videoId, priority, isPlaying, isMuted, isStopped, desiredQuality, useRelay };
         localStorage.setItem('livePlayerState', JSON.stringify(state));
         setStateValue('player.live', state);
-    }, [videoId, priority, isPlaying, isMuted, isStopped, desiredQuality]);
+    }, [videoId, priority, isPlaying, isMuted, isStopped, desiredQuality, useRelay]);
 
     // Always-current ref to flush current state on demand (pre-backup / pre-export)
     const flushStateRef = useRef(null);
     useEffect(() => {
         flushStateRef.current = () => {
             if (!isInitialized.current) return;
-            const state = { videoId, priority, isPlaying, isMuted, isStopped, desiredQuality };
+            const state = { videoId, priority, isPlaying, isMuted, isStopped, desiredQuality, useRelay };
             localStorage.setItem('livePlayerState', JSON.stringify(state));
             setStateValue('player.live', state);
         };
@@ -311,6 +329,7 @@ const LivePlayerCard = () => {
                 setVideoId(newVideoId);
                 sendPlayerCommand('livePlayerCommand', 'loadVideo', newVideoId);
                 sendPlayerCommand('livePlayerCommand', 'setQuality', null, null, null, null, { quality: desiredQualityRef.current });
+                sendPlayerCommand('livePlayerCommand', 'setRelayMode', null, null, null, null, { useRelay: useRelayRef.current });
                 sendPlayerCommand('livePlayerCommand', 'play');
                 sendPlayerCommand('livePlayerCommand', 'unmute');
                 setIsPlaying(true);
@@ -352,6 +371,7 @@ const LivePlayerCard = () => {
         if (vid) {
             sendPlayerCommand('livePlayerCommand', 'loadVideo', vid);
             sendPlayerCommand('livePlayerCommand', 'setQuality', null, null, null, null, { quality: desiredQualityRef.current });
+            sendPlayerCommand('livePlayerCommand', 'setRelayMode', null, null, null, null, { useRelay: useRelayRef.current });
             sendPlayerCommand('livePlayerCommand', 'play');
             sendPlayerCommand('livePlayerCommand', 'unmute');
             setIsPlaying(true);
@@ -422,6 +442,7 @@ const LivePlayerCard = () => {
         if (isVisible) {
             sendPlayerCommand('livePlayerCommand', 'loadVideo', videoId);
             sendPlayerCommand('livePlayerCommand', 'setQuality', null, null, null, null, { quality: desiredQualityRef.current });
+            sendPlayerCommand('livePlayerCommand', 'setRelayMode', null, null, null, null, { useRelay: useRelayRef.current });
             sendPlayerCommand('livePlayerCommand', 'play');
             sendPlayerCommand('livePlayerCommand', 'unmute');
             setIsPlaying(true);
@@ -642,6 +663,27 @@ const LivePlayerCard = () => {
                     <option value="small">240p</option>
                     <option value="tiny">144p</option>
                 </select>
+            </div>
+
+            <div
+                className={`w-full mt-2 px-3 py-2 rounded-lg border flex items-center justify-between gap-2 cursor-pointer select-none transition-all ${
+                    useRelay
+                        ? 'bg-blue-900/40 border-blue-500/60'
+                        : 'bg-gray-800/60 border-gray-600/60'
+                }`}
+                onClick={() => setUseRelay(v => !v)}
+                title="Bypasses the YouTube iframe player's quality controls (setPlaybackQuality etc. do nothing — confirmed deprecated by YouTube since ~2018) by pulling the actual stream via yt-dlp and playing it directly. Only takes effect while the video is actually LIVE right now; otherwise LivePlayer.html silently stays on the normal YouTube player, so it's safe to leave on."
+            >
+                <div className="flex items-center gap-2">
+                    <span className={`w-3 h-3 rounded-full flex-shrink-0 ${useRelay ? 'bg-blue-400' : 'bg-gray-500'}`} />
+                    <span className="text-sm font-semibold text-white">Direct Relay</span>
+                    <span className="text-xs text-gray-400">
+                        {useRelay ? '— max quality, live only' : '— disabled'}
+                    </span>
+                </div>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded ${useRelay ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>
+                    {useRelay ? 'ON' : 'OFF'}
+                </span>
             </div>
 
             <div className="flex flex-col gap-1 mt-2 px-2 text-xs text-gray-400 w-full">

@@ -20,11 +20,24 @@
       width: 100%;
       height: 100%;
     }
+
+    #relayVideo {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+      background-color: black;
+      object-fit: contain;
+    }
   </style>
+  <script src="hls.min.js"></script>
 </head>
 
 <body>
   <div id="player"></div>
+  <video id="relayVideo" playsinline></video>
 
   <script>
     let player;
@@ -40,6 +53,108 @@
     // published that rendition yet). Persists across video loads on this page; a
     // fresh page load (OBS reloading the browser source) resets to 'auto'.
     let desiredQuality = "auto";
+
+    // ============================================================================
+    // LIVE RELAY — bypasses the YouTube IFrame API's quality controls (confirmed
+    // deprecated into no-ops by YouTube since ~2018: setPlaybackQuality/
+    // getAvailableQualityLevels/suggestedQuality never actually change anything —
+    // see relay-service.cjs) by playing the actual HLS stream through hls.js
+    // instead of the IFrame player. Progressive enhancement, not a replacement:
+    // the YouTube iframe always loads and plays normally as before; if the relay
+    // successfully resolves the current video as LIVE, playback (video+audio)
+    // switches over to it and the iframe is paused+muted in the background as a
+    // ready fallback. Any relay failure (not live, network error, yt-dlp missing,
+    // fatal hls.js error) falls straight back to the iframe, which was never
+    // stopped — zero regression risk to the existing, proven playback path.
+    // ============================================================================
+    let desiredUseRelay = false; // manual "Direct Relay" override — see setRelayMode command
+    let relayActive = false;     // true once the relay <video> is the visible/audible output
+    let mutedState = false;      // mirrors the mute/unmute commands, applied to whichever output is active
+    let hlsInstance = null;
+    let relayVideoEl = null;
+    let relayLoadToken = 0;      // bumped per loadVideo — invalidates stale async relay resolutions
+    let currentVideoId = null;
+    let relayStartWallClock = null;
+    let relayHealthCheckTick = 0;
+
+    function getRelayVideoEl() {
+      if (!relayVideoEl) relayVideoEl = document.getElementById("relayVideo");
+      return relayVideoEl;
+    }
+
+    async function tryActivateRelay(videoId, token) {
+      try {
+        QLOG("RELAY_LOAD_ATTEMPT", { videoId });
+        const res = await fetch("/api/relay/load", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ videoId }),
+        });
+        const data = await res.json();
+        if (token !== relayLoadToken) return; // superseded by a newer loadVideo
+        if (!data.success || data.report.type !== "LIVE") {
+          QLOG("RELAY_LOAD_SKIPPED", { videoId, reason: data.success ? data.report.type : data.error });
+          return; // stay on the YouTube iframe — safe fallback, nothing to undo
+        }
+        QLOG("RELAY_LOAD_RESOLVED", { videoId, report: data.report });
+        startRelayPlayback(videoId, token);
+      } catch (e) {
+        QLOG("RELAY_LOAD_ERROR", { videoId, error: e.message });
+      }
+    }
+
+    function startRelayPlayback(videoId, token) {
+      const el = getRelayVideoEl();
+      if (hlsInstance) { safeCall(() => hlsInstance.destroy()); hlsInstance = null; }
+      if (typeof Hls === "undefined" || !Hls.isSupported()) {
+        QLOG("RELAY_UNSUPPORTED", {});
+        return;
+      }
+      hlsInstance = new Hls({ lowLatencyMode: true });
+      el.muted = mutedState;
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (token !== relayLoadToken) return;
+        el.play().then(() => {
+          if (token !== relayLoadToken) return;
+          activateRelayUI(videoId);
+        }).catch((e) => QLOG("RELAY_PLAY_ERROR", { videoId, error: e.message }));
+      });
+      hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+        if (!data.fatal) return;
+        QLOG("RELAY_FATAL_ERROR", { videoId, type: data.type, details: data.details });
+        if (token === relayLoadToken) deactivateRelay("hls fatal error: " + data.details);
+      });
+      hlsInstance.loadSource("/api/relay/live.m3u8?t=" + Date.now());
+      hlsInstance.attachMedia(el);
+    }
+
+    function activateRelayUI(videoId) {
+      relayActive = true;
+      relayStartWallClock = Date.now();
+      document.getElementById("player").style.display = "none";
+      getRelayVideoEl().style.display = "block";
+      if (player) { safeCall(() => player.pauseVideo()); safeCall(() => player.mute()); }
+      QLOG("RELAY_ACTIVE", { videoId });
+    }
+
+    // Falls back to the YouTube iframe, which was never stopped — just paused
+    // and hidden behind the relay video while relay mode was active.
+    function deactivateRelay(reason) {
+      if (!relayActive && !hlsInstance) return;
+      QLOG("RELAY_DEACTIVATED", { reason });
+      relayActive = false;
+      if (hlsInstance) { safeCall(() => hlsInstance.destroy()); hlsInstance = null; }
+      const el = getRelayVideoEl();
+      el.style.display = "none";
+      safeCall(() => el.pause());
+      el.removeAttribute("src");
+      safeCall(() => el.load());
+      document.getElementById("player").style.display = "block";
+      if (player) {
+        safeCall(() => { if (!mutedState) player.unMute(); });
+        safeCall(() => player.playVideo());
+      }
+    }
 
     // ============================================================================
     // QUALITY DIAGNOSTIC INSTRUMENTATION — pure observability, changes no behavior.
@@ -124,27 +239,37 @@
     function applyCommand(data) {
       switch (data.command) {
         case "play":
-          player.playVideo();
+          if (relayActive) { safeCall(() => getRelayVideoEl().play()); }
+          else player.playVideo();
           break;
         case "pause":
-          player.pauseVideo();
+          if (relayActive) { safeCall(() => getRelayVideoEl().pause()); }
+          else player.pauseVideo();
           break;
         case "stop":
-          player.stopVideo();
+          if (relayActive) { const el = getRelayVideoEl(); safeCall(() => el.pause()); }
+          else player.stopVideo();
           break;
         case "mute":
-          player.mute();
+          mutedState = true;
+          if (relayActive) getRelayVideoEl().muted = true;
+          safeCall(() => player.mute());
           break;
         case "unmute":
-          player.unMute();
+          mutedState = false;
+          if (relayActive) getRelayVideoEl().muted = false;
+          else player.unMute();
           break;
         case "setVolume":
           if (typeof data.volume === "number") {
+            if (relayActive) getRelayVideoEl().volume = Math.max(0, Math.min(1, data.volume / 100));
             player.setVolume(data.volume);
           }
           break;
         case "seekTo":
-          if (typeof data.seconds === "number") {
+          // Relay playback is a live-edge-only HLS window (no meaningful seek target) —
+          // ignore while relay is active, same as scrubbing a live YouTube iframe does.
+          if (!relayActive && typeof data.seconds === "number") {
             player.seekTo(data.seconds, true);
           }
           break;
@@ -154,6 +279,17 @@
             console.log("[LivePlayer][Quality] Desired quality set to:", desiredQuality);
             applyQualityTarget(player);
             startQualityBurst();
+          }
+          break;
+        case "setRelayMode":
+          if (typeof data.useRelay === "boolean") {
+            desiredUseRelay = data.useRelay;
+            console.log("[LivePlayer][Relay] Desired relay mode set to:", desiredUseRelay);
+            if (!desiredUseRelay) {
+              deactivateRelay("manual override off");
+            } else if (currentVideoId) {
+              tryActivateRelay(currentVideoId, ++relayLoadToken);
+            }
           }
           break;
         case "destroy":
@@ -166,6 +302,10 @@
             clearInterval(qualityHeartbeatInterval);
             qualityHeartbeatInterval = null;
           }
+          relayLoadToken++; // invalidate any in-flight relay resolution
+          if (hlsInstance) { safeCall(() => hlsInstance.destroy()); hlsInstance = null; }
+          relayActive = false;
+          safeCall(() => { const el = getRelayVideoEl(); el.style.display = "none"; el.pause(); el.removeAttribute("src"); el.load(); });
           player.destroy();
           player = null;
           playerReady = false;
@@ -177,6 +317,10 @@
           // inside playerVars here, which YouTube silently ignored on every
           // video switch after the first; suggestedQuality is the documented
           // field for this call and the one YouTube actually reads.
+          currentVideoId = data.videoId;
+          const myRelayToken = ++relayLoadToken; // supersede any relay resolution for the previous video
+          if (desiredUseRelay) tryActivateRelay(data.videoId, myRelayToken);
+          else if (relayActive) deactivateRelay("new video loaded, relay mode off");
           const suggestedQuality = (desiredQuality !== "auto") ? desiredQuality : "hd1080";
           const beforeLoad = snapshotPlayer(player, "before-loadVideoById");
           QLOG("LOAD_VIDEO_BY_ID", { videoId: data.videoId, suggestedQuality, beforeQuality: beforeLoad.quality, beforeAvailable: beforeLoad.availableLevels });
@@ -226,6 +370,19 @@
                 startQualityBurst();
               }
             }
+          } else if (data.command === "setRelayMode") {
+            // Same early-persistence reasoning as setQuality above — remembered even
+            // before any video has been loaded, so the first-ever loadVideo already
+            // knows whether to attempt the relay.
+            if (typeof data.useRelay === "boolean") {
+              desiredUseRelay = data.useRelay;
+              console.log("[LivePlayer][Relay] Desired relay mode set to:", desiredUseRelay);
+              if (!desiredUseRelay) {
+                deactivateRelay("manual override off");
+              } else if (currentVideoId) {
+                tryActivateRelay(currentVideoId, ++relayLoadToken);
+              }
+            }
           } else if (data.command === "loadVideo" && data.videoId) {
             isLoadingVideo = true; // Set loading flag
             if (player) {
@@ -245,6 +402,9 @@
               }
               playerReady = false;
               pendingCommands = [];
+              currentVideoId = data.videoId;
+              const myRelayToken = ++relayLoadToken;
+              if (desiredUseRelay) tryActivateRelay(data.videoId, myRelayToken);
               // vq only accepts YouTube's quality-tier tokens (small/medium/large/
               // hd720/hd1080/highres) — 'auto' isn't one, so fall back to the hd1080
               // hint in that case, same as before manual override existed.
@@ -474,6 +634,36 @@
     }
     // 24/7 Reliability: Store interval ID for cleanup
     timeUpdateInterval = setInterval(() => {
+      // While the relay video is the active output, the YouTube iframe is
+      // deliberately paused in the background — reading time/quality off it
+      // would report frozen, stale values (or trigger pointless quality-
+      // correction calls against a paused player). Report elapsed wall-clock
+      // time instead, same convention YouTube's own live player uses
+      // (duration grows to match currentTime, remainingTime stays 0).
+      if (relayActive) {
+        const el = getRelayVideoEl();
+        if (el && !el.paused && relayStartWallClock) {
+          const elapsed = (Date.now() - relayStartWallClock) / 1000;
+          reportEvent("timeUpdate", { currentTime: elapsed, duration: elapsed, remainingTime: 0 });
+        }
+        // Not every "stream ended" is a fatal hls.js error (a graceful end can just
+        // stop publishing new segments without ever erroring) — the YT iframe is
+        // paused right now so it can't notice on its own either. Piggyback a cheap
+        // every-~15s check on this same tick so relay mode still hands off to the
+        // iframe's own end-of-stream detection instead of quietly playing a frozen
+        // final segment forever.
+        relayHealthCheckTick = (relayHealthCheckTick + 1) % 15;
+        if (relayHealthCheckTick === 0) {
+          const tokenAtCheck = relayLoadToken;
+          fetch("/api/relay/report").then(r => r.json()).then(report => {
+            if (relayLoadToken !== tokenAtCheck || !relayActive) return; // superseded meanwhile
+            if (report && report.type && report.type !== "LIVE") {
+              deactivateRelay("relay health check: video is no longer LIVE (" + report.type + ")");
+            }
+          }).catch(() => { /* transient — next tick will retry */ });
+        }
+        return;
+      }
       // FIX 3: Add a guard clause to ensure the player object exists and is ready
       if (!player || typeof player.getPlayerState !== "function") {
         return;
@@ -521,6 +711,8 @@
         videoLoadedFraction: safeCall(() => player.getVideoLoadedFraction()),
         playbackRate: safeCall(() => player.getPlaybackRate()),
         desiredQuality,
+        relayActive,
+        desiredUseRelay,
       });
     }, 1000);
 

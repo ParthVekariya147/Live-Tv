@@ -17,6 +17,7 @@ const { spawn } = require('child_process');
 const certManager    = require('./cert-manager.cjs');
 const ipDetector     = require('./ip-detector.cjs');
 const tunnelManager  = require('./tunnel-manager.cjs');
+const { createRelayRouter } = require('./relay-service.cjs');
 
 // Whether the self-signed LAN HTTPS listener actually bound successfully.
 // /api/notifications/setup-url must not hand out a pairing link pointing at
@@ -1971,6 +1972,15 @@ app.post('/api/recording/open-folder', (req, res) => {
 app.get('/api/recording/folder-path', (req, res) => {
     res.json({ success: true, path: recordingsDir });
 });
+
+// ============================================
+// LIVE RELAY API — bypasses the YouTube IFrame API's quality controls
+// (setPlaybackQuality/getAvailableQualityLevels/suggestedQuality — all
+// confirmed no-ops since ~2018) by serving the actual HLS stream directly.
+// LivePlayer.html opts into this per-video via /api/relay/load, then plays
+// /api/relay/live.m3u8 through hls.js. See relay-service.cjs.
+// ============================================
+app.use('/api/relay', createRelayRouter({ findYtDlp: findYtDlpBinary }));
 
 // ============================================
 // NOTIFICATIONS API
