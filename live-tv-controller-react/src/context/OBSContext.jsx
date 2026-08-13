@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { logSourceChange, logOBSConnection, logError, LogCategory, LogType } from '../utils/logger';
+import { setStateValue, StateKeys } from '../utils/state-api';
 
 const OBSContext = createContext();
 
@@ -376,6 +377,56 @@ export const OBSProvider = ({ children }) => {
         };
     }, [connectOBS]);
 
+    // sourceState above is populated from real OBS scene items (GetSceneItemList),
+    // which is empty in the single-source (UnifiedPlayer.html) layout — there are no
+    // per-player scene items left to report. Every card (LoopPlayerCard, LivePlayerCard,
+    // DelayPlayerCard, LocalPlayerCard) and LoopPlaylistAutomation read sourceState[name]
+    // as their "am I on air" signal — e.g. LoopPlayerCard's resumePlayback() only fires
+    // on a false->true transition of that flag. So this also derives sourceState from
+    // the app's own obs.activeSource key (the same one setSourceVisibility now writes),
+    // which is what UnifiedPlayer.html itself watches. GetSceneItemList's contribution
+    // becomes a no-op in that layout (nothing named "Loop Player" etc. exists to match),
+    // so merging both into the same setSourceState never conflicts.
+    useEffect(() => {
+        const applyActiveSource = (name) => {
+            if (!name) return;
+            setSourceState(prev => {
+                const next = { ...prev };
+                SOURCE_NAMES.forEach(s => { next[s] = (s === name); });
+                return next;
+            });
+        };
+
+        fetch('/api/state/obs.activeSource')
+            .then(r => (r.ok ? r.json() : null))
+            .then(data => applyActiveSource(data && data.value))
+            .catch(() => {});
+
+        let ws;
+        let reconnectTimeout;
+        const connect = () => {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+            ws.onmessage = (event) => {
+                let msg;
+                try { msg = JSON.parse(event.data); } catch { return; }
+                if (msg.type === 'STATE_SYNC') {
+                    applyActiveSource(msg.data && msg.data['obs.activeSource']);
+                } else if (msg.type === 'STATE_CHANGE' && msg.data?.key === 'obs.activeSource') {
+                    applyActiveSource(msg.data.value);
+                }
+            };
+            ws.onclose = () => { reconnectTimeout = setTimeout(connect, 3000); };
+            ws.onerror = () => { ws.close(); };
+        };
+        connect();
+
+        return () => {
+            if (reconnectTimeout) clearTimeout(reconnectTimeout);
+            if (ws) { ws.onclose = null; ws.close(); }
+        };
+    }, []);
+
     // --- Actions ---
 
     const toggleStream = useCallback(() => {
@@ -397,6 +448,15 @@ export const OBSProvider = ({ children }) => {
         const currentSourceIds = sourceIdsRef.current;
         const currentSourceState = sourceStateRef.current;
 
+        // Push the shared active-source state unconditionally, before touching any
+        // OBS-scene-item logic below. UnifiedPlayer.html (single-source layout) has
+        // no scene items to toggle at all — it just watches this key over /ws — so
+        // this must not be gated behind OBS having a matching scene item or scene name.
+        if (visible) {
+            localStorage.setItem(ACTIVE_SOURCE_KEY, sourceName);
+            setStateValue(StateKeys.OBS_ACTIVE_SOURCE, sourceName);
+        }
+
         if (!sceneNameRef.current) {
             // Normal race at startup/reconnect — OBS hasn't reported its current scene yet.
             // Queue it; the GetSceneItemList handler replays it as soon as the scene resolves.
@@ -407,12 +467,19 @@ export const OBSProvider = ({ children }) => {
         // Use == null (covers undefined AND null) instead of ! so that a
         // legitimate sceneItemId of 0 is not mistakenly treated as "not found".
         if (currentSourceIds[sourceName] == null) {
-            logError(
-                LogType.OBS_SOURCE_ERROR,
-                LogCategory.SYSTEM,
-                { function: 'setSourceVisibility', sourceName, visible, trigger, knownSourceIds: currentSourceIds },
-                `setSourceVisibility("${sourceName}") failed — source ID not found in OBS scene`
-            );
+            // No matching OBS scene item for this name. In the single-source layout
+            // that's expected for all four names — only warn when OBS scene items are
+            // known but this particular one is missing, which points at a real
+            // misconfiguration (typo / renamed source) rather than the new layout.
+            const anySourceKnown = SOURCE_NAMES.some(s => currentSourceIds[s] != null);
+            if (anySourceKnown) {
+                logError(
+                    LogType.OBS_SOURCE_ERROR,
+                    LogCategory.SYSTEM,
+                    { function: 'setSourceVisibility', sourceName, visible, trigger, knownSourceIds: currentSourceIds },
+                    `setSourceVisibility("${sourceName}") failed — source ID not found in OBS scene`
+                );
+            }
             return false;
         }
 
@@ -430,10 +497,6 @@ export const OBSProvider = ({ children }) => {
             ? Object.entries(currentSourceState).find(([name, isVisible]) => isVisible && name !== sourceName)?.[0]
             : null;
         logSourceChange(sourceName, visible, trigger, previousSource);
-
-        if (visible) {
-            localStorage.setItem(ACTIVE_SOURCE_KEY, sourceName);
-        }
 
         // Enforce exclusivity: turning ON one source turns OFF all others
         if (visible) {
@@ -457,6 +520,7 @@ export const OBSProvider = ({ children }) => {
                     sceneItemEnabled: true
                 });
                 setSourceState(prev => ({ ...prev, "Loop Player": true }));
+                setStateValue(StateKeys.OBS_ACTIVE_SOURCE, "Loop Player");
             }
         }
         return true;
@@ -470,11 +534,21 @@ export const OBSProvider = ({ children }) => {
     const setSourceVisibilityConfirmed = useCallback(async (sourceName, visible, trigger = 'scheduler') => {
         const currentSourceIds = sourceIdsRef.current;
 
+        // Push the shared active-source state unconditionally — same reasoning as
+        // setSourceVisibility above. In the single-source layout there is no OBS scene
+        // item to confirm against at all, so this write IS the confirmation.
+        if (visible) {
+            localStorage.setItem(ACTIVE_SOURCE_KEY, sourceName);
+            await setStateValue(StateKeys.OBS_ACTIVE_SOURCE, sourceName);
+        }
+
         if (!sceneNameRef.current) {
-            return { ok: false, reason: 'OBS scene name unknown' };
+            return visible ? { ok: true, reason: null } : { ok: false, reason: 'OBS scene name unknown' };
         }
         if (currentSourceIds[sourceName] == null) {
-            return { ok: false, reason: `Source "${sourceName}" not found in OBS scene` };
+            // No OBS scene item to toggle (expected in the single-source layout) —
+            // the state push above already did the only thing there is to do.
+            return { ok: true, reason: null };
         }
 
         const result = await sendRequestConfirmed('SetSceneItemEnabled', {
@@ -489,7 +563,6 @@ export const OBSProvider = ({ children }) => {
         logSourceChange(sourceName, visible, trigger, null);
 
         if (visible) {
-            localStorage.setItem(ACTIVE_SOURCE_KEY, sourceName);
             // Enforce exclusivity: turning ON one source turns OFF all others.
             // These companion calls are best-effort (fire-and-forget) — the caller's
             // confirmation only depends on the primary source's own acknowledgment.
@@ -512,6 +585,7 @@ export const OBSProvider = ({ children }) => {
                     sceneItemEnabled: true
                 });
                 setSourceState(prev => ({ ...prev, "Loop Player": true }));
+                setStateValue(StateKeys.OBS_ACTIVE_SOURCE, "Loop Player");
             }
         }
 

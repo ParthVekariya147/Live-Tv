@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 *.exe
 *.mp4
+
+# Relay yt-dlp auth (real session cookies — never commit)
+cookies.txt

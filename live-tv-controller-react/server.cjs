@@ -7,6 +7,11 @@
  * - Server-side Scheduler API with WebSocket events
  */
 
+// Must come before any module that spawns a child process (tunnel-manager,
+// pot-provider-manager, relay-service, tray-service): stops Windows from
+// opening a console window for each sidecar. See the file for the full story.
+require('./no-console-windows.cjs');
+
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -17,7 +22,15 @@ const { spawn } = require('child_process');
 const certManager    = require('./cert-manager.cjs');
 const ipDetector     = require('./ip-detector.cjs');
 const tunnelManager  = require('./tunnel-manager.cjs');
+const potProviderManager = require('./pot-provider-manager.cjs');
 const { createRelayRouter } = require('./relay-service.cjs');
+const bundledSidecars = require('./bundled-sidecars.cjs');
+
+// Unpack yt-dlp.exe / cookies.txt embedded in this EXE if they aren't already
+// sitting next to it — must run before findYtDlpBinary() is called by anything
+// (relay router, RecordingService). No-op in dev and when the files are
+// already there. See bundled-sidecars.cjs for why this exists at all.
+bundledSidecars.extractBundledSidecars();
 
 // Whether the self-signed LAN HTTPS listener actually bound successfully.
 // /api/notifications/setup-url must not hand out a pairing link pointing at
@@ -102,14 +115,23 @@ const getBackupBaseDir = () => {
     return path.join(__dirname, 'backups');
 };
 
+// Get relay ffmpeg split-mux HLS output directory - next to EXE or project folder
+const getRelayHlsDir = () => {
+    if (process.pkg) {
+        return path.join(path.dirname(process.execPath), 'relay_hls');
+    }
+    return path.join(__dirname, 'relay_hls');
+};
+
 const dataDir = getDataDir();
 const logsDir = getLogsDir();
 const videosDir = getVideosDir();
 const recordingsDir = getRecordingsDir();
 const backupBaseDir = getBackupBaseDir();
+const relayHlsDir = getRelayHlsDir();
 
 // Ensure directories exist (backups sub-folders created by BackupService)
-[dataDir, logsDir, videosDir, recordingsDir].forEach(dir => {
+[dataDir, logsDir, videosDir, recordingsDir, relayHlsDir].forEach(dir => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
         console.log(`Created directory: ${dir}`);
@@ -531,6 +553,28 @@ app.use('/videos', express.static(videosDir, {
 // In dev mode we fall back to express.static from the real filesystem.
 const publicAssets = (() => { try { return require('./public-assets.cjs'); } catch (_) { return {}; } })();
 const publicPath = path.join(__dirname, 'public');
+
+// The push service worker must be served uncached, and must be registered here —
+// BEFORE the publicAssets middleware and express.static below. Both of those match
+// /firebase-messaging-sw.js by filename and would answer it first with plain
+// ETag-only caching, which silently shadowed the dedicated route further down this
+// file and dropped its Cache-Control/Service-Worker-Allowed headers entirely. A
+// phone that cached an old SW keeps running it, so push events stop being handled
+// after the tunnel URL (and with it the origin) changes.
+app.get('/firebase-messaging-sw.js', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Service-Worker-Allowed', '/');
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    const content = publicAssets['firebase-messaging-sw.js']?.content;
+    if (content) return res.send(content);
+    // Dev fallback: read from real filesystem
+    try {
+        res.send(fs.readFileSync(path.join(__dirname, 'public', 'firebase-messaging-sw.js'), 'utf8'));
+    } catch (err) {
+        res.status(500).send('// SW not found: ' + err.message);
+    }
+});
+
 app.use((req, res, next) => {
     const filename = req.path === '/' ? '' : req.path.slice(1);
     const asset = publicAssets[filename];
@@ -1514,8 +1558,13 @@ function findYtDlpBinary() {
 
     if (process.pkg) {
         const exeDir = path.dirname(process.execPath);
+        // fallbackDir is only set when the EXE folder turned out to be
+        // unwritable and the bundled copy had to be unpacked elsewhere.
+        const fallback = bundledSidecars.getFallbackDir();
         return check(path.join(exeDir, 'yt-dlp.exe'))
             || check(path.join(exeDir, 'yt-dlp'))
+            || (fallback && check(path.join(fallback, 'yt-dlp.exe')))
+            || (fallback && check(path.join(fallback, 'yt-dlp')))
             || null; // not found — caller returns a clear error
     }
     // Development: the same binary that ships next to the packaged EXE also
@@ -1525,6 +1574,37 @@ function findYtDlpBinary() {
     const devCandidate = check(path.join(repoRoot, 'windows', 'exe', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'));
     if (devCandidate) return devCandidate;
     return process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+}
+
+// Used by relay-service.cjs's ffmpeg split-mux path (video-only + audio-only
+// copy-mux for LIVE relay). Same two-tier resolution as findYtDlpBinary()
+// above — packaged EXE checks next to itself only (no PATH fallback, since a
+// bare name silently resolving to nothing installed would be worse than a
+// clear "not found"); dev checks the repo's windows/exe/ folder, then falls
+// back to a bare PATH name. Unlike yt-dlp, ffmpeg/ffprobe are optional here —
+// relay-service.cjs treats a missing binary as "stay on the proxy-combined
+// path", never a hard failure.
+function findFfmpegBinaries() {
+    const check = (p) => { try { return fs.existsSync(p) ? p : null; } catch { return null; } };
+    const isWin = process.platform === 'win32';
+    const ffmpegName = isWin ? 'ffmpeg.exe' : 'ffmpeg';
+    const ffprobeName = isWin ? 'ffprobe.exe' : 'ffprobe';
+
+    if (process.pkg) {
+        const exeDir = path.dirname(process.execPath);
+        const fallback = bundledSidecars.getFallbackDir();
+        return {
+            ffmpegPath: check(path.join(exeDir, ffmpegName)) || (fallback && check(path.join(fallback, ffmpegName))) || null,
+            ffprobePath: check(path.join(exeDir, ffprobeName)) || (fallback && check(path.join(fallback, ffprobeName))) || null,
+        };
+    }
+    const repoRoot = path.resolve(__dirname, '..');
+    const devFfmpeg = check(path.join(repoRoot, 'windows', 'exe', ffmpegName));
+    const devFfprobe = check(path.join(repoRoot, 'windows', 'exe', ffprobeName));
+    return {
+        ffmpegPath: devFfmpeg || ffmpegName,
+        ffprobePath: devFfprobe || ffprobeName,
+    };
 }
 
 class RecordingService {
@@ -1980,11 +2060,27 @@ app.get('/api/recording/folder-path', (req, res) => {
 // LivePlayer.html opts into this per-video via /api/relay/load, then plays
 // /api/relay/live.m3u8 through hls.js. See relay-service.cjs.
 // ============================================
-app.use('/api/relay', createRelayRouter({ findYtDlp: findYtDlpBinary }));
+app.use('/api/relay', createRelayRouter({ findYtDlp: findYtDlpBinary, findFfmpeg: findFfmpegBinaries, hlsOutputDir: relayHlsDir }));
 
 // ============================================
 // NOTIFICATIONS API
 // ============================================
+
+// Identifies the real caller for rate-limiting. req.ip is useless here: every
+// request that arrives through the Cloudflare tunnel is proxied by cloudflared
+// from http://localhost:PORT, so req.ip is ::1 for the controller UI AND for
+// every phone alike — they all shared a single 10-per-minute register bucket,
+// and a phone hitting /setup while the desktop UI was doing its own periodic
+// re-registration got a 429 that surfaces on the phone as "Setup failed:
+// Server error: 429" and leaves the device unregistered. Prefer the forwarded
+// client IP the tunnel actually sets.
+function clientKey(req) {
+    const cf  = req.headers['cf-connecting-ip'];
+    if (cf) return String(cf).trim();
+    const xff = req.headers['x-forwarded-for'];
+    if (xff) return String(xff).split(',')[0].trim();
+    return req.ip || 'unknown';
+}
 
 // In-memory rate limiter (no dependencies)
 const _rateLimitMap = new Map();
@@ -2029,7 +2125,10 @@ try { tokenStore.pruneInactive(30); } catch (_) {}
 
 // POST /api/notifications/register — add or refresh a device token
 app.post('/api/notifications/register', async (req, res) => {
-    if (!checkRateLimit(`register:${req.ip}`, 10, 60_000)) {
+    // Registration is an idempotent upsert, so the limit only needs to stop a
+    // runaway loop — 30/min per client leaves plenty of headroom for a user
+    // tapping "Re-register this device" a few times on a fresh tunnel URL.
+    if (!checkRateLimit(`register:${clientKey(req)}`, 30, 60_000)) {
         return res.status(429).json({ error: 'Too many requests' });
     }
     try {
@@ -2154,20 +2253,8 @@ app.get('/setup', (req, res) => {
         res.status(500).send('Setup page not found: ' + err.message);
     }
 });
-// Also serve firebase-messaging-sw.js uncached so SW updates apply immediately
-app.get('/firebase-messaging-sw.js', (req, res) => {
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.setHeader('Service-Worker-Allowed', '/');
-    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-    const content = publicAssets['firebase-messaging-sw.js']?.content;
-    if (content) return res.send(content);
-    // Dev fallback: read from real filesystem
-    try {
-        res.send(fs.readFileSync(path.join(__dirname, 'public', 'firebase-messaging-sw.js'), 'utf8'));
-    } catch (err) {
-        res.status(500).send('// SW not found: ' + err.message);
-    }
-});
+// (firebase-messaging-sw.js is served near the top of this file — it has to be
+// registered before the publicAssets/express.static middleware to win the route.)
 
 // GET /api/notifications/setup-url — QR code + URL for device registration
 // If TUNNEL_URL env var is set (e.g. from localtunnel/ngrok), use it as the primary URL
@@ -2183,10 +2270,21 @@ app.get('/api/notifications/setup-url', async (req, res) => {
         // while the public edge answers with 502/503, so verify live instead of
         // trusting the env var, and kick a reconnect in the background if it's down.
         let tunnelBase = (process.env.TUNNEL_URL || '').replace(/\/$/, '');
-        if (tunnelBase && !(await tunnelManager.checkTunnelHealth(tunnelBase))) {
-            console.warn('[Notifications] Tunnel unreachable at QR-generation time — falling back to LAN URL, requesting reconnect');
-            tunnelManager.forceReconnect();
-            tunnelBase = '';
+        if (tunnelBase) {
+            const probe = await tunnelManager.probeTunnel(tunnelBase);
+            if (!probe.ok) {
+                // A hostname this machine can't resolve yet is Cloudflare DNS still
+                // propagating, not a dead tunnel — forcing a reconnect here just
+                // mints a fresher name with even less propagation and the QR never
+                // settles. Hold and let the client keep polling instead.
+                if (probe.reason === 'dns' && tunnelManager.isUrlPropagating()) {
+                    console.log(`[Notifications] Tunnel hostname still propagating (${tunnelBase}) — holding, not reconnecting`);
+                    return res.json({ pending: true, tunnel: false, propagating: true });
+                }
+                console.warn(`[Notifications] Tunnel unreachable at QR-generation time (${probe.reason}${probe.code ? ' ' + probe.code : ''}) — falling back to LAN URL, requesting reconnect`);
+                tunnelManager.forceReconnect();
+                tunnelBase = '';
+            }
         }
 
         // Neither a working tunnel nor a bound LAN HTTPS listener exists yet (both
@@ -2368,6 +2466,12 @@ server.listen(PORT, () => {
         // re-scan the QR after a restart or a drop-and-reconnect.
         console.log('[Tunnel] Auto-starting Cloudflare Quick Tunnel…');
         tunnelManager.startTunnel(PORT);
+
+        // 3. Auto-start the PO-Token provider server that relay-service.cjs's
+        // yt-dlp calls depend on to get past YouTube's bot-check reliably.
+        // Best-effort — logs a warning and continues without it if the
+        // provider isn't built/deployed (see pot-provider-manager.cjs).
+        potProviderManager.startPotProvider();
     })();
 
     const primaryIP = ipDetector.getPrimaryLANIP();

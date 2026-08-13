@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Unified Player</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #000;
+    overflow: hidden;
+  }
+  .player-wrap {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    visibility: hidden;
+  }
+  .player-wrap.active {
+    visibility: visible;
+  }
+  .player-wrap iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+(function () {
+  // One OBS Browser Source drives all four players from here. Only one is ever
+  // shown/heard at a time — which one is decided by the "obs.activeSource" key in
+  // the shared state service (server.cjs / state-service.cjs), the same value the
+  // control panel already writes via OBSContext.setSourceVisibility(). This page
+  // just watches that key over /ws and switches locally; it never talks to OBS.
+
+  // All four pages load once here and are never torn down or reloaded — this
+  // matches exactly how the old 4-separate-OBS-source setup behaved (each page
+  // ran continuously; OBS only hid/showed it). That parity matters because none
+  // of these pages know how to resume on their own: they only react to a fresh
+  // "loadVideo" localStorage command from the control panel, they don't reload
+  // their last state on page load. Destroying/recreating the iframe on switch
+  // (an earlier version of this file did that for Live/Local) left them with an
+  // empty <video> and no way to recover without the operator re-clicking Load.
+  const SOURCES = {
+    "Loop Player": { url: "/LoopPlayer.html" },
+    "Live Player": { url: "/LivePlayer.html" },
+    "Delay Live": { url: "/DelayLive.html" },
+    "Local Player": { url: "/LocalPCPlayer.html" }
+  };
+
+  const root = document.getElementById("root");
+  const wraps = {};
+  const iframes = {};
+
+  for (const key of Object.keys(SOURCES)) {
+    const cfg = SOURCES[key];
+    const wrap = document.createElement("div");
+    wrap.className = "player-wrap";
+    wrap.dataset.source = key;
+
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("allow", "autoplay");
+    iframe.setAttribute("allowfullscreen", "true");
+    iframe.src = cfg.url;
+
+    wrap.appendChild(iframe);
+    root.appendChild(wrap);
+    wraps[key] = wrap;
+    iframes[key] = iframe;
+  }
+
+  function setMuted(iframe, muted) {
+    try {
+      const doc = iframe.contentDocument;
+      if (!doc) return;
+      doc.querySelectorAll("video").forEach((v) => { v.muted = muted; });
+    } catch (e) {
+      // Cross-origin or not-yet-loaded — best effort only.
+    }
+  }
+
+  let currentActive = null;
+
+  function activateSource(name) {
+    if (!SOURCES[name] || name === currentActive) return;
+    currentActive = name;
+
+    for (const key of Object.keys(SOURCES)) {
+      const wrap = wraps[key];
+      const iframe = iframes[key];
+      const isActive = key === name;
+
+      wrap.classList.toggle("active", isActive);
+      setMuted(iframe, !isActive);
+    }
+  }
+
+  // Re-apply mute state once each iframe finishes its one-time initial load —
+  // covers the case where activateSource() ran before the video element existed.
+  for (const key of Object.keys(SOURCES)) {
+    iframes[key].addEventListener("load", () => {
+      setMuted(iframes[key], key !== currentActive);
+    });
+  }
+
+  function connectWebSocket() {
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${protocol}//${location.host}/ws`);
+
+    ws.onmessage = (event) => {
+      let msg;
+      try { msg = JSON.parse(event.data); } catch (e) { return; }
+
+      if (msg.type === "STATE_SYNC") {
+        const value = msg.data && msg.data["obs.activeSource"];
+        if (value) activateSource(value);
+      } else if (msg.type === "STATE_CHANGE") {
+        const d = msg.data;
+        if (d.type === "SET" && d.key === "obs.activeSource") {
+          activateSource(d.value);
+        } else if (d.type === "SET_MULTIPLE" && Array.isArray(d.changes)) {
+          const change = d.changes.find((c) => c.key === "obs.activeSource");
+          if (change) activateSource(change.value);
+        } else if (d.type === "RESET" && d.state) {
+          const value = d.state["obs.activeSource"];
+          if (value) activateSource(value);
+        }
+      }
+    };
+
+    ws.onclose = () => {
+      setTimeout(connectWebSocket, 3000);
+    };
+
+    ws.onerror = () => {
+      ws.close();
+    };
+  }
+
+  // Resolve the initial state over plain HTTP first so the right player is showing
+  // immediately, without waiting on the WebSocket handshake.
+  fetch("/api/state/obs.activeSource")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => activateSource((data && data.value) || "Loop Player"))
+    .catch(() => activateSource("Loop Player"));
+
+  connectWebSocket();
+})();
+</script>
+</body>
+</html>

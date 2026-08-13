@@ -101,24 +101,32 @@ export default function NotificationSettings() {
         }
     }, [open, load, loadSetupUrl])
 
-    // The tunnel connects in the background on server startup (retries + a pinned
-    // subdomain — see tunnel-manager.cjs) and can take a few seconds after the app
-    // launches. Poll while the panel is open and not yet on the tunnel URL so the
-    // QR code upgrades itself instead of leaving the user stuck on the one-shot
-    // fallback fetched when the panel first opened. Backs off from 8s to 30s after
-    // about a minute so a slow/never-connecting tunnel doesn't hammer the endpoint
-    // (and doesn't need to — the poll no longer touches qrLoading, so it's silent
-    // in the UI unless the underlying state actually changes).
+    // The tunnel connects in the background on server startup (retries — see
+    // tunnel-manager.cjs) and can take a few seconds after the app launches. Poll
+    // while the panel is open so the QR code upgrades itself instead of leaving
+    // the user stuck on the one-shot fallback fetched when the panel first opened.
+    // Backs off from 8s to 30s after about a minute so a slow/never-connecting
+    // tunnel doesn't hammer the endpoint (and doesn't need to — the poll never
+    // touches qrLoading, so it's silent in the UI unless the state really changes).
+    //
+    // This must keep polling AFTER the tunnel comes up too. Cloudflare Quick
+    // Tunnels get a brand-new random hostname on every reconnect, so the address
+    // behind an already-rendered QR can go dead while the panel sits open — and
+    // the old code stopped polling the moment setup.tunnel turned true, so it
+    // showed that dead QR forever. Scanning it gives "site can't be reached",
+    // which looks exactly like the QR feature being broken.
     useEffect(() => {
-        if (!open || setup?.tunnel) return
+        if (!open) return
         let attempts = 0
         let timer
         const tick = () => {
             attempts += 1
             loadSetupUrl()
-            timer = setTimeout(tick, attempts < 8 ? 8000 : 30000)
+            // Once a tunnel is live there's nothing to wait for — just re-check
+            // periodically so a hostname change is picked up within ~30s.
+            timer = setTimeout(tick, (setup?.tunnel || attempts >= 8) ? 30000 : 8000)
         }
-        timer = setTimeout(tick, 8000)
+        timer = setTimeout(tick, setup?.tunnel ? 30000 : 8000)
         return () => clearTimeout(timer)
     }, [open, setup?.tunnel, loadSetupUrl])
 
@@ -281,7 +289,9 @@ export default function NotificationSettings() {
                         {!qrLoading && setup?.pending && (
                             <p className="text-gray-600 italic text-center py-2">
                                 <span className="inline-block animate-spin mr-1">⏳</span>
-                                Starting the secure connection… this can take a few seconds right after launch.
+                                {setup.propagating
+                                    ? 'Secure connection is up — waiting for its new address to spread across the internet. This is normal for the first minute or two after launch.'
+                                    : 'Starting the secure connection… this can take a few seconds right after launch.'}
                             </p>
                         )}
                         {!qrLoading && !setup?.pending && setup?.qrDataUrl && (

@@ -82,6 +82,31 @@
       return relayVideoEl;
     }
 
+    // ----------------------------------------------------------------------
+    // Relay status reporting — pushes the REAL relay state (not just the
+    // desired toggle) back to the React controller over the same
+    // localStorage/reportEvent channel already used for timeUpdate/
+    // videoEnded/videoError. Fixes the "toggle says ON but relay silently
+    // fell back to the iframe" visibility gap. Fields not present in a given
+    // patch fall back to the last known value, so e.g. a plain active:false
+    // push doesn't wipe out a previously-reported reconnectCount to 0.
+    // ----------------------------------------------------------------------
+    let lastRelayStatus = { mode: null, resolution: null, reconnectCount: 0 };
+    function pushRelayStatus(patch) {
+      if (patch.mode !== undefined) lastRelayStatus.mode = patch.mode;
+      if (patch.resolution !== undefined) lastRelayStatus.resolution = patch.resolution;
+      if (patch.reconnectCount !== undefined) lastRelayStatus.reconnectCount = patch.reconnectCount;
+      reportEvent("relayStatus", {
+        active: !!patch.active,
+        mode: patch.mode !== undefined ? patch.mode : lastRelayStatus.mode,
+        resolution: patch.resolution !== undefined ? patch.resolution : lastRelayStatus.resolution,
+        reason: patch.reason ?? null,
+        lastError: patch.lastError ?? null,
+        reconnectCount: patch.reconnectCount !== undefined ? patch.reconnectCount : lastRelayStatus.reconnectCount,
+        videoId: patch.videoId !== undefined ? patch.videoId : currentVideoId,
+      });
+    }
+
     async function tryActivateRelay(videoId, token) {
       try {
         QLOG("RELAY_LOAD_ATTEMPT", { videoId });
@@ -93,47 +118,72 @@
         const data = await res.json();
         if (token !== relayLoadToken) return; // superseded by a newer loadVideo
         if (!data.success || data.report.type !== "LIVE") {
-          QLOG("RELAY_LOAD_SKIPPED", { videoId, reason: data.success ? data.report.type : data.error });
+          const reason = data.success ? data.report.type : data.error;
+          QLOG("RELAY_LOAD_SKIPPED", { videoId, reason });
+          pushRelayStatus({ active: false, mode: null, resolution: null, reason, videoId });
           return; // stay on the YouTube iframe — safe fallback, nothing to undo
         }
         QLOG("RELAY_LOAD_RESOLVED", { videoId, report: data.report });
-        startRelayPlayback(videoId, token);
+        startRelayPlayback(videoId, token, data.report);
       } catch (e) {
         QLOG("RELAY_LOAD_ERROR", { videoId, error: e.message });
+        pushRelayStatus({ active: false, mode: null, resolution: null, reason: e.message, videoId });
       }
     }
 
-    function startRelayPlayback(videoId, token) {
+    function startRelayPlayback(videoId, token, report) {
       const el = getRelayVideoEl();
       if (hlsInstance) { safeCall(() => hlsInstance.destroy()); hlsInstance = null; }
       if (typeof Hls === "undefined" || !Hls.isSupported()) {
         QLOG("RELAY_UNSUPPORTED", {});
+        pushRelayStatus({ active: false, mode: null, resolution: null, reason: "hls.js not supported in this browser", videoId });
         return;
       }
       hlsInstance = new Hls({ lowLatencyMode: true });
       el.muted = mutedState;
       hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
         if (token !== relayLoadToken) return;
+        // Mute the still-playing YouTube iframe BEFORE the relay video makes any
+        // sound, not after — activateRelayUI() used to be the only place that
+        // muted/paused it, which ran in el.play()'s .then(), i.e. after the relay
+        // audio had already started. That left a real window where both outputs
+        // played simultaneously (the "volumes mixed" glitch). Muting here closes
+        // that window; if play() then fails, undo it so the iframe isn't left
+        // silently muted with nothing replacing it.
+        if (player) safeCall(() => player.mute());
         el.play().then(() => {
           if (token !== relayLoadToken) return;
-          activateRelayUI(videoId);
-        }).catch((e) => QLOG("RELAY_PLAY_ERROR", { videoId, error: e.message }));
+          activateRelayUI(videoId, report);
+        }).catch((e) => {
+          QLOG("RELAY_PLAY_ERROR", { videoId, error: e.message });
+          if (player && !mutedState) safeCall(() => player.unMute());
+          pushRelayStatus({ active: false, mode: null, resolution: null, reason: "play() rejected: " + e.message, videoId });
+        });
       });
       hlsInstance.on(Hls.Events.ERROR, (event, data) => {
         if (!data.fatal) return;
         QLOG("RELAY_FATAL_ERROR", { videoId, type: data.type, details: data.details });
-        if (token === relayLoadToken) deactivateRelay("hls fatal error: " + data.details);
+        if (token === relayLoadToken) stopRelayCompletely("hls fatal error: " + data.details);
       });
       hlsInstance.loadSource("/api/relay/live.m3u8?t=" + Date.now());
       hlsInstance.attachMedia(el);
     }
 
-    function activateRelayUI(videoId) {
+    function activateRelayUI(videoId, report) {
       relayActive = true;
       relayStartWallClock = Date.now();
       document.getElementById("player").style.display = "none";
       getRelayVideoEl().style.display = "block";
       if (player) { safeCall(() => player.pauseVideo()); safeCall(() => player.mute()); }
+      pushRelayStatus({
+        active: true,
+        mode: report ? (report.mode ?? null) : null,
+        resolution: report ? (report.selectedResolution ?? null) : null,
+        reason: null,
+        lastError: null,
+        reconnectCount: report ? (report.reconnectCount ?? 0) : 0,
+        videoId,
+      });
       QLOG("RELAY_ACTIVE", { videoId });
     }
 
@@ -154,6 +204,28 @@
         safeCall(() => { if (!mutedState) player.unMute(); });
         safeCall(() => player.playVideo());
       }
+      pushRelayStatus({ active: false, mode: null, resolution: null, reason, videoId: currentVideoId });
+    }
+
+    // Full teardown — client AND server. deactivateRelay() above only ever touched
+    // this page's own <video>/hls.js instance; the server-side yt-dlp+ffmpeg pipeline
+    // that actually pulls the stream (relay-service.cjs) kept running indefinitely
+    // regardless, since nothing ever called it to stop — not on "relay mode off", not
+    // on switching to a different video, not even on this Live Player being hidden
+    // behind another OBS source. That left a real, reproducible bug: this page can be
+    // asked to hide/pause (source switched away in OBS) WHILE a relay activation is
+    // still in flight (yt-dlp/ffmpeg spin-up genuinely takes a few seconds); the old
+    // code had no way to cancel that in-flight attempt, so it would finish and start
+    // playing audio moments later — even though the Live Player was no longer the
+    // active OBS source — mixing with whatever player OBS had already switched to.
+    // Bumping relayLoadToken first invalidates any in-flight tryActivateRelay/
+    // startRelayPlayback (both check token !== relayLoadToken before acting), and the
+    // fetch tells the server to actually kill the ffmpeg/yt-dlp process instead of
+    // leaving it running (and consuming CPU/bandwidth) for a stream nothing is playing.
+    function stopRelayCompletely(reason) {
+      relayLoadToken++;
+      deactivateRelay(reason);
+      fetch("/api/relay/stop", { method: "POST" }).catch(() => {});
     }
 
     // ============================================================================
@@ -286,7 +358,7 @@
             desiredUseRelay = data.useRelay;
             console.log("[LivePlayer][Relay] Desired relay mode set to:", desiredUseRelay);
             if (!desiredUseRelay) {
-              deactivateRelay("manual override off");
+              stopRelayCompletely("manual override off");
             } else if (currentVideoId) {
               tryActivateRelay(currentVideoId, ++relayLoadToken);
             }
@@ -306,6 +378,7 @@
           if (hlsInstance) { safeCall(() => hlsInstance.destroy()); hlsInstance = null; }
           relayActive = false;
           safeCall(() => { const el = getRelayVideoEl(); el.style.display = "none"; el.pause(); el.removeAttribute("src"); el.load(); });
+          fetch("/api/relay/stop", { method: "POST" }).catch(() => {}); // stop the server-side pipeline too, not just this page's playback
           player.destroy();
           player = null;
           playerReady = false;
@@ -320,7 +393,7 @@
           currentVideoId = data.videoId;
           const myRelayToken = ++relayLoadToken; // supersede any relay resolution for the previous video
           if (desiredUseRelay) tryActivateRelay(data.videoId, myRelayToken);
-          else if (relayActive) deactivateRelay("new video loaded, relay mode off");
+          else if (relayActive) stopRelayCompletely("new video loaded, relay mode off");
           const suggestedQuality = (desiredQuality !== "auto") ? desiredQuality : "hd1080";
           const beforeLoad = snapshotPlayer(player, "before-loadVideoById");
           QLOG("LOAD_VIDEO_BY_ID", { videoId: data.videoId, suggestedQuality, beforeQuality: beforeLoad.quality, beforeAvailable: beforeLoad.availableLevels });
@@ -378,7 +451,7 @@
               desiredUseRelay = data.useRelay;
               console.log("[LivePlayer][Relay] Desired relay mode set to:", desiredUseRelay);
               if (!desiredUseRelay) {
-                deactivateRelay("manual override off");
+                stopRelayCompletely("manual override off");
               } else if (currentVideoId) {
                 tryActivateRelay(currentVideoId, ++relayLoadToken);
               }
@@ -658,7 +731,18 @@
           fetch("/api/relay/report").then(r => r.json()).then(report => {
             if (relayLoadToken !== tokenAtCheck || !relayActive) return; // superseded meanwhile
             if (report && report.type && report.type !== "LIVE") {
-              deactivateRelay("relay health check: video is no longer LIVE (" + report.type + ")");
+              stopRelayCompletely("relay health check: video is no longer LIVE (" + report.type + ")");
+            } else if (report) {
+              // Keep the UI's mode/resolution/reconnectCount fresh (e.g. after a
+              // server-side watchdog restart changes the selected quality).
+              pushRelayStatus({
+                active: true,
+                mode: report.mode ?? null,
+                resolution: report.selectedResolution ?? null,
+                reason: null,
+                reconnectCount: report.reconnectCount ?? 0,
+                videoId: currentVideoId,
+              });
             }
           }).catch(() => { /* transient — next tick will retry */ });
         }

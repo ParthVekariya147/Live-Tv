@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useOBS } from '../context/OBSContext';
 import { sendPlayerCommand, LIVE_PLAYER_EVENT_KEY, secondsToHMS } from '../utils/core-utils';
-import { usePlayerTime, usePlayerEvents } from '../utils/usePlayerHooks';
+import { usePlayerTime, usePlayerEvents, usePlayerRelayStatus } from '../utils/usePlayerHooks';
 import { useVideoInfo } from '../hooks/useVideoInfo';
 import { logVideoLoad, logVideoPlay, logError, LogCategory, LogType } from '../utils/logger';
 import { setStateValue } from '../utils/state-api';
@@ -85,6 +85,14 @@ const LivePlayerCard = () => {
     const [useRelay, setUseRelay] = useState(false);
     const useRelayRef = useRef(useRelay);
     useEffect(() => { useRelayRef.current = useRelay; }, [useRelay]);
+    // Remembers whether Direct Relay was ON right before Live Player stopped being
+    // the active OBS source, purely so it can be turned back on automatically if the
+    // user switches back — see the isVisible effect below. Session-only, not persisted.
+    const relayOnBeforeHideRef = useRef(false);
+    // Ground truth for what relay is actually doing right now — see
+    // LivePlayer.html's pushRelayStatus(). Independent of `useRelay` above,
+    // which only records what was requested.
+    const relayStatus = usePlayerRelayStatus(LIVE_PLAYER_EVENT_KEY, 'live');
     useEffect(() => {
         if (!isInitialized.current) return;
         sendPlayerCommand('livePlayerCommand', 'setRelayMode', null, null, null, null, { useRelay });
@@ -409,8 +417,28 @@ const LivePlayerCard = () => {
         prevIsVisible.current = isVisible;
 
         if (isVisible) {
+            // Coming back to Live Player — restore Direct Relay automatically if it
+            // was on right before we left, instead of making the user re-toggle it.
+            if (relayOnBeforeHideRef.current) {
+                relayOnBeforeHideRef.current = false;
+                // Set the ref synchronously (not just the state) so resumePlayback()
+                // below — which reads useRelayRef.current right now, before this
+                // render's effects have had a chance to run — already sees the
+                // restored value instead of sending a stale `false` first.
+                useRelayRef.current = true;
+                setUseRelay(true);
+            }
             resumePlayback();
         } else {
+            // Validation: Direct Relay must not keep running once Live Player stops
+            // being the active OBS source — remember it was on, then turn it off.
+            // The [useRelay] effect above does the actual teardown (client playback
+            // + the server's yt-dlp/ffmpeg pipeline — see stopRelayCompletely() in
+            // LivePlayer.html) as soon as useRelay flips to false.
+            if (useRelayRef.current) {
+                relayOnBeforeHideRef.current = true;
+                setUseRelay(false);
+            }
             sendPlayerCommand('livePlayerCommand', 'pause');
             setIsPlaying(false);
             setIsStopped(false);
@@ -666,25 +694,41 @@ const LivePlayerCard = () => {
             </div>
 
             <div
-                className={`w-full mt-2 px-3 py-2 rounded-lg border flex items-center justify-between gap-2 cursor-pointer select-none transition-all ${
+                className={`w-full mt-2 px-3 py-2 rounded-lg border flex items-center justify-between gap-2 select-none transition-all ${
+                    !isVisible ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                } ${
                     useRelay
                         ? 'bg-blue-900/40 border-blue-500/60'
                         : 'bg-gray-800/60 border-gray-600/60'
                 }`}
-                onClick={() => setUseRelay(v => !v)}
-                title="Bypasses the YouTube iframe player's quality controls (setPlaybackQuality etc. do nothing — confirmed deprecated by YouTube since ~2018) by pulling the actual stream via yt-dlp and playing it directly. Only takes effect while the video is actually LIVE right now; otherwise LivePlayer.html silently stays on the normal YouTube player, so it's safe to leave on."
+                onClick={() => { if (isVisible) setUseRelay(v => !v); }}
+                title={!isVisible
+                    ? "Only available while Live Player is the active OBS source — switch to it first"
+                    : "Bypasses the YouTube iframe player's quality controls (setPlaybackQuality etc. do nothing — confirmed deprecated by YouTube since ~2018) by pulling the actual stream via yt-dlp and playing it directly. Only takes effect while the video is actually LIVE right now; otherwise LivePlayer.html silently stays on the normal YouTube player, so it's safe to leave on."}
             >
                 <div className="flex items-center gap-2">
                     <span className={`w-3 h-3 rounded-full flex-shrink-0 ${useRelay ? 'bg-blue-400' : 'bg-gray-500'}`} />
                     <span className="text-sm font-semibold text-white">Direct Relay</span>
                     <span className="text-xs text-gray-400">
-                        {useRelay ? '— max quality, live only' : '— disabled'}
+                        {!isVisible ? '— Live Player not active' : useRelay ? '— max quality, live only' : '— disabled'}
                     </span>
                 </div>
                 <span className={`text-xs font-bold px-2 py-0.5 rounded ${useRelay ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>
                     {useRelay ? 'ON' : 'OFF'}
                 </span>
             </div>
+
+            {useRelay && (
+                <p className={`text-xs mt-1 px-2 ${relayStatus.active ? 'text-green-400' : 'text-yellow-400'}`}>
+                    {relayStatus.active
+                        ? `● RELAY LIVE — ${relayStatus.resolution || '?'}${relayStatus.mode ? ` (${relayStatus.mode})` : ''}`
+                        : `○ Falling back to YouTube player${
+                            relayStatus.reason ? ` — ${relayStatus.reason}` :
+                            relayStatus.lastError ? ` — ${relayStatus.lastError}` :
+                            relayStatus.updatedAt ? '' : ' — not started yet'
+                          }`}
+                </p>
+            )}
 
             <div className="flex flex-col gap-1 mt-2 px-2 text-xs text-gray-400 w-full">
                 On Stream End:

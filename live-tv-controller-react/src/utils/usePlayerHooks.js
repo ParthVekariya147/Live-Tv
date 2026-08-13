@@ -110,3 +110,57 @@ export function usePlayerEvents(playerEventKey, playerType, onVideoEnded, onVide
         return () => window.removeEventListener('storage', handleStorageEvent);
     }, [playerEventKey, playerType, onVideoEnded, onVideoError]);
 }
+
+/**
+ * Hook to track the REAL (not just desired) Direct Relay state, pushed by
+ * LivePlayer.html's pushRelayStatus() over the same event channel as
+ * usePlayerTime/usePlayerEvents. Distinct from the "useRelay" toggle state
+ * the controller owns — this reflects what the player page actually did
+ * (engaged relay vs. silently fell back to the YouTube iframe, and why).
+ *
+ * @param {string} playerEventKey - The localStorage key for player events
+ * @param {string} playerType - The player type to filter events (e.g., 'live')
+ */
+export function usePlayerRelayStatus(playerEventKey, playerType) {
+    const [relayStatus, setRelayStatus] = useState({
+        active: false,
+        mode: null,
+        resolution: null,
+        reason: null,
+        lastError: null,
+        reconnectCount: 0,
+        videoId: null,
+        updatedAt: null,
+    });
+
+    useEffect(() => {
+        const handleStorageEvent = (event) => {
+            if (event.key !== playerEventKey || !event.newValue) return;
+
+            try {
+                const data = JSON.parse(event.newValue);
+
+                if (playerType && data.playerType && data.playerType !== playerType) return;
+                if (data.event !== 'relayStatus') return;
+
+                setRelayStatus({
+                    active: !!data.active,
+                    mode: data.mode ?? null,
+                    resolution: data.resolution ?? null,
+                    reason: data.reason ?? null,
+                    lastError: data.lastError ?? null,
+                    reconnectCount: data.reconnectCount ?? 0,
+                    videoId: data.videoId ?? null,
+                    updatedAt: Date.now(),
+                });
+            } catch {
+                // Ignore parse errors
+            }
+        };
+
+        window.addEventListener('storage', handleStorageEvent);
+        return () => window.removeEventListener('storage', handleStorageEvent);
+    }, [playerEventKey, playerType]);
+
+    return relayStatus;
+}

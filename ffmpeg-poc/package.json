@@ -1,0 +1,15 @@
+{
+  "name": "ffmpeg-poc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Isolated PoC: yt-dlp + ffmpeg (copy-mux) pipeline replacing the YouTube iframe player with an HTML5 <video>/HLS player, to validate that highest-quality playback can be obtained consistently.",
+  "type": "commonjs",
+  "main": "start.js",
+  "scripts": {
+    "start": "node start.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {}
+}

@@ -41,19 +41,37 @@
     // muted or never actually playing. Queue them and replay once ready instead.
     let playerReady = false;
     let pendingCommands = [];
-    // Whether the "Loop Player" OBS source is actually the visible/on-air one right
-    // now, per the controller panel. Fail-closed (starts false) so a stray/queued
-    // command can't autoplay audio+video in the background before the panel has had
-    // a chance to report real OBS state.
-    let sourceVisible = false;
-    let pendingPlayWhenVisible = false;
+    const SOURCE_NAME = "Loop Player";
+    // Whether this player is the on-air source right now. Resolved authoritatively
+    // from the server's own obs.activeSource state (HTTP once on load, then live over
+    // /ws) — see resolveVisibilityFromServer() below — instead of relying only on the
+    // controller panel's fire-and-forget "setSourceVisible" localStorage broadcast.
+    // That broadcast is sent only on panel mount and on visibility *changes*, so this
+    // page missed it entirely whenever it started after the panel (OBS browser-source
+    // refresh, exe restart, UnifiedPlayer iframe reload) and then sat gated forever:
+    // every loadVideo became a cue and every play was deferred to a transition that
+    // never came. `null` = not yet known; commands are held in bootQueue until then.
+    let sourceVisible = null;
+    let bootQueue = [];
+    // The standing intent: true means "this is supposed to be playing". A loadVideo —
+    // from anywhere: manual Load, Next/Prev/Jump, playlist automation, end-of-video
+    // advance — sets it, and it SURVIVES the load. Only an explicit pause/stop clears
+    // it. This is what guarantees a triggered video actually starts: if it had to be
+    // cued because the source was hidden, it plays the moment the source goes on air,
+    // and the watchdog in the 1s tick re-asserts it if YouTube leaves it sitting cued.
+    let playIntent = false;
+    let lastVideoId = null;
+    // Set when the watchdog fell back to muted playback to get past a browser autoplay
+    // block; cleared (and audio restored) once the video is genuinely rolling.
+    let mutedForAutoplay = false;
+    let stalledTicks = 0;
 
     function applyCommand(data) {
       switch (data.command) {
         case "play":
+          playIntent = true;
           if (!sourceVisible) {
-            console.log("LoopPlayer: Play requested while source is hidden — deferring until visible.");
-            pendingPlayWhenVisible = true;
+            console.log("LoopPlayer: Play requested while source is hidden — will start when it goes on air.");
             break;
           }
           console.log("LoopPlayer: Playing video.");
@@ -61,15 +79,19 @@
           break;
         case "pause":
           console.log("LoopPlayer: Pausing video.");
+          playIntent = false;
+          stalledTicks = 0;
           player.pauseVideo();
           break;
         case "stop":
           console.log("LoopPlayer: Stopping and destroying player.");
+          playIntent = false;
+          stalledTicks = 0;
           player.stopVideo();
-          if (timeUpdateInterval) {
-            clearInterval(timeUpdateInterval);
-            timeUpdateInterval = null;
-          }
+          // NOTE: timeUpdateInterval is deliberately NOT cleared here. It is the single
+          // page-lifetime tick that also drives the play watchdog and quality pinning,
+          // and it already no-ops while `player` is null. Tearing it down on stop meant
+          // it never came back for the next video created after a stop.
           player.destroy();
           player = null;
           playerReady = false;
@@ -97,10 +119,8 @@
           break;
         case "destroy":
           console.log("LoopPlayer: Destroying player.");
-          if (timeUpdateInterval) {
-            clearInterval(timeUpdateInterval);
-            timeUpdateInterval = null;
-          }
+          playIntent = false;
+          stalledTicks = 0;
           player.destroy();
           player = null;
           playerReady = false;
@@ -108,7 +128,12 @@
           break;
         case "loadVideo":
           console.log(`LoopPlayer: Loading new video ID: ${data.videoId}`);
-          pendingPlayWhenVisible = false; // fresh video — any earlier deferred play no longer applies
+          lastVideoId = data.videoId;
+          // Loading a video IS a request to play it — that is the rule for every
+          // trigger path in this app. When the source is hidden the video is only
+          // cued, but the intent is kept so it starts the instant it goes on air.
+          playIntent = true;
+          stalledTicks = 0;
           if (sourceVisible) {
             player.loadVideoById({ videoId: data.videoId, suggestedQuality: "hd1080" });
           } else {
@@ -120,6 +145,135 @@
           startQualityBurst();
           break;
       }
+    }
+
+    // Single entry point for every inbound command, so the "player doesn't exist yet"
+    // and "player exists but onReady hasn't fired" cases are handled in one place
+    // instead of being silently dropped by the caller.
+    function dispatchCommand(data) {
+      if (data.command === "loadVideo" && data.videoId) {
+        isLoadingVideo = true;
+        lastVideoId = data.videoId;
+        playIntent = true; // a load always means "play this" — see applyCommand's loadVideo case
+        if (!player) { createPlayer(data.videoId); return; }
+        if (!playerReady) { pendingCommands.push(data); return; }
+        applyCommand(data);
+        return;
+      }
+
+      if (!player) {
+        // A play/unmute/seek with no live player used to vanish here — which is why
+        // pressing Play after a Stop did nothing at all. Rebuild from the last known
+        // video instead so playback can always be resumed.
+        if (data.command === "play" && lastVideoId) {
+          console.log("LoopPlayer: Play with no live player — recreating from last video.");
+          playIntent = true;
+          createPlayer(lastVideoId);
+        }
+        return;
+      }
+
+      if (!playerReady) { pendingCommands.push(data); return; }
+      applyCommand(data);
+    }
+
+    function createPlayer(videoId) {
+      if (typeof YT === "undefined" || typeof YT.Player === "undefined") {
+        // The API script is still downloading. This used to drop the command outright,
+        // which lost the very first video whenever a trigger beat the API load.
+        console.warn("LoopPlayer: YT API not ready yet — retrying player creation shortly.");
+        setTimeout(() => { if (!player) createPlayer(videoId); }, 300);
+        return;
+      }
+      console.log(`LoopPlayer: Creating new player for video ID: ${videoId}`);
+      playerReady = false;
+      pendingCommands = [];
+      stalledTicks = 0;
+      player = new YT.Player("player", {
+        videoId: videoId,
+        playerVars: {
+          autoplay: sourceVisible ? 1 : 0,
+          controls: 0,
+          modestbranding: 1,
+          showinfo: 0,
+          rel: 0,
+          fs: 1,
+          iv_load_policy: 3,
+          vq: "hd1080", // best-effort initial quality hint — see enforceHighestQuality
+        },
+        events: {
+          onReady: onPlayerReady,
+          onStateChange: onPlayerStateChange,
+          onError: onPlayerError,
+          onPlaybackQualityChange: onQualityChange,
+        },
+      });
+    }
+
+    // Called whenever we learn (or re-learn) whether this is the on-air source.
+    function applyVisibility(visible) {
+      const first = sourceVisible === null;
+      const changed = sourceVisible !== visible;
+      sourceVisible = !!visible;
+      if (first) {
+        const queued = bootQueue;
+        bootQueue = [];
+        console.log(`LoopPlayer: Visibility resolved (${sourceVisible ? "on air" : "hidden"}) — replaying ${queued.length} held command(s).`);
+        queued.forEach(dispatchCommand);
+      }
+      if (!changed) return;
+      if (!player || !playerReady) return;
+      if (sourceVisible) {
+        // Going on air with a standing play intent — start whatever is cued.
+        if (playIntent) { stalledTicks = 0; player.playVideo(); }
+      } else {
+        player.pauseVideo();
+      }
+    }
+
+    // Authoritative visibility, straight from the shared state service — the same
+    // obs.activeSource key UnifiedPlayer.html watches to decide which player is shown.
+    // Independent of the controller panel being open, so this page self-heals on any
+    // reload rather than waiting for a broadcast that already happened.
+    function resolveVisibilityFromServer() {
+      fetch("/api/state/obs.activeSource")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          const value = d && d.value;
+          // No active source recorded yet — Loop Player is this app's default source
+          // (same fallback UnifiedPlayer.html uses), so treat that as on air.
+          applyVisibility(value ? value === SOURCE_NAME : true);
+        })
+        .catch(() => applyVisibility(true));
+
+      const connect = () => {
+        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+        const ws = new WebSocket(`${protocol}//${location.host}/ws`);
+        const fromValue = (v) => { if (v) applyVisibility(v === SOURCE_NAME); };
+        ws.onmessage = (event) => {
+          let msg;
+          try { msg = JSON.parse(event.data); } catch (e) { return; }
+          if (msg.type === "STATE_SYNC") {
+            fromValue(msg.data && msg.data["obs.activeSource"]);
+          } else if (msg.type === "STATE_CHANGE") {
+            const d = msg.data;
+            if (d.type === "SET" && d.key === "obs.activeSource") fromValue(d.value);
+            else if (d.type === "SET_MULTIPLE" && Array.isArray(d.changes)) {
+              const c = d.changes.find((x) => x.key === "obs.activeSource");
+              if (c) fromValue(c.value);
+            } else if (d.type === "RESET" && d.state) {
+              fromValue(d.state["obs.activeSource"]);
+            }
+          }
+        };
+        ws.onclose = () => setTimeout(connect, 3000);
+        ws.onerror = () => ws.close();
+      };
+      connect();
+
+      // Never stay in the "unknown" state — if the server can't be reached at all,
+      // fall open to on-air rather than holding commands forever.
+      setTimeout(() => { if (sourceVisible === null) applyVisibility(true); }, 3000);
     }
 
     // Function to load the YouTube IFrame API asynchronously
@@ -146,74 +300,16 @@
           console.log("LoopPlayer: Command received via localStorage:", data);
 
           if (data.command === "setSourceVisible") {
-            sourceVisible = !!data.visible;
-            if (player && playerReady) {
-              if (sourceVisible && pendingPlayWhenVisible) {
-                pendingPlayWhenVisible = false;
-                player.playVideo();
-              } else if (!sourceVisible) {
-                player.pauseVideo();
-              }
-            }
-          } else if (data.command === "loadVideo" && data.videoId) {
-            isLoadingVideo = true; // Set loading flag
-            if (player) {
-              // If player already exists but hasn't fired onReady yet (e.g. this
-              // loadVideo followed hard on the one that just created it),
-              // loadVideoById isn't attached yet — queue for replay instead.
-              if (!playerReady) {
-                pendingCommands.push(data);
-              } else {
-                applyCommand(data);
-              }
-            } else {
-              // Create new player if it doesn't exist
-              // Ensure YT.Player is available before trying to create
-              if (
-                typeof YT !== "undefined" &&
-                typeof YT.Player !== "undefined"
-              ) {
-                console.log(
-                  `LoopPlayer: Creating new player for video ID: ${data.videoId}`
-                );
-                playerReady = false;
-                pendingCommands = [];
-                pendingPlayWhenVisible = false;
-                player = new YT.Player("player", {
-                  videoId: data.videoId,
-                  playerVars: {
-                    autoplay: sourceVisible ? 1 : 0,
-                    controls: 0,
-                    modestbranding: 1,
-                    showinfo: 0,
-                    rel: 0,
-                    fs: 1,
-                    iv_load_policy: 3,
-                    vq: "hd1080", // best-effort initial quality hint — see enforceHighestQuality
-                  },
-                  events: {
-                    onReady: onPlayerReady,
-                    onStateChange: onPlayerStateChange,
-                    onError: onPlayerError,
-                    onPlaybackQualityChange: onQualityChange,
-                  },
-                });
-              } else {
-                console.error(
-                  "LoopPlayer: YouTube IFrame API (YT.Player) is not yet ready. Cannot create player."
-                );
-              }
-            }
-          } else if (player) {
-            // If the player object exists but hasn't fired onReady yet (e.g. this
-            // "play"/"unmute" arrived right after the "loadVideo" that just created
-            // it), its control methods aren't attached yet — queue for replay instead
-            // of calling straight into a TypeError that silently gets swallowed below.
-            if (!playerReady) {
-              pendingCommands.push(data);
-            } else {
-              applyCommand(data);
-            }
+            // Still honoured (it's the fastest signal when the panel is open), but no
+            // longer the only source of truth — see resolveVisibilityFromServer().
+            applyVisibility(!!data.visible);
+          } else if (sourceVisible === null) {
+            // Visibility not resolved yet (page just loaded). Hold rather than guess,
+            // so a command landing in that window can't autoplay off-air — replayed by
+            // applyVisibility() a moment later.
+            bootQueue.push(data);
+          } else {
+            dispatchCommand(data);
           }
         } catch (e) {
           console.error("LoopPlayer: Error parsing localStorage command:", e);
@@ -224,7 +320,7 @@
     function onPlayerReady(event) {
       console.log("LoopPlayer: Player is ready!");
       playerReady = true;
-      if (sourceVisible) {
+      if (sourceVisible && playIntent) {
         event.target.playVideo(); // Autoplay on ready — only when actually the visible source
       }
       enforceHighestQuality(event.target);
@@ -306,6 +402,13 @@
         case YT.PlayerState.PLAYING:
           state = "playing";
           isLoadingVideo = false; // Video started playing, loading complete
+          stalledTicks = 0;
+          if (mutedForAutoplay) {
+            // We only muted to get past a browser autoplay block; it's rolling now, so
+            // give the audio back.
+            mutedForAutoplay = false;
+            try { player.unMute(); } catch (e) { /* player torn down mid-flight */ }
+          }
           startQualityBurst(); // YouTube often re-picks quality right as playback actually starts
           break;
         case YT.PlayerState.PAUSED:
@@ -387,8 +490,40 @@
       // negative, which the controller renders as a blank).
       const duration = player.getDuration();
       const currentTime = player.getCurrentTime();
+      const playerState = player.getPlayerState();
+
+      // ---- Play watchdog ----
+      // The hard guarantee behind "a triggered video must actually start": whenever
+      // this source is on air and something asked for playback, a player left sitting
+      // in PAUSED/CUED/UNSTARTED is a stall, not a state the operator chose (an
+      // explicit pause/stop clears playIntent, so this never fights a real pause).
+      // Covers YouTube ignoring the initial autoplay, a cue that never got its play,
+      // and a browser autoplay policy silently refusing sound-on playback.
+      if (sourceVisible && playIntent && playerReady) {
+        const stalled = playerState === YT.PlayerState.PAUSED
+          || playerState === YT.PlayerState.CUED
+          || playerState === YT.PlayerState.UNSTARTED;
+        if (stalled) {
+          stalledTicks++;
+          if (stalledTicks >= 2) {
+            console.warn(`[LoopPlayer][Watchdog] play intended but state=${playerState} for ${stalledTicks}s — forcing playVideo()`);
+            player.playVideo();
+          }
+          if (stalledTicks >= 5 && !mutedForAutoplay && !player.isMuted()) {
+            // Still refusing after several seconds: almost always the autoplay policy
+            // blocking sound-on playback. Start muted and restore audio on PLAYING.
+            console.warn("[LoopPlayer][Watchdog] still stalled — retrying muted to clear autoplay block.");
+            mutedForAutoplay = true;
+            player.mute();
+            player.playVideo();
+          }
+        } else {
+          stalledTicks = 0;
+        }
+      }
+
       // getDuration() returns 0 until the video's metadata is loaded — skip until then
-      if (player.getPlayerState() === YT.PlayerState.PLAYING && duration > 0) {
+      if (playerState === YT.PlayerState.PLAYING && duration > 0) {
         reportEvent("timeUpdate", {
           currentTime,
           duration,
@@ -410,6 +545,9 @@
 
     // Load the YouTube API when the page loads
     loadYouTubeAPI();
+    // ...and immediately find out whether we're the on-air source, so this page is
+    // never stuck waiting on a controller broadcast it may have already missed.
+    resolveVisibilityFromServer();
   </script>
 </body>
 

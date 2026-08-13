@@ -15,7 +15,23 @@
 const fs   = require('fs');
 const path = require('path');
 const https = require('https');
-const { Tunnel } = require('cloudflared');
+const { Tunnel, use: useCloudflaredBin } = require('cloudflared');
+
+// cloudflared's own bin-path resolution (constants.js, hardcoded relative to its
+// own __dirname) points into pkg's virtual snapshot filesystem when running as
+// the packaged .exe — not a real file child_process.spawn can execute, so the
+// tunnel silently fails to start there and notifications fall back to the
+// LAN-only IP. Same class of fix as findFfmpegBinaries/findYtDlpBinary in
+// server.cjs: the native binary must live next to the real .exe on disk, and
+// cloudflared must be told to use it from there instead of its bundled default.
+if (process.pkg) {
+    const bundledBin = path.join(path.dirname(process.execPath), 'cloudflared.exe');
+    if (fs.existsSync(bundledBin)) {
+        useCloudflaredBin(bundledBin);
+    } else {
+        console.warn(`[Tunnel] cloudflared.exe not found next to the app (expected ${bundledBin}) — tunnel cannot start; notifications will stay LAN-only`);
+    }
+}
 
 // .env lives one directory up from live-tv-controller-react/
 const ENV_PATH = process.pkg
@@ -25,19 +41,46 @@ const ENV_PATH = process.pkg
 // Cloudflare's edge can accept the tunnel connection while the quick-tunnel
 // hostname itself is still propagating / the origin proxy hiccups — polling
 // the actual public URL is the only way to catch that state, same as before.
-function checkTunnelHealth(url) {
+//
+// probeTunnel() reports *why* a probe failed, which matters a lot: a freshly
+// minted <random>.trycloudflare.com name is regularly still NXDOMAIN on the
+// local/ISP resolver for minutes after cloudflared prints it (confirmed here —
+// 1.1.1.1 answered for a hostname this machine's router still called
+// non-existent). That is DNS propagation, not a broken tunnel: phones on mobile
+// data may already be reaching it fine. Treating it as "dead" and reconnecting
+// mints an even *newer* hostname that is even less propagated, so the app
+// spins — new URL, unresolvable, reconnect, repeat — and never settles on a QR
+// code that anyone can scan.
+function probeTunnel(url) {
     return new Promise((resolve) => {
         try {
             const req = https.get(`${url}/setup`, { timeout: 8000 }, (res) => {
                 res.resume();
-                resolve(res.statusCode >= 200 && res.statusCode < 400);
+                resolve({ ok: res.statusCode >= 200 && res.statusCode < 400, reason: 'http', status: res.statusCode });
             });
-            req.on('timeout', () => { req.destroy(); resolve(false); });
-            req.on('error', () => resolve(false));
-        } catch (_) {
-            resolve(false);
+            req.on('timeout', () => { req.destroy(); resolve({ ok: false, reason: 'timeout' }); });
+            req.on('error', (err) => {
+                const dnsPending = err.code === 'ENOTFOUND' || err.code === 'EAI_AGAIN';
+                resolve({ ok: false, reason: dnsPending ? 'dns' : 'error', code: err.code });
+            });
+        } catch (err) {
+            resolve({ ok: false, reason: 'error', code: err && err.code });
         }
     });
+}
+
+function checkTunnelHealth(url) {
+    return probeTunnel(url).then(r => r.ok);
+}
+
+// How long a brand-new hostname is allowed to be unresolvable before we stop
+// blaming DNS and treat it as a genuinely dead tunnel.
+const DNS_PROPAGATION_GRACE_MS = 5 * 60 * 1000;
+
+// When the URL currently in process.env.TUNNEL_URL was minted.
+let urlMintedAt = null;
+function isUrlPropagating() {
+    return !!urlMintedAt && (Date.now() - urlMintedAt) < DNS_PROPAGATION_GRACE_MS;
 }
 
 function patchEnvFile(url) {
@@ -136,6 +179,7 @@ function startTunnel(port, { maxRetries = 3 } = {}) {
 
             // Update env var in-process immediately
             process.env.TUNNEL_URL = url;
+            urlMintedAt = Date.now();
 
             // Persist to .env so the QR code survives restarts (until it reconnects
             // with a fresh URL — quick tunnels can't pin a fixed subdomain)
@@ -154,17 +198,26 @@ function startTunnel(port, { maxRetries = 3 } = {}) {
             // leaving the UI reporting "Tunnel active" against a dead link.
             let consecutiveFailures = 0;
             healthTimer = setInterval(async () => {
-                const healthy = await checkTunnelHealth(url);
-                if (healthy) {
+                const probe = await probeTunnel(url);
+                if (probe.ok) {
                     consecutiveFailures = 0;
                     return;
                 }
+                // Hostname not in DNS yet on this machine — Cloudflare's name is
+                // still propagating to the local resolver. Reconnecting now would
+                // throw away a working tunnel and mint an even fresher hostname,
+                // restarting the same wait. Hold, don't count it as a failure.
+                if (probe.reason === 'dns' && isUrlPropagating()) {
+                    console.log(`[Tunnel] ${url} not resolvable from this machine yet (DNS propagating) — keeping the tunnel`);
+                    return;
+                }
                 consecutiveFailures++;
-                console.warn(`[Tunnel] Health check failed (${consecutiveFailures}/2): ${url}/setup unreachable`);
+                console.warn(`[Tunnel] Health check failed (${consecutiveFailures}/2, ${probe.reason}${probe.code ? ' ' + probe.code : ''}): ${url}/setup unreachable`);
                 if (consecutiveFailures >= 2) {
                     console.warn('[Tunnel] Unhealthy — forcing reconnect');
                     clearInterval(healthTimer);
                     process.env.TUNNEL_URL = '';
+                    urlMintedAt = null;
                     try { tunnel.stop(); } catch (_) {}
                 }
             }, 45000);
@@ -189,6 +242,7 @@ function startTunnel(port, { maxRetries = 3 } = {}) {
             reconnecting = true;
             console.warn('[Tunnel] Connection dropped — reconnecting in 10s…');
             process.env.TUNNEL_URL = '';
+            urlMintedAt = null;
             setTimeout(() => { attempt = 0; tryStart(); }, 10000);
         });
     }
@@ -196,4 +250,4 @@ function startTunnel(port, { maxRetries = 3 } = {}) {
     tryStart();
 }
 
-module.exports = { startTunnel, checkTunnelHealth, forceReconnect, getConnectingSince };
+module.exports = { startTunnel, checkTunnelHealth, probeTunnel, isUrlPropagating, forceReconnect, getConnectingSince };

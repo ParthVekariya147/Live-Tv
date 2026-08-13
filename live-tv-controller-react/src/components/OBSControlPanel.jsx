@@ -4,6 +4,7 @@ import { useOBS } from '../context/OBSContext';
 import PreviewBox from './PreviewBox';
 import SettingsBackup from './SettingsBackup';
 import NotificationSettings from './NotificationSettings';
+import CookieSettings from './CookieSettings';
 import ChannelManager from './ChannelManager';
 import { LIVE_PLAYER_EVENT_KEY, PLAYER_EVENT_KEY, DELAY_PLAYER_EVENT_KEY, LOCAL_PLAYER_EVENT_KEY } from '../utils/core-utils';
 import { logError, LogCategory, LogType } from '../utils/logger';
@@ -306,6 +307,7 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
                     </div>
 
                     <NotificationSettings />
+                    <CookieSettings />
                     <ChannelManager />
 
                 {showOBSSetup && (
@@ -327,6 +329,12 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
                                     className="w-full py-1.5 bg-indigo-700 hover:bg-indigo-600 text-white rounded font-medium text-xs transition-all flex items-center justify-center gap-1.5"
                                 >
                                     🚀 Open OBS Auto-Setup
+                                </button>
+                                <button
+                                    onClick={() => window.open('/obs-auto-setup-unified.html', '_blank', 'width=600,height=700')}
+                                    className="w-full mt-1.5 py-1.5 bg-violet-700 hover:bg-violet-600 text-white rounded font-medium text-xs transition-all flex items-center justify-center gap-1.5"
+                                >
+                                    🚀 Open Unified Auto-Setup
                                 </button>
                                 {!isConnected && (
                                     <p className="text-yellow-600 mt-1.5 text-xs">⚠ OBS not connected — auto-setup will try to connect on its own.</p>

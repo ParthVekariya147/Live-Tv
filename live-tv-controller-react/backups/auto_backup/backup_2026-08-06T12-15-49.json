@@ -1,0 +1,857 @@
+{
+  "exportedAt": "2026-08-06T12:15:49.829Z",
+  "version": "2.0",
+  "serverState": {
+    "player.loop": {
+      "playlist": [
+        "JRxOaE827b4",
+        "NvQgoOC3538",
+        "jaAqYMV7EFw",
+        "ez0SJffV0nU"
+      ],
+      "currentIndex": 3,
+      "isPlaying": false,
+      "isMuted": false,
+      "isStopped": false,
+      "videoId": "ez0SJffV0nU"
+    },
+    "player.live": {
+      "videoId": "11eNCyDIQ_c",
+      "priority": "matchSearchTerms",
+      "isPlaying": true,
+      "isMuted": false,
+      "isStopped": false,
+      "desiredQuality": "auto",
+      "useRelay": true
+    },
+    "player.delay": {
+      "videoId": "VLbgIoaZgd4",
+      "startTime": "00:00:00",
+      "endTime": "",
+      "isPlaying": false,
+      "isMuted": false,
+      "isStopped": false,
+      "keywordSkipEnabled": false,
+      "skipKeyword": "",
+      "endGroupId": ""
+    },
+    "player.local": {
+      "playlist": [
+        {
+          "path": "/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5C01_Shree%20Hari%20ni%20Swabhavik%20Chesta%20%C2%A6%20Swaminarayan%20Film%20%C2%A6%20Full%20Chesta%203D%20Animation%20%C2%A6%20Chesta%20na%20Pado.mp4",
+          "name": "01_Shree Hari ni Swabhavik Chesta ¦ Swaminarayan Film ¦ Full Chesta 3D Animation ¦ Chesta na Pado.mp4",
+          "startTime": "",
+          "endTime": "",
+          "enabled": true
+        },
+        {
+          "path": "/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5CHari%20Leela%20-%2008%20_%20Avtariya%20Avinashi%20_%2027%20Mar%202026%20_%20Gyanjivandasji%20Swami%20-%20Kundaldham_1080p50.mp4",
+          "name": "Hari Leela - 08 _ Avtariya Avinashi _ 27 Mar 2026 _ Gyanjivandasji Swami - Kundaldham_1080p50.mp4",
+          "startTime": "",
+          "endTime": "",
+          "enabled": true
+        },
+        {
+          "path": "/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5CMurti%20Lagat%20Pyari%20Shree.._%20Murti%20Varnan%20_%20Dharmanand%20Padras%20-%2001%20_%20Gyanjivandasji%20Swami%20-%20Kundaldham_1080p50.mp4",
+          "name": "Murti Lagat Pyari Shree.._ Murti Varnan _ Dharmanand Padras - 01 _ Gyanjivandasji Swami - Kundaldham_1080p50.mp4",
+          "startTime": "",
+          "endTime": "",
+          "enabled": false
+        },
+        {
+          "path": "/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5CUncha%20Uncha%20Dungare...%20_%20Kirtan%20Kiran%20-%2015%20_%2005%20Apr%202026%20_%20Gyanjivandasji%20Swami%20-%20Kundaldham_1080p.mp4",
+          "name": "Uncha Uncha Dungare... _ Kirtan Kiran - 15 _ 05 Apr 2026 _ Gyanjivandasji Swami - Kundaldham_1080p.mp4",
+          "startTime": "",
+          "endTime": "",
+          "enabled": false
+        },
+        {
+          "path": "/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5CYTDown_YouTube_Keri-Jame-Hari-Kirtan-Kiran-17-17-May-20_Media_TPb2NbK_dLs_002_720p.mp4",
+          "name": "YTDown_YouTube_Keri-Jame-Hari-Kirtan-Kiran-17-17-May-20_Media_TPb2NbK_dLs_002_720p.mp4",
+          "startTime": "",
+          "endTime": "",
+          "enabled": false
+        }
+      ],
+      "currentIndex": 1,
+      "isPlaying": false,
+      "isMuted": false,
+      "isStopped": false
+    },
+    "player.local.endActions": {
+      "0": "Loop Player",
+      "1": "Loop Player",
+      "2": "Loop Player",
+      "3": "Loop Player",
+      "4": "Loop Player",
+      "5": "Loop Player",
+      "6": "Loop Player"
+    },
+    "monitor.1.enabled": true,
+    "monitor.1.searchTerms": "",
+    "monitor.2.enabled": true,
+    "monitor.2.searchTerms": "",
+    "katha.refresh.enabled": false,
+    "katha.refresh.time": "06:00",
+    "katha.refresh.lastTriggered": null,
+    "katha.player.enabled": false,
+    "katha.player.time": "07:00",
+    "katha.player.lastTriggered": null,
+    "obs.activeSource": "Live Player",
+    "app.version": "1.0.0",
+    "schedulerTriggerHistory": [
+      {
+        "id": 1786018548930,
+        "title": "",
+        "source": "Live Player",
+        "action": "show",
+        "firedAt": "2026-08-06T12:15:48.930Z"
+      },
+      {
+        "id": 1786018548698,
+        "title": "",
+        "source": "Live Player",
+        "action": "show",
+        "firedAt": "2026-08-06T12:15:48.698Z"
+      },
+      {
+        "id": 1786018548431,
+        "title": "",
+        "source": "Live Player",
+        "action": "show",
+        "firedAt": "2026-08-06T12:15:48.431Z"
+      },
+      {
+        "id": 1786018548201,
+        "title": "",
+        "source": "Live Player",
+        "action": "show",
+        "firedAt": "2026-08-06T12:15:48.201Z"
+      },
+      {
+        "id": 1786018547964,
+        "title": "Loop: Prabhatiya",
+        "source": "Playlist Automation",
+        "action": "playlist_automation",
+        "firedAt": "2026-08-06T12:15:47.964Z"
+      },
+      {
+        "id": 1786018547736,
+        "title": "Loop: PM",
+        "source": "Playlist Automation",
+        "action": "playlist_automation",
+        "firedAt": "2026-08-06T12:15:47.736Z"
+      },
+      {
+        "id": 1786018547497,
+        "title": "Loop: Prabhatiya",
+        "source": "Playlist Automation",
+        "action": "playlist_automation",
+        "firedAt": "2026-08-06T12:15:47.497Z"
+      },
+      {
+        "id": 1786018547268,
+        "title": "Loop: Sandhya",
+        "source": "Playlist Automation",
+        "action": "playlist_automation",
+        "firedAt": "2026-08-06T12:15:47.268Z"
+      },
+      {
+        "id": 1786018547030,
+        "title": "Loop: PM",
+        "source": "Playlist Automation",
+        "action": "playlist_automation",
+        "firedAt": "2026-08-06T12:15:47.030Z"
+      },
+      {
+        "id": 1786018546801,
+        "title": "Loop: Prabhatiya",
+        "source": "Playlist Automation",
+        "action": "playlist_automation",
+        "firedAt": "2026-08-06T12:15:46.801Z"
+      }
+    ],
+    "obs.connected": false,
+    "notifications.settings": {
+      "enabled": true,
+      "appName": "SMK TV 41",
+      "events": {
+        "SCHEDULER_TRIGGER": true,
+        "SCHEDULER_ALERT": true,
+        "RECORDING_STARTED": true,
+        "RECORDING_STOPPED": true,
+        "RECORDING_ERROR": true,
+        "BACKUP_COMPLETED": false,
+        "MEMORY_WARNING": true,
+        "MONITOR_LIVE": true
+      }
+    },
+    "player.loop.automation": [
+      {
+        "id": "id-67niv3xal",
+        "serial": "1",
+        "name": "Main",
+        "triggerType": "default",
+        "triggerValue": "",
+        "endType": "loop",
+        "endValue": "",
+        "activeDays": [],
+        "lastFiredDate": null,
+        "isExpanded": false,
+        "lists": [
+          {
+            "id": "id-mn2s5j84z",
+            "serial": "1",
+            "name": "Kirtan",
+            "videoIds": [
+              "9Vca2MY8Go8",
+              "Xv7qUknwYlQ",
+              "WMxKjhLe-GU",
+              "UIqExHnsTtY",
+              "kD8H7EYNMXs"
+            ],
+            "rawInput": "9Vca2MY8Go8, Xv7qUknwYlQ, WMxKjhLe-GU, UIqExHnsTtY, kD8H7EYNMXs",
+            "startIndex": 5,
+            "playCount": 2,
+            "runEvery": 1,
+            "cycleCount": 0,
+            "endType": "nextList",
+            "endValue": "id-h2lmyxzjh",
+            "isExpanded": false
+          },
+          {
+            "id": "id-h2lmyxzjh",
+            "serial": "2",
+            "name": "Dhun",
+            "videoIds": [
+              "9Vca2MY8Go8",
+              "Xv7qUknwYlQ",
+              "WMxKjhLe-GU",
+              "UIqExHnsTtY",
+              "kD8H7EYNMXs"
+            ],
+            "rawInput": "9Vca2MY8Go8, Xv7qUknwYlQ, WMxKjhLe-GU, UIqExHnsTtY, kD8H7EYNMXs",
+            "startIndex": 3,
+            "playCount": 1,
+            "runEvery": 2,
+            "cycleCount": 0,
+            "endType": "nextList",
+            "endValue": "id-mxhhj5ygt",
+            "isExpanded": false
+          },
+          {
+            "id": "id-mxhhj5ygt",
+            "serial": "3",
+            "name": "Katha",
+            "videoIds": [
+              "JRxOaE827b4",
+              "NvQgoOC3538",
+              "jaAqYMV7EFw",
+              "ez0SJffV0nU"
+            ],
+            "rawInput": "JRxOaE827b4, NvQgoOC3538, jaAqYMV7EFw, ez0SJffV0nU",
+            "startIndex": 1,
+            "playCount": 1,
+            "runEvery": 1,
+            "cycleCount": 0,
+            "endType": "endGroup",
+            "endValue": "",
+            "isExpanded": false
+          }
+        ]
+      },
+      {
+        "id": "id-a0p7yw43f",
+        "serial": "2",
+        "name": "AM",
+        "triggerType": "live_events",
+        "triggerValue": "Mangala,Katha",
+        "endType": "serial",
+        "endValue": "1",
+        "activeDays": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "lastFiredDate": null,
+        "isExpanded": false,
+        "lists": [
+          {
+            "id": "id-w3f1wo61g",
+            "serial": "1",
+            "name": "Jukebox",
+            "videoIds": [
+              "cA6YIc5QzEM",
+              "Ztr0oB0aiEw",
+              "TrCX4bOZmTg"
+            ],
+            "rawInput": "cA6YIc5QzEM, Ztr0oB0aiEw, TrCX4bOZmTg",
+            "startIndex": 1,
+            "playCount": 1,
+            "runEvery": 1,
+            "cycleCount": 0,
+            "endType": "nextList",
+            "endValue": "id-iapiogddc",
+            "isExpanded": true
+          },
+          {
+            "id": "id-iapiogddc",
+            "serial": "2",
+            "name": "Katha ",
+            "videoIds": [
+              "YIM5EpSIZVQ",
+              "3uFZsm6I5mk",
+              "QvrykUPn6z0"
+            ],
+            "rawInput": "YIM5EpSIZVQ, 3uFZsm6I5mk, QvrykUPn6z0",
+            "startIndex": 3,
+            "playCount": 1,
+            "runEvery": 1,
+            "cycleCount": 0,
+            "endType": "endGroup",
+            "endValue": "",
+            "isExpanded": true
+          }
+        ]
+      },
+      {
+        "id": "id-13leybpd4",
+        "serial": "3",
+        "name": "PM",
+        "triggerType": "default",
+        "triggerValue": "",
+        "endType": "serial",
+        "endValue": "1",
+        "activeDays": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          6,
+          5
+        ],
+        "lastFiredDate": "2026-07-29",
+        "isExpanded": false,
+        "lists": [
+          {
+            "id": "id-ci2116oj0",
+            "serial": "1",
+            "name": "Thal",
+            "videoIds": [
+              "qzyb3I89bS8"
+            ],
+            "rawInput": "qzyb3I89bS8",
+            "startIndex": 1,
+            "playCount": 1,
+            "runEvery": 1,
+            "cycleCount": 0,
+            "endType": "nextList",
+            "endValue": "id-vc8oa77fd",
+            "isExpanded": true
+          },
+          {
+            "id": "id-vc8oa77fd",
+            "serial": "2",
+            "name": "Katha",
+            "videoIds": [
+              "ziMXxiP8lyI",
+              "GX-H1iS89nY",
+              "LMY0NU0IYOQ"
+            ],
+            "rawInput": "ziMXxiP8lyI, GX-H1iS89nY, LMY0NU0IYOQ",
+            "startIndex": 3,
+            "playCount": 1,
+            "runEvery": 1,
+            "cycleCount": 0,
+            "endType": "endGroup",
+            "endValue": "",
+            "isExpanded": true
+          }
+        ]
+      },
+      {
+        "id": "id-9e18v9ufy",
+        "serial": "4",
+        "name": "Sandhya",
+        "triggerType": "default",
+        "triggerValue": "",
+        "endType": "loop",
+        "endValue": "",
+        "activeDays": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "lastFiredDate": "2026-07-29",
+        "isExpanded": false,
+        "lists": [
+          {
+            "id": "id-ulgehec8z",
+            "serial": "1",
+            "name": "Random",
+            "videoIds": [
+              "rMcO75zRP4k",
+              "29vyxfD4BBM",
+              "FJ2tFXNFV2A"
+            ],
+            "rawInput": "rMcO75zRP4k, 29vyxfD4BBM, FJ2tFXNFV2A",
+            "startIndex": 2,
+            "playCount": 1,
+            "runEvery": 1,
+            "cycleCount": 0,
+            "endType": "endGroup",
+            "endValue": "",
+            "isExpanded": false
+          }
+        ]
+      },
+      {
+        "id": "id-dfui55saq",
+        "serial": "5",
+        "name": "Podhaniya",
+        "triggerType": "live_events",
+        "triggerValue": "Jagran",
+        "endType": "serial",
+        "endValue": "1",
+        "activeDays": [
+          1,
+          0,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "lastFiredDate": null,
+        "isExpanded": false,
+        "lists": [
+          {
+            "id": "id-290pkoues",
+            "serial": "1",
+            "name": "Podhaniya",
+            "videoIds": [
+              "kVlWaWxjGN4",
+              "8mDN288BJdo"
+            ],
+            "rawInput": "kVlWaWxjGN4, 8mDN288BJdo",
+            "startIndex": 1,
+            "playCount": 1,
+            "runEvery": 1,
+            "cycleCount": 0,
+            "endType": "endGroup",
+            "endValue": "",
+            "isExpanded": true
+          }
+        ]
+      },
+      {
+        "id": "id-51sdqp8zh",
+        "serial": "6",
+        "name": "Prabhatiya",
+        "triggerType": "default",
+        "triggerValue": "",
+        "endType": "name",
+        "endValue": "Main",
+        "activeDays": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "lastFiredDate": null,
+        "isExpanded": false,
+        "lists": [
+          {
+            "id": "id-p5wnxmojc",
+            "serial": "1",
+            "name": "Prabhatiya",
+            "videoIds": [
+              "9Vca2MY8Go8",
+              "Xv7qUknwYlQ",
+              "WMxKjhLe-GU",
+              "UIqExHnsTtY",
+              "kD8H7EYNMXs"
+            ],
+            "rawInput": "9Vca2MY8Go8, Xv7qUknwYlQ, WMxKjhLe-GU, UIqExHnsTtY, kD8H7EYNMXs",
+            "startIndex": 2,
+            "playCount": 1,
+            "runEvery": 1,
+            "cycleCount": 0,
+            "endType": "endGroup",
+            "endValue": "",
+            "isExpanded": true
+          }
+        ]
+      }
+    ],
+    "player.live.endRules": [
+      {
+        "id": "rule-ms8vd6kf-9eygo2",
+        "keywords": "",
+        "groupId": "id-dfui55saq",
+        "listId": "",
+        "isDefault": true
+      }
+    ]
+  },
+  "schedules": [
+    {
+      "id": 1785055587699,
+      "time": "14:25",
+      "source": "Local Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "Chesta",
+      "enabled": true,
+      "lastTriggered": "2026-08-06-14:25",
+      "lastTriggeredAt": "2026-08-06T12:15:45.811Z",
+      "createdAt": "2026-07-26T08:46:27.699Z"
+    },
+    {
+      "id": 1785055620140,
+      "time": "14:48",
+      "source": "Katha Refresh",
+      "action": "katha_refresh",
+      "recurrence": "daily",
+      "days": [],
+      "title": "Refresh Katha Content",
+      "enabled": true,
+      "lastTriggered": "2026-08-06-14:48",
+      "lastTriggeredAt": "2026-08-06T12:15:46.053Z",
+      "createdAt": "2026-07-26T08:47:00.140Z",
+      "skipIfLivePlaying": false
+    },
+    {
+      "id": 1785055631989,
+      "time": "14:50",
+      "source": "Katha Player",
+      "action": "katha_player",
+      "recurrence": "daily",
+      "days": [],
+      "title": "Load Katha to Delay Player",
+      "enabled": true,
+      "lastTriggered": "2026-08-06-14:50",
+      "lastTriggeredAt": "2026-08-06T12:15:46.328Z",
+      "createdAt": "2026-07-26T08:47:11.989Z",
+      "skipIfLivePlaying": false
+    },
+    {
+      "id": 1785172202618,
+      "time": "22:41",
+      "source": "Delay Live",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-08-02-22:41",
+      "lastTriggeredAt": "2026-08-02T17:25:58.642Z",
+      "createdAt": "2026-07-27T17:10:02.618Z",
+      "skipUntil": null,
+      "nextFireAfterSkip": null
+    },
+    {
+      "id": "pa_id-13leybpd4_1785319179734_k1h1",
+      "time": "16:50",
+      "source": "Playlist Automation",
+      "action": "playlist_automation",
+      "recurrence": "days",
+      "days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        6,
+        5
+      ],
+      "title": "Loop: PM",
+      "enabled": true,
+      "lastTriggered": "2026-08-06-16:50",
+      "lastTriggeredAt": "2026-08-06T12:15:46.561Z",
+      "createdAt": "2026-07-29T09:59:39.903Z"
+    },
+    {
+      "id": "pa_id-51sdqp8zh_1785319179949_7rgk",
+      "time": "05:30",
+      "source": "Playlist Automation",
+      "action": "playlist_automation",
+      "recurrence": "days",
+      "days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "title": "Loop: Prabhatiya",
+      "enabled": true,
+      "lastTriggered": "2026-08-06-05:30",
+      "lastTriggeredAt": "2026-08-06T12:15:46.790Z",
+      "createdAt": "2026-07-29T09:59:40.004Z"
+    },
+    {
+      "id": "pa_id-13leybpd4_1785319193903_msnx",
+      "time": "10:00",
+      "source": "Playlist Automation",
+      "action": "playlist_automation",
+      "recurrence": "days",
+      "days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        6,
+        5
+      ],
+      "title": "Loop: PM",
+      "enabled": true,
+      "lastTriggered": "2026-08-06-10:00",
+      "lastTriggeredAt": "2026-08-06T12:15:47.019Z",
+      "createdAt": "2026-07-29T09:59:54.127Z"
+    },
+    {
+      "id": "pa_id-9e18v9ufy_1785319194208_1lk4",
+      "time": "14:30",
+      "source": "Playlist Automation",
+      "action": "playlist_automation",
+      "recurrence": "days",
+      "days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "title": "Loop: Sandhya",
+      "enabled": true,
+      "lastTriggered": "2026-08-06-14:30",
+      "lastTriggeredAt": "2026-08-06T12:15:47.255Z",
+      "createdAt": "2026-07-29T09:59:56.180Z"
+    },
+    {
+      "id": "pa_id-51sdqp8zh_1785319196261_gmv3",
+      "time": "05:30",
+      "source": "Playlist Automation",
+      "action": "playlist_automation",
+      "recurrence": "days",
+      "days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "title": "Loop: Prabhatiya",
+      "enabled": true,
+      "lastTriggered": "2026-08-06-05:30",
+      "lastTriggeredAt": "2026-08-06T12:15:47.486Z",
+      "createdAt": "2026-07-29T09:59:56.385Z"
+    },
+    {
+      "id": "pa_id-a0p7yw43f_1785319342179_y8jl",
+      "time": "15:33",
+      "source": "Playlist Automation",
+      "action": "playlist_automation",
+      "recurrence": "days",
+      "days": [
+        3
+      ],
+      "title": "Loop: AM",
+      "enabled": true,
+      "lastTriggered": "2026-07-29-15:33",
+      "lastTriggeredAt": "2026-07-29T10:03:00.379Z",
+      "createdAt": "2026-07-29T10:02:22.183Z"
+    },
+    {
+      "id": "pa_id-67niv3xal_1785320313206_qsr0",
+      "time": "15:49",
+      "source": "Playlist Automation",
+      "action": "playlist_automation",
+      "recurrence": "days",
+      "days": [
+        0,
+        3
+      ],
+      "title": "Loop: Main",
+      "enabled": true,
+      "lastTriggered": "2026-08-02-15:49",
+      "lastTriggeredAt": "2026-08-02T10:19:00.140Z",
+      "createdAt": "2026-07-29T10:18:33.209Z"
+    },
+    {
+      "id": "pa_id-13leybpd4_1785426092318_ffhw",
+      "time": "16:50",
+      "source": "Playlist Automation",
+      "action": "playlist_automation",
+      "recurrence": "days",
+      "days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        6,
+        5
+      ],
+      "title": "Loop: PM",
+      "enabled": true,
+      "lastTriggered": "2026-08-06-16:50",
+      "lastTriggeredAt": "2026-08-06T12:15:47.725Z",
+      "createdAt": "2026-07-30T15:41:32.476Z"
+    },
+    {
+      "id": "pa_id-51sdqp8zh_1785426092541_cwut",
+      "time": "05:30",
+      "source": "Playlist Automation",
+      "action": "playlist_automation",
+      "recurrence": "days",
+      "days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "title": "Loop: Prabhatiya",
+      "enabled": true,
+      "lastTriggered": "2026-08-06-05:30",
+      "lastTriggeredAt": "2026-08-06T12:15:47.953Z",
+      "createdAt": "2026-07-30T15:41:32.632Z"
+    },
+    {
+      "id": 1785743935821,
+      "time": "13:29",
+      "source": "Live Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-08-06-13:29",
+      "lastTriggeredAt": "2026-08-06T12:15:48.184Z",
+      "createdAt": "2026-08-03T07:58:55.821Z"
+    },
+    {
+      "id": 1785744155940,
+      "time": "13:33",
+      "source": "Live Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-08-06-13:33",
+      "lastTriggeredAt": "2026-08-06T12:15:48.412Z",
+      "createdAt": "2026-08-03T08:02:35.940Z"
+    },
+    {
+      "id": 1785744205124,
+      "time": "13:34",
+      "source": "Live Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-08-06-13:34",
+      "lastTriggeredAt": "2026-08-06T12:15:48.688Z",
+      "createdAt": "2026-08-03T08:03:25.124Z"
+    },
+    {
+      "id": 1785746179861,
+      "time": "14:07",
+      "source": "Live Player",
+      "action": "show",
+      "recurrence": "daily",
+      "days": [],
+      "scheduledDay": null,
+      "title": "",
+      "enabled": true,
+      "lastTriggered": "2026-08-06-14:07",
+      "lastTriggeredAt": "2026-08-06T12:15:48.917Z",
+      "createdAt": "2026-08-03T08:36:19.861Z"
+    }
+  ],
+  "localStorage": {
+    "loopPlayerState": "{\"playlist\":[\"JRxOaE827b4\",\"NvQgoOC3538\",\"jaAqYMV7EFw\",\"ez0SJffV0nU\"],\"currentIndex\":3,\"isPlaying\":false,\"isMuted\":false,\"isStopped\":false,\"videoId\":\"ez0SJffV0nU\"}",
+    "livePlayerState": "{\"videoId\":\"11eNCyDIQ_c\",\"priority\":\"matchSearchTerms\",\"isPlaying\":true,\"isMuted\":false,\"isStopped\":false,\"desiredQuality\":\"auto\",\"useRelay\":true}",
+    "delayPlayerState": "{\"videoId\":\"VLbgIoaZgd4\",\"startTime\":\"00:00:00\",\"endTime\":\"\",\"isPlaying\":false,\"isMuted\":false,\"isStopped\":false,\"keywordSkipEnabled\":false,\"skipKeyword\":\"\",\"endGroupId\":\"\"}",
+    "localPCPlayerState": "{\"playlist\":[{\"path\":\"/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5C01_Shree%20Hari%20ni%20Swabhavik%20Chesta%20%C2%A6%20Swaminarayan%20Film%20%C2%A6%20Full%20Chesta%203D%20Animation%20%C2%A6%20Chesta%20na%20Pado.mp4\",\"name\":\"01_Shree Hari ni Swabhavik Chesta ¦ Swaminarayan Film ¦ Full Chesta 3D Animation ¦ Chesta na Pado.mp4\",\"startTime\":\"\",\"endTime\":\"\",\"enabled\":true},{\"path\":\"/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5CHari%20Leela%20-%2008%20_%20Avtariya%20Avinashi%20_%2027%20Mar%202026%20_%20Gyanjivandasji%20Swami%20-%20Kundaldham_1080p50.mp4\",\"name\":\"Hari Leela - 08 _ Avtariya Avinashi _ 27 Mar 2026 _ Gyanjivandasji Swami - Kundaldham_1080p50.mp4\",\"startTime\":\"\",\"endTime\":\"\",\"enabled\":true},{\"path\":\"/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5CMurti%20Lagat%20Pyari%20Shree.._%20Murti%20Varnan%20_%20Dharmanand%20Padras%20-%2001%20_%20Gyanjivandasji%20Swami%20-%20Kundaldham_1080p50.mp4\",\"name\":\"Murti Lagat Pyari Shree.._ Murti Varnan _ Dharmanand Padras - 01 _ Gyanjivandasji Swami - Kundaldham_1080p50.mp4\",\"startTime\":\"\",\"endTime\":\"\",\"enabled\":false},{\"path\":\"/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5CUncha%20Uncha%20Dungare...%20_%20Kirtan%20Kiran%20-%2015%20_%2005%20Apr%202026%20_%20Gyanjivandasji%20Swami%20-%20Kundaldham_1080p.mp4\",\"name\":\"Uncha Uncha Dungare... _ Kirtan Kiran - 15 _ 05 Apr 2026 _ Gyanjivandasji Swami - Kundaldham_1080p.mp4\",\"startTime\":\"\",\"endTime\":\"\",\"enabled\":false},{\"path\":\"/api/videos/serve?path=D%3A%5Clive-tv%5CLive-Tv%5Cwindows%5Cexe%5Cvideos%5CYTDown_YouTube_Keri-Jame-Hari-Kirtan-Kiran-17-17-May-20_Media_TPb2NbK_dLs_002_720p.mp4\",\"name\":\"YTDown_YouTube_Keri-Jame-Hari-Kirtan-Kiran-17-17-May-20_Media_TPb2NbK_dLs_002_720p.mp4\",\"startTime\":\"\",\"endTime\":\"\",\"enabled\":false}],\"currentIndex\":1,\"isPlaying\":false,\"isMuted\":false,\"isStopped\":false}",
+    "localPCPlayerEndActions": "{\"0\":\"Loop Player\",\"1\":\"Loop Player\",\"2\":\"Loop Player\",\"3\":\"Loop Player\",\"4\":\"Loop Player\",\"5\":\"Loop Player\",\"6\":\"Loop Player\"}",
+    "liveMonitorEnabled1": "true",
+    "liveMonitorEnabled2": "true",
+    "savedSearchTitles1": "",
+    "savedSearchTitles2": "",
+    "liveEndRules": "[{\"id\":\"rule-ms8vd6kf-9eygo2\",\"keywords\":\"\",\"groupId\":\"id-dfui55saq\",\"listId\":\"\",\"isDefault\":true}]"
+  },
+  "channels": [
+    {
+      "id": "local-mrxwldpq-jj5qyd",
+      "name": "Vadtal",
+      "channelId": "UC2oaqitUiwcbYPnh9zLR50g"
+    },
+    {
+      "id": "local-mrxwnszy-ie756l",
+      "name": "Junaghad",
+      "channelId": "UCsumsmy3V_aoNwGfSKzNgIg"
+    },
+    {
+      "id": "local-mryz8jz7-hv6ilv",
+      "name": "Swaminarayan Bhagwan",
+      "channelId": "UCQXWP4gEdEwlb6vodwrU75A"
+    },
+    {
+      "id": "local-mryz8v6t-twvpy8",
+      "name": "Swaminarayan",
+      "channelId": "UC7HQ3mzdsyvLU0Y7a2t3N7A"
+    },
+    {
+      "id": "local-msctjum8-yogod1",
+      "name": "test",
+      "channelId": "UC7JnIYJEPmoxXJdYb1BhrnQ"
+    }
+  ],
+  "validation": {
+    "warnings": [],
+    "playerKeys": [
+      "loopPlayerState",
+      "livePlayerState",
+      "delayPlayerState",
+      "localPCPlayerState",
+      "localPCPlayerEndActions",
+      "liveMonitorEnabled1",
+      "liveMonitorEnabled2",
+      "savedSearchTitles1",
+      "savedSearchTitles2",
+      "liveEndRules"
+    ]
+  }
+}

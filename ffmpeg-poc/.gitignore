@@ -1,0 +1,10 @@
+node_modules/
+hls_output/
+*.log
+ffmpeg.log
+cookies.txt
+
+# Vendored PO Token provider server source (fetched by a one-time setup
+# step, not committed — see README "PO Token provider" section). Its own
+# node_modules/build output are excluded the same way ours are above.
+pot-server-src/

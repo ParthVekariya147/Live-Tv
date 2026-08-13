@@ -122,44 +122,12 @@ const Scheduler = () => {
             reason
         });
 
-        // Check OBS connected
-        if (!obsConnectedRef.current) {
-            pushTriggerLog({
-                time: now,
-                source: triggerData.source,
-                action: triggerData.action,
-                title: triggerData.title,
-                ok: false,
-                reason: 'OBS not connected — trigger queued'
-            });
-            return;
-        }
-
-        // Check source ID exists in OBS
-        if (!sourceIdsRef.current[triggerData.source]) {
-            const knownSources = Object.keys(sourceIdsRef.current);
-            const reason = knownSources.length === 0
-                ? 'OBS scene items not loaded yet — is OBS open and connected?'
-                : `Source "${triggerData.source}" not found in OBS scene. Available: ${knownSources.join(', ')}`;
-
-            pushTriggerLog({
-                time: now,
-                source: triggerData.source,
-                action: triggerData.action,
-                title: triggerData.title,
-                ok: false,
-                reason
-            });
-
-            logWarn('SCHEDULER_SOURCE_NOT_FOUND', LogCategory.SCHEDULER,
-                { source: triggerData.source, knownSources },
-                `[FRONTEND] ✗ Source "${triggerData.source}" not found in OBS`);
-            report(false, reason);
-            return;
-        }
-
-        // All checks pass — execute, and wait for OBS's own RequestResponse before
-        // treating this as a real success (not just "we sent the command").
+        // setSourceVisibilityConfirmed itself now handles every case that used to be
+        // gated here: no real OBS scene item to match (the single-source UnifiedPlayer.html
+        // layout has none), OBS's own websocket being disconnected, etc. — it pushes the
+        // shared obs.activeSource state regardless and only fails for genuine problems.
+        // Blocking here on obsConnected/sourceIds used to make every trigger fail outright
+        // once the per-player OBS scene items were removed.
         logInfo('SCHEDULER_TRIGGER_EXECUTING', LogCategory.SCHEDULER,
             { ...triggerData, executingAt: now.toISOString() },
             `[FRONTEND] Executing: ${triggerData.action} ${triggerData.source}`);
@@ -673,12 +641,12 @@ const Scheduler = () => {
                 </span>
                 <span className={`text-xs px-2 py-1 rounded ${obsConnected ? 'bg-green-600/30 text-green-400' : 'bg-red-600/30 text-red-400'}`}>
                     {obsConnected
-                        ? `🟢 OBS (${Object.keys(sourceIds).length} sources loaded)`
+                        ? `🟢 OBS (${Object.keys(sourceState).length} players tracked)`
                         : '🔴 OBS Not Connected'}
                 </span>
-                {obsConnected && Object.keys(sourceIds).length === 0 && (
+                {obsConnected && Object.keys(sourceState).length === 0 && (
                     <span className="text-xs px-2 py-1 rounded bg-yellow-600/30 text-yellow-400">
-                        ⚠ OBS scene items loading...
+                        ⚠ Player state loading...
                     </span>
                 )}
             </div>

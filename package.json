@@ -30,6 +30,7 @@
       "live-tv-controller-react/state-service.cjs"
     ],
     "assets": [
+      "bundled-bin/**/*",
       "live-tv-controller-react/dist/**/*",
       "live-tv-controller-react/assets/tray-icon.ico",
       "live-tv-controller-react/node_modules/systray2/traybin/**"

@@ -37,6 +37,10 @@ import {
 // read the current Group list to populate a dropdown without duplicating this key elsewhere.
 export const LOOP_AUTOMATION_LOCAL_KEY = 'loopAutomationGroups';
 const LOCAL_KEY = LOOP_AUTOMATION_LOCAL_KEY;
+// The run in progress ({groupId, listId, groupName, listName}), persisted so a page refresh
+// resumes it instead of dropping to Idle — and so the Loop Player card can keep showing which
+// Group/List is on air after a reload.
+const ACTIVE_RUN_KEY = 'loopAutomationActiveRun';
 const SERVER_KEY = 'player.loop.automation';
 const SAVE_DEBOUNCE_MS = 600;
 const MAX_CHAIN_HOPS = 20;
@@ -189,7 +193,13 @@ export default function LoopPlaylistAutomation() {
         } catch (e) { console.error('[PlaylistAutomation] Failed to parse local config', e); }
         return [];
     });
-    const [activeRun, setActiveRun] = useState(null); // { groupId, listId, groupName, listName }
+    const [activeRun, setActiveRun] = useState(() => { // { groupId, listId, groupName, listName }
+        try {
+            const saved = JSON.parse(localStorage.getItem(ACTIVE_RUN_KEY) || 'null');
+            if (saved?.groupId && saved?.listId) return saved;
+        } catch { /* fall through to no run */ }
+        return null;
+    });
     const [engineStatus, setEngineStatus] = useState('Idle');
     const [loaded, setLoaded] = useState(false);
     const fileInputRef = useRef(null);
@@ -210,7 +220,28 @@ export default function LoopPlaylistAutomation() {
     // callback (and the effects that depend on it) on every OBS poll tick.
     const isLoopVisibleRef = useRef(false);
     useEffect(() => { groupsRef.current = groups; }, [groups]);
-    useEffect(() => { activeRunRef.current = activeRun; }, [activeRun]);
+    useEffect(() => {
+        activeRunRef.current = activeRun;
+        try {
+            if (activeRun) localStorage.setItem(ACTIVE_RUN_KEY, JSON.stringify(activeRun));
+            else localStorage.removeItem(ACTIVE_RUN_KEY);
+        } catch { /* quota — the card's own persisted copy still shows the names */ }
+    }, [activeRun]);
+
+    // After a refresh, re-announce the restored run so the Loop Player card shows it as live
+    // again. Deferred a tick because this component is a child of that card — child effects
+    // run first, so a synchronous dispatch would fire before the card's listener exists.
+    useEffect(() => {
+        const run = activeRunRef.current;
+        if (!run) return;
+        const timer = setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('loopAutomationRunInfo', {
+                detail: { groupName: run.groupName, listName: run.listName },
+            }));
+            setEngineStatus(`Resumed — Playing "${run.listName}" from "${run.groupName}"`);
+        }, 0);
+        return () => clearTimeout(timer);
+    }, []);
     useEffect(() => { isLiveActiveRef.current = !!sourceState['Live Player']; }, [sourceState]);
     useEffect(() => { isLoopVisibleRef.current = !!sourceState['Loop Player']; }, [sourceState]);
 
@@ -361,7 +392,11 @@ export default function LoopPlaylistAutomation() {
         // starts. Skipped when already visible to avoid a redundant OBS call on every
         // mid-chain list-to-list transition.
         if (!isLoopVisibleRef.current) setSourceVisibility('Loop Player', true, 'automation');
-        window.dispatchEvent(new CustomEvent('loopPlayerLoadPlaylist', { detail: { videoIds: list.videoIds, startIndex: startIdx0 } }));
+        // groupName/listName ride along so the Loop Player card can show what's driving it
+        // ("Group → List") without reaching into this component's state.
+        window.dispatchEvent(new CustomEvent('loopPlayerLoadPlaylist', {
+            detail: { videoIds: list.videoIds, startIndex: startIdx0, groupName: runInfo.groupName, listName: runInfo.listName },
+        }));
         setEngineStatus(`${label ? label + ' — ' : ''}Playing "${runInfo.listName}" from "${runInfo.groupName}"`);
         return true;
     }, [advanceResumePointer, setSourceVisibility]);
@@ -414,7 +449,12 @@ export default function LoopPlaylistAutomation() {
             if (playedInListRef.current < effectiveCount) {
                 const nextIdx = startIdx0 + playedInListRef.current;
                 advanceResumePointer(group.id, list.id, nextIdx, list.videoIds.length);
-                window.dispatchEvent(new CustomEvent('loopPlayerLoadPlaylist', { detail: { videoIds: list.videoIds, startIndex: nextIdx } }));
+                window.dispatchEvent(new CustomEvent('loopPlayerLoadPlaylist', {
+                    detail: {
+                        videoIds: list.videoIds, startIndex: nextIdx,
+                        groupName: group.name || 'Group', listName: list.name || 'List',
+                    },
+                }));
                 setEngineStatus(`Playing "${list.name || 'List'}" (${playedInListRef.current + 1}/${effectiveCount}) from "${group.name || 'Group'}"`);
                 return;
             }

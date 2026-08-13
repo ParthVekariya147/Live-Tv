@@ -39,6 +39,11 @@ const LoopPlayerCard = () => {
     const [isStopped, setIsStopped] = useState(false);
     const [loadingAction, setLoadingAction] = useState(false);
 
+    // Which Playlist Automation Group/List the current playlist came from — null when the
+    // playlist was loaded manually (typed, imported, or reset). `active` flips to false once
+    // automation hands control back, while the same playlist keeps looping on this card.
+    const [automationInfo, setAutomationInfo] = useState(null);
+
     const currentVideoId = playlist[currentIndex] || '';
     const { title: videoTitle, thumbnail: videoThumbnail, loading: thumbLoading } = useVideoInfo(currentVideoId);
     const [statusText, setStatusText] = useState("Not loaded");
@@ -60,6 +65,11 @@ const LoopPlayerCard = () => {
                     setIsPlaying(parsed.isPlaying ?? true);
                     setIsMuted(parsed.isMuted ?? false);
                     setIsStopped(parsed.isStopped ?? false);
+                    // Restore as inactive — the playlist is still this Group/List's, but nothing
+                    // is driving it until automation actually activates a run again.
+                    if (parsed.automation?.groupName || parsed.automation?.listName) {
+                        setAutomationInfo({ ...parsed.automation, active: false });
+                    }
                     hasUserData.current = true; // Mark that we have valid user data
                 }
             } catch (e) {
@@ -91,11 +101,12 @@ const LoopPlayerCard = () => {
             isPlaying,
             isMuted,
             isStopped,
+            automation: automationInfo,
             videoId: playlist[currentIndex] || ""
         };
         localStorage.setItem('loopPlayerState', JSON.stringify(state));
         setStateValue('player.loop', state);
-    }, [playlist, currentIndex, isPlaying, isMuted, isStopped]);
+    }, [playlist, currentIndex, isPlaying, isMuted, isStopped, automationInfo]);
 
     // Always-current ref to flush current state on demand (pre-backup / pre-export)
     const flushStateRef = useRef(null);
@@ -109,6 +120,7 @@ const LoopPlayerCard = () => {
                 isPlaying,
                 isMuted,
                 isStopped,
+                automation: automationInfo,
                 videoId: playlist[currentIndex] || ""
             };
             localStorage.setItem('loopPlayerState', JSON.stringify(state));
@@ -213,31 +225,32 @@ const LoopPlayerCard = () => {
     // a live-event match, or list/group chaining) instead of by the user.
     useEffect(() => {
         const handleAutomationLoad = (event) => {
-            const { videoIds, startIndex } = event.detail || {};
+            const { videoIds, startIndex, groupName, listName } = event.detail || {};
             if (!Array.isArray(videoIds) || videoIds.length === 0) return;
             const idx = Math.min(Math.max(startIndex || 0, 0), videoIds.length - 1);
             const vid = videoIds[idx];
             if (!vid) return;
 
             automationModeRef.current = true;
+            setAutomationInfo({ groupName: groupName || 'Group', listName: listName || 'List', active: true });
             setPlaylist(videoIds);
             setCurrentIndex(idx);
             hasUserData.current = true;
 
+            // Always send play/unmute, never gate them on isVisible here. The player page
+            // owns the "am I on air?" decision (it resolves obs.activeSource itself) and
+            // holds the intent until it goes on air. Gating here instead meant the intent
+            // never reached it: automation activates while the source is still switching,
+            // so isVisible was stale-false, the video got cued, and nothing ever played it.
             sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
+            sendPlayerCommand('loopPlayerCommand', 'play');
+            sendPlayerCommand('loopPlayerCommand', 'unmute');
             logVideoLoad('Loop Player', vid, videoTitle, 'automation', { playlistIndex: idx, playlistSize: videoIds.length });
-
-            if (isVisible) {
-                sendPlayerCommand('loopPlayerCommand', 'play');
-                sendPlayerCommand('loopPlayerCommand', 'unmute');
-                setIsPlaying(true);
-                setIsStopped(false);
-                setIsMuted(false);
-                setStatusText('Playlist Automation active');
-                logVideoPlay('Loop Player', vid, 'automation');
-            } else {
-                setStatusText('Playlist Automation loaded — will play when source is visible.');
-            }
+            setIsPlaying(true);
+            setIsStopped(false);
+            setIsMuted(false);
+            setStatusText(isVisible ? 'Playlist Automation active' : 'Playlist Automation active — starts as soon as the source is on air.');
+            logVideoPlay('Loop Player', vid, 'automation');
         };
         window.addEventListener('loopPlayerLoadPlaylist', handleAutomationLoad);
         return () => window.removeEventListener('loopPlayerLoadPlaylist', handleAutomationLoad);
@@ -250,40 +263,60 @@ const LoopPlayerCard = () => {
     useEffect(() => {
         const handleAutomationStop = () => {
             automationModeRef.current = false;
+            // Keep the Group/List name visible — that's still where this playlist came from —
+            // but drop the "live" marker, since automation is no longer driving it.
+            setAutomationInfo(prev => prev ? { ...prev, active: false } : null);
             setStatusText('Automation ended — looping last playlist');
         };
         window.addEventListener('loopPlayerAutomationStop', handleAutomationStop);
         return () => window.removeEventListener('loopPlayerAutomationStop', handleAutomationStop);
     }, []);
 
+    // Automation re-announcing the run it restored after a page refresh — the playlist is
+    // already back from localStorage, so this only re-confirms the Group/List names and that
+    // automation is still the one driving them (no reload, no re-cue of the video).
+    useEffect(() => {
+        const handleRunInfo = (event) => {
+            const { groupName, listName } = event.detail || {};
+            if (!groupName && !listName) return;
+            automationModeRef.current = true;
+            setAutomationInfo({ groupName: groupName || 'Group', listName: listName || 'List', active: true });
+        };
+        window.addEventListener('loopAutomationRunInfo', handleRunInfo);
+        return () => window.removeEventListener('loopAutomationRunInfo', handleRunInfo);
+    }, []);
+
+    // Manual control takes over from automation. Actions that replace the playlist outright
+    // also drop the Group/List label (it no longer describes what's loaded); actions that just
+    // move within the same playlist keep the label but clear its "live" marker.
+    const releaseAutomation = (clearLabel) => {
+        automationModeRef.current = false;
+        setAutomationInfo(prev => (clearLabel || !prev) ? null : { ...prev, active: false });
+    };
+
     const handleLoadAndPlay = () => {
-        automationModeRef.current = false; // manual load takes control back from automation
         let currentList = playlist;
         if (inputValue) {
             currentList = inputValue.split(',').map(s => s.trim()).filter(Boolean);
             setPlaylist(currentList);
             hasUserData.current = true;
         }
+        releaseAutomation(!!inputValue);
 
         if (currentList.length > 0) {
             const vid = currentList[currentIndex] || currentList[0];
             if (vid) {
                 setLoadingAction(true);
 
-                if (isVisible) {
-                    sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
-                    sendPlayerCommand('loopPlayerCommand', 'play');
-                    sendPlayerCommand('loopPlayerCommand', 'unmute');
-                    setIsPlaying(true);
-                    setIsStopped(false);
-                    setIsMuted(false);
-                    setStatusText("Video loaded, playing.");
-                    logVideoLoad('Loop Player', vid, videoTitle, 'manual', { playlistIndex: currentIndex, playlistSize: currentList.length });
-                    logVideoPlay('Loop Player', vid, 'manual');
-                } else {
-                    setStatusText("Loaded - will play when source is visible.");
-                    logVideoLoad('Loop Player', vid, videoTitle, 'manual_prepared', { playlistIndex: currentIndex, playlistSize: currentList.length });
-                }
+                sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
+                sendPlayerCommand('loopPlayerCommand', 'play');
+                sendPlayerCommand('loopPlayerCommand', 'unmute');
+                setIsPlaying(true);
+                setIsStopped(false);
+                setIsMuted(false);
+                setStatusText(isVisible ? "Video loaded, playing." : "Loaded - will play when source is visible.");
+                logVideoLoad('Loop Player', vid, videoTitle, isVisible ? 'manual' : 'manual_prepared', { playlistIndex: currentIndex, playlistSize: currentList.length });
+                logVideoPlay('Loop Player', vid, 'manual');
 
                 setTimeout(() => setLoadingAction(false), 800);
             }
@@ -322,31 +355,37 @@ const LoopPlayerCard = () => {
     };
 
     const handleNext = () => {
-        automationModeRef.current = false;
+        releaseAutomation(false);
         let nextIdx = currentIndex + 1;
         if (nextIdx >= playlist.length) nextIdx = 0;
         setCurrentIndex(nextIdx);
         const vid = playlist[nextIdx];
         if (vid) {
             sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
+            sendPlayerCommand('loopPlayerCommand', 'play');
+            setIsPlaying(true);
+            setIsStopped(false);
             setStatusText(isVisible ? `Video ${nextIdx + 1}` : `Video ${nextIdx + 1} cued — will play when source is visible.`);
         }
     };
 
     const handlePrev = () => {
-        automationModeRef.current = false;
+        releaseAutomation(false);
         let prevIdx = currentIndex - 1;
         if (prevIdx < 0) prevIdx = playlist.length - 1;
         setCurrentIndex(prevIdx);
         const vid = playlist[prevIdx];
         if (vid) {
             sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
+            sendPlayerCommand('loopPlayerCommand', 'play');
+            setIsPlaying(true);
+            setIsStopped(false);
             setStatusText(isVisible ? `Video ${prevIdx + 1}` : `Video ${prevIdx + 1} cued — will play when source is visible.`);
         }
     };
 
     const handleJump = () => {
-        automationModeRef.current = false;
+        releaseAutomation(false);
         const idx = parseInt(jumpIndex, 10);
         if (isNaN(idx) || idx < 1 || idx > playlist.length) {
             setStatusText(`Enter index 1-${playlist.length}`);
@@ -357,20 +396,16 @@ const LoopPlayerCard = () => {
         const vid = playlist[targetIdx];
         if (vid) {
             sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
-            if (isVisible) {
-                sendPlayerCommand('loopPlayerCommand', 'play');
-                setIsPlaying(true);
-                setIsStopped(false);
-                setStatusText(`Jumped to video ${idx}`);
-            } else {
-                setStatusText(`Video ${idx} cued — will play when source is visible.`);
-            }
+            sendPlayerCommand('loopPlayerCommand', 'play');
+            setIsPlaying(true);
+            setIsStopped(false);
+            setStatusText(isVisible ? `Jumped to video ${idx}` : `Video ${idx} cued — will play when source is visible.`);
         }
         setJumpIndex("");
     };
 
     const handleReset = () => {
-        automationModeRef.current = false;
+        releaseAutomation(true);
         sendPlayerCommand('loopPlayerCommand', 'stop');
         setPlaylist([]);
         setCurrentIndex(0);
@@ -403,7 +438,7 @@ const LoopPlayerCard = () => {
     };
 
     const loadIds = (rawIds, sourceLabel) => {
-        automationModeRef.current = false; // manual import takes control back from automation
+        releaseAutomation(true); // manual import takes control back from automation
         const unique = [...new Set(rawIds.map(extractVideoId).filter(Boolean))];
         if (unique.length === 0) {
             setStatusText("No video IDs found");
@@ -462,6 +497,29 @@ const LoopPlayerCard = () => {
                 <ErrorBoundary label="Playlist Automation">
                     <LoopPlaylistAutomation />
                 </ErrorBoundary>
+            </div>
+            {/* What's playing right now, in Playlist Automation terms — always on screen, and
+                restored on refresh from the persisted loop state / automation's own saved run. */}
+            <div
+                className={`w-full mb-2 px-2 py-1 rounded border text-xs flex items-center justify-center gap-x-2 gap-y-0.5 flex-wrap ${automationInfo?.active
+                    ? 'bg-amber-900/30 border-amber-700/50 text-amber-100'
+                    : 'bg-gray-800/60 border-gray-700 text-gray-400'}`}
+                title={automationInfo
+                    ? (automationInfo.active
+                        ? 'Playlist Automation is driving the Loop Player — this is the Group and Playlist currently playing.'
+                        : 'This playlist came from Playlist Automation, but automation is no longer driving playback.')
+                    : 'This playlist was loaded by hand (typed IDs or Import File), so it belongs to no automation Group.'}
+            >
+                {automationInfo ? (
+                    <>
+                        <span>{automationInfo.active ? '▶' : '⏸'}</span>
+                        <span><span className="opacity-70">Group:</span> <strong>{automationInfo.groupName}</strong></span>
+                        <span className="opacity-50">|</span>
+                        <span><span className="opacity-70">Playlist:</span> <strong>{automationInfo.listName}</strong></span>
+                    </>
+                ) : (
+                    <span>{playlist.length > 0 ? 'Manual playlist — no automation Group' : 'No playlist loaded'}</span>
+                )}
             </div>
             <ThumbnailLoader src={videoThumbnail} alt="Loop Player Thumbnail" loading={thumbLoading} />
             <p className="video-title">{thumbLoading ? 'Loading...' : (videoTitle || 'No video loaded')}</p>

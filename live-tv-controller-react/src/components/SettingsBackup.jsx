@@ -21,6 +21,11 @@ const LS_KEYS = [
     'liveMonitorEnabled1',
     'liveMonitorEnabled2',
     'liveSelectedChannelId',
+    'kathaSelectedChannelId',
+    'kathaLastFilter',
+    'obsActiveSource',
+    'obsSettings',
+    'relayCookiesAccessKey',
     LIVE_END_RULES_LOCAL_KEY,
 ];
 
@@ -370,6 +375,29 @@ export default function SettingsBackup() {
             validationWarnings.push('Channels: could not reach live-tv-api — channel list NOT included in this backup');
         }
 
+        // yt-dlp's cookies.txt (relay-service.cjs) — a live YouTube session, guarded by an
+        // optional access key (RELAY_COOKIES_SECRET) cached in localStorage. Round-tripped
+        // here so a restore doesn't leave the live relay unauthenticated.
+        let cookiesFile = null;
+        try {
+            const secret = localStorageData['relayCookiesAccessKey'];
+            const headers = secret ? { 'Authorization': `Bearer ${secret}` } : {};
+            const cookRes = await fetch('/api/relay/cookies', { headers, cache: 'no-store' });
+            if (cookRes.ok) {
+                const cookData = await cookRes.json();
+                if (cookData.exists && cookData.content) {
+                    cookiesFile = { content: cookData.content, updatedAt: cookData.updatedAt };
+                }
+            } else if (cookRes.status === 401) {
+                validationWarnings.push('Cookies: unauthorized (check relay cookies access key) — cookies.txt NOT included in this backup');
+            } else {
+                validationWarnings.push(`Cookies: server returned ${cookRes.status} — cookies.txt NOT included in this backup`);
+            }
+        } catch (err) {
+            console.warn('[Export] Failed to fetch cookies.txt:', err.message);
+            validationWarnings.push('Cookies: could not reach relay cookies endpoint — cookies.txt NOT included in this backup');
+        }
+
         const fullExport = {
             exportedAt: new Date().toISOString(),
             version: '2.0',
@@ -377,6 +405,7 @@ export default function SettingsBackup() {
             schedules: serverData.schedules,
             localStorage: localStorageData,
             channels,
+            cookiesFile,
             validation: {
                 warnings: validationWarnings,
                 playerKeys: Object.keys(localStorageData),
@@ -479,10 +508,34 @@ export default function SettingsBackup() {
             }
         }
 
+        // Restore yt-dlp's cookies.txt if the backup carried one (see performExport).
+        let cookiesRestored = false;
+        if (json.cookiesFile && typeof json.cookiesFile.content === 'string' && json.cookiesFile.content.trim()) {
+            try {
+                const secret = lsData['relayCookiesAccessKey'];
+                const headers = { 'Content-Type': 'application/json' };
+                if (secret) headers['Authorization'] = `Bearer ${secret}`;
+                const cookRes = await fetch('/api/relay/cookies', {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ content: json.cookiesFile.content }),
+                });
+                if (cookRes.ok) {
+                    cookiesRestored = true;
+                } else {
+                    const cd = await cookRes.json().catch(() => ({}));
+                    repairWarnings.push(`Cookies: relay rejected the restore (${cd.error || cookRes.status}) — cookies.txt left unchanged`);
+                }
+            } catch (err) {
+                repairWarnings.push(`Cookies: could not reach relay endpoint (${err.message}) — cookies.txt left unchanged`);
+            }
+        }
+
         return {
             lsCount: Object.keys(lsData).length,
             schedulesCount: data.schedulesCount,
             channelsRestored,
+            cookiesRestored,
             repairWarnings
         };
     }
@@ -558,13 +611,14 @@ export default function SettingsBackup() {
             const backupJson = await getRes.json();
 
             // Perform the exact same import logic
-            const { lsCount, schedulesCount, channelsRestored, repairWarnings } = await performImport(backupJson);
+            const { lsCount, schedulesCount, channelsRestored, cookiesRestored, repairWarnings } = await performImport(backupJson);
 
             const warnSuffix = repairWarnings.length > 0
                 ? ` — ${repairWarnings.length} field${repairWarnings.length > 1 ? 's' : ''} repaired`
                 : '';
             const channelsSuffix = channelsRestored > 0 ? ` + ${channelsRestored} channel(s)` : '';
-            flash('success', `Restored ${lsCount} settings + ${schedulesCount} schedules${channelsSuffix}${warnSuffix} from ${filename}. Reloading...`);
+            const cookiesSuffix = cookiesRestored ? ' + cookies.txt' : '';
+            flash('success', `Restored ${lsCount} settings + ${schedulesCount} schedules${channelsSuffix}${cookiesSuffix}${warnSuffix} from ${filename}. Reloading...`);
             setTimeout(() => window.location.reload(), 1500);
         } catch (e) {
             flash('error', `Restore failed: ${e.message}`);
@@ -666,13 +720,14 @@ export default function SettingsBackup() {
             const text = await file.text();
             const json = JSON.parse(text);
 
-            const { lsCount, schedulesCount, channelsRestored, repairWarnings } = await performImport(json);
+            const { lsCount, schedulesCount, channelsRestored, cookiesRestored, repairWarnings } = await performImport(json);
 
             const warnSuffix = repairWarnings.length > 0
                 ? ` — ${repairWarnings.length} field${repairWarnings.length > 1 ? 's' : ''} repaired`
                 : '';
             const channelsSuffix = channelsRestored > 0 ? ` + ${channelsRestored} channel(s)` : '';
-            flash('success', `Imported ${lsCount} settings + ${schedulesCount} schedules${channelsSuffix}${warnSuffix}. Reloading...`);
+            const cookiesSuffix = cookiesRestored ? ' + cookies.txt' : '';
+            flash('success', `Imported ${lsCount} settings + ${schedulesCount} schedules${channelsSuffix}${cookiesSuffix}${warnSuffix}. Reloading...`);
             setTimeout(() => window.location.reload(), 1500);
         } catch (e) {
             flash('error', `Import failed: ${e.message}`);
