@@ -93,14 +93,31 @@ if (fs.existsSync(cloudflaredBinSrc)) {
 // higher-quality split-mux path (the relay falls back to proxy-combined
 // without them), so they're opt-in via BUNDLE_FFMPEG=1 rather than doubling
 // every build's size.
+//
+// .env and cloudflared.exe are in the payload for exactly the same reason, and
+// their absence caused the same class of silent failure: a bare exe on a fresh
+// PC has no Firebase Admin credentials, so notification-service.cjs never
+// initializes (`ready:false`) and EVERY push is dropped with "Not ready —
+// skipping", while the UI, scheduler and players all look perfectly healthy.
+// Without cloudflared.exe there's also no HTTPS tunnel, so even a correctly
+// credentialed install can only register phones over the LAN.
 const PAYLOAD_DIR = path.join(ROOT, 'bundled-bin');
 
 function stagePayload() {
   fs.mkdirSync(PAYLOAD_DIR, { recursive: true });
 
+  // `src` overrides the default "take it from exe/" lookup for files whose
+  // source of truth lives elsewhere in the repo.
   const wanted = [
     { name: 'yt-dlp.exe',  executable: true,  required: true  },
     { name: 'cookies.txt', executable: false, required: false },
+    { name: '.env', executable: false, required: true, src: path.join(ROOT, '.env') },
+    {
+      name: 'cloudflared.exe',
+      executable: true,
+      required: true,
+      src: path.join(ROOT, 'live-tv-controller-react', 'node_modules', 'cloudflared', 'bin', 'cloudflared.exe'),
+    },
   ];
   if (process.env.BUNDLE_FFMPEG === '1') {
     wanted.push({ name: 'ffmpeg.exe',  executable: true, required: false });
@@ -109,7 +126,7 @@ function stagePayload() {
 
   const files = [];
   for (const item of wanted) {
-    const src = path.join(EXE_DIR, item.name);
+    const src = item.src || path.join(EXE_DIR, item.name);
     const dest = path.join(PAYLOAD_DIR, item.name);
     if (fs.existsSync(src)) {
       fs.copyFileSync(src, dest);
@@ -117,9 +134,9 @@ function stagePayload() {
       // downloaded into place
     } else {
       if (item.required) {
-        console.warn(`  ⚠ ${item.name} not found in exe/ — this build will NOT carry it; Direct Relay and recording will fail on a PC that doesn't already have it`);
+        console.warn(`  ⚠ ${item.name} not found at ${src} — this build will NOT carry it; see the payload notes above for what breaks on a fresh PC`);
       } else {
-        console.log(`  · ${item.name} not present in exe/ — skipping (optional)`);
+        console.log(`  · ${item.name} not present — skipping (optional)`);
       }
       continue;
     }
@@ -128,14 +145,38 @@ function stagePayload() {
     console.log(`  ✓ bundled ${item.name} (${(size / 1024 / 1024).toFixed(1)} MB)`);
   }
 
+  // Fail loudly rather than shipping yet another build where notifications are
+  // dead on arrival — that bug survived several releases precisely because it
+  // was silent at build time and silent at runtime.
+  verifyEnvPayload();
+
   fs.writeFileSync(
     path.join(PAYLOAD_DIR, 'manifest.json'),
     JSON.stringify({ generatedAt: new Date().toISOString(), files }, null, 2),
     'utf8'
   );
 
-  if (files.some(f => f.name === 'cookies.txt')) {
-    console.warn('  ⚠ cookies.txt is baked into this exe — it contains a live YouTube session. Treat the exe itself as a secret and only share it with machines you trust.');
+  if (files.some(f => f.name === 'cookies.txt' || f.name === '.env')) {
+    console.warn('  ⚠ cookies.txt / .env are baked into this exe — they contain a live YouTube session and the Firebase service-account private key. Treat the exe itself as a secret and only share it with machines you trust.');
+  }
+}
+
+// The three Firebase Admin vars are what notification-service.cjs checks at
+// startup; a .env that carries the VITE_* frontend keys but not these produces
+// a build whose push notifications fail on every machine, including this one.
+function verifyEnvPayload() {
+  const staged = path.join(PAYLOAD_DIR, '.env');
+  if (!fs.existsSync(staged)) {
+    console.warn('  ⚠ No .env in the payload — push notifications will NOT work on any PC that lacks its own .env next to the exe.');
+    return;
+  }
+  const text = fs.readFileSync(staged, 'utf8');
+  const missing = ['FIREBASE_PROJECT_ID', 'FIREBASE_CLIENT_EMAIL', 'FIREBASE_PRIVATE_KEY']
+    .filter((key) => !new RegExp(`^\\s*${key}\\s*=\\s*\\S`, 'm').test(text));
+  if (missing.length) {
+    console.warn(`  ⚠ .env is missing ${missing.join(', ')} — this build's push notifications will be dead on arrival.`);
+  } else {
+    console.log('  ✓ .env carries all three Firebase Admin credentials');
   }
 }
 

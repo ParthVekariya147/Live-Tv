@@ -19,18 +19,24 @@ const http = require('http');
 const https = require('https');
 const WebSocket = require('ws');
 const { spawn } = require('child_process');
+const bundledSidecars = require('./bundled-sidecars.cjs');
+
+// Unpack the payload embedded in this EXE (yt-dlp.exe, cookies.txt, .env,
+// cloudflared.exe) for anything not already sitting next to it. No-op in dev
+// and when the files are already there. See bundled-sidecars.cjs for why this
+// exists at all.
+//
+// This has to happen before the requires below, not just before first use:
+// tunnel-manager.cjs resolves cloudflared.exe at REQUIRE time and permanently
+// logs "tunnel cannot start" if the file isn't there yet. findYtDlpBinary()
+// (relay router, RecordingService) is the later, call-time consumer.
+const _sidecarUnpack = bundledSidecars.extractBundledSidecars();
+
 const certManager    = require('./cert-manager.cjs');
 const ipDetector     = require('./ip-detector.cjs');
 const tunnelManager  = require('./tunnel-manager.cjs');
 const potProviderManager = require('./pot-provider-manager.cjs');
 const { createRelayRouter } = require('./relay-service.cjs');
-const bundledSidecars = require('./bundled-sidecars.cjs');
-
-// Unpack yt-dlp.exe / cookies.txt embedded in this EXE if they aren't already
-// sitting next to it — must run before findYtDlpBinary() is called by anything
-// (relay router, RecordingService). No-op in dev and when the files are
-// already there. See bundled-sidecars.cjs for why this exists at all.
-bundledSidecars.extractBundledSidecars();
 
 // Whether the self-signed LAN HTTPS listener actually bound successfully.
 // /api/notifications/setup-url must not hand out a pairing link pointing at
@@ -55,8 +61,22 @@ process.on('unhandledRejection', (reason) => {
 // folder the .exe lives in, so resolve against process.execPath there instead.
 const envDir = process.pkg ? path.dirname(process.execPath) : path.join(__dirname, '..');
 try {
-    require('../env-loader.cjs').loadEnv(path.join(envDir, '.env'));
+    const { loadEnv } = require('../env-loader.cjs');
+    loadEnv(path.join(envDir, '.env'));
+    // Read-only EXE folder: the unpacked .env went to a temp folder instead.
+    // Second, because loadEnv never overwrites — a real .env next to the EXE
+    // still wins, as do vars already set by the launcher / PM2 / shell.
+    if (_sidecarUnpack.dir && _sidecarUnpack.dir !== envDir) {
+        loadEnv(path.join(_sidecarUnpack.dir, '.env'));
+    }
 } catch (_) { /* launcher already loaded it, or env-loader.cjs unavailable */ }
+
+// The single most useful line in the log when "notifications don't work on the
+// other PC" comes back: says whether this install has credentials at all, and
+// where they came from.
+if (!process.env.FIREBASE_PROJECT_ID) {
+    console.warn(`[Env] No FIREBASE_* credentials loaded (looked in ${envDir}) — push notifications will be disabled. Run "Setup SMK TV.bat", or drop a .env next to the app.`);
+}
 
 const app = express();
 // CONTROLLER_DEV_PORT for development (API only, Vite handles frontend on VITE_DEV_PORT)

@@ -162,6 +162,38 @@ cd live-tv-controller-react && npm install       # React app
 
 ---
 
+## Setting Up a New PC (running the exe, not the repo)
+
+The exe is self-contained: it carries its own Node.js 20 runtime, the React UI,
+and a payload it unpacks next to itself on first run — `yt-dlp.exe`,
+`cloudflared.exe`, `cookies.txt` and `.env` (the Firebase credentials push
+notifications need). Copying just the exe to a new PC is enough.
+
+```powershell
+# Verify everything, install what's missing (Node.js via winget, PO-Token build)
+windows\"Setup SMK TV.bat"
+
+# Report only, change nothing
+powershell -ExecutionPolicy Bypass -File windows\setup.ps1 -CheckOnly
+```
+
+What the script checks: the bundled payload, `.env` plus all three `FIREBASE_*`
+keys (with a quoting/PEM sanity check on the private key), Node.js ≥ 20 on PATH,
+ffmpeg, the PO-Token provider build, the yt-dlp plugin, and a live
+`GET /api/notifications/status` probe if the app is running.
+
+Only two things are *not* in the exe:
+
+| Dependency | Needed for | Install |
+|---|---|---|
+| Node.js ≥ 20 on PATH | PO-Token provider only (yt-dlp anti-bot). **Not** notifications. | `winget install OpenJS.NodeJS.LTS` — the setup script does this |
+| `ffmpeg` / `ffprobe` | Higher-quality split-mux relay; falls back without them | Optional; or build with `BUNDLE_FFMPEG=1` to embed them (~200 MB) |
+
+> The embedded `.env` and `cookies.txt` hold a Firebase private key and a live
+> YouTube session. Treat the exe as a secret — share it only with trusted machines.
+
+---
+
 ## Git
 
 ```bash
@@ -181,6 +213,7 @@ Located in `windows/`:
 
 | File                | Action                        |
 |---------------------|-------------------------------|
+| `Setup SMK TV.bat`  | Check every dependency on this PC, install what's missing |
 | `Start SMK TV.bat`  | Start production via PM2      |
 | `Stop SMK TV.bat`   | Stop all PM2 services         |
 | `Build SMK TV.bat`  | Build Windows EXE             |

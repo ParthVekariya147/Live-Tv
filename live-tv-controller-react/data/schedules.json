@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "lastModified": "2026-08-11T10:09:25.538Z",
+  "lastModified": "2026-08-13T09:31:20.280Z",
   "schedulerEnabled": true,
   "schedules": [
     {
@@ -41,8 +41,8 @@
       "scheduledDay": null,
       "title": "Test",
       "enabled": true,
-      "lastTriggered": "2026-08-11-12:18",
-      "lastTriggeredAt": "2026-08-11T06:48:00.427Z",
+      "lastTriggered": "2026-08-13-12:18",
+      "lastTriggeredAt": "2026-08-13T09:31:19.955Z",
       "createdAt": "2026-08-06T06:45:46.616Z"
     },
     {
@@ -62,8 +62,8 @@
       ],
       "title": "Loop: AM",
       "enabled": true,
-      "lastTriggered": "2026-08-11-05:00",
-      "lastTriggeredAt": "2026-08-11T05:20:32.865Z",
+      "lastTriggered": "2026-08-13-05:00",
+      "lastTriggeredAt": "2026-08-13T09:31:20.047Z",
       "createdAt": "2026-08-06T11:22:08.455Z"
     },
     {
@@ -83,8 +83,8 @@
       ],
       "title": "Loop: PM",
       "enabled": true,
-      "lastTriggered": "2026-08-11-12:00",
-      "lastTriggeredAt": "2026-08-11T06:30:00.802Z",
+      "lastTriggered": "2026-08-13-12:00",
+      "lastTriggeredAt": "2026-08-13T09:31:20.183Z",
       "createdAt": "2026-08-06T11:26:21.647Z"
     },
     {
@@ -110,42 +110,6 @@
     }
   ],
   "executionHistory": [
-    {
-      "id": 1784911153425,
-      "timestamp": "2026-07-24T16:39:13.425Z",
-      "scheduleId": 1769271220084,
-      "source": "Local Player",
-      "action": "hide",
-      "title": "",
-      "status": "success",
-      "reason": "catch-up",
-      "executionTimeMs": 197,
-      "error": null
-    },
-    {
-      "id": 1784913721012,
-      "timestamp": "2026-07-24T17:22:01.012Z",
-      "scheduleId": 1769188208541,
-      "source": "Local Player",
-      "action": "show",
-      "title": "Local",
-      "status": "success",
-      "reason": "scheduled",
-      "executionTimeMs": 345,
-      "error": null
-    },
-    {
-      "id": 1784921341016,
-      "timestamp": "2026-07-24T19:29:01.016Z",
-      "scheduleId": 1784921295992,
-      "source": "Live Player",
-      "action": "show",
-      "title": "",
-      "status": "success",
-      "reason": "scheduled",
-      "executionTimeMs": 285,
-      "error": null
-    },
     {
       "id": 1785048918498,
       "timestamp": "2026-07-26T06:55:18.498Z",
@@ -1308,6 +1272,42 @@
       "status": "success",
       "reason": "catch-up",
       "executionTimeMs": 101,
+      "error": null
+    },
+    {
+      "id": 1786613480017,
+      "timestamp": "2026-08-13T09:31:20.017Z",
+      "scheduleId": 1785998746616,
+      "source": "Delay Live",
+      "action": "show",
+      "title": "Test",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 62,
+      "error": null
+    },
+    {
+      "id": 1786613480152,
+      "timestamp": "2026-08-13T09:31:20.152Z",
+      "scheduleId": "pa_id-lbq18hebe_1786015328452_8c0z",
+      "source": "Playlist Automation",
+      "action": "playlist_automation",
+      "title": "Loop: AM",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 106,
+      "error": null
+    },
+    {
+      "id": 1786613480239,
+      "timestamp": "2026-08-13T09:31:20.239Z",
+      "scheduleId": "pa_id-dlngywivx_1786015581641_lvio",
+      "source": "Playlist Automation",
+      "action": "playlist_automation",
+      "title": "Loop: PM",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 57,
       "error": null
     }
   ]

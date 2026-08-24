@@ -413,21 +413,53 @@
         });
       });
 
-      // Re-check server status
+      // Re-check server status. Kept outside the try so the banner below can use
+      // it: this phone being perfectly registered says nothing about whether the
+      // SERVER can actually send anything.
+      let serverReady = null;   // null = couldn't determine
+      let serverError = '';
       try {
         const sr = await fetch('/api/notifications/status');
         const ss = await sr.json();
+        serverReady = !!ss.ready;
+        serverError = ss.initError || '';
         d('d-server', ss.ready
           ? `✓ ready (${ss.activeDevices} device${ss.activeDevices !== 1 ? 's' : ''})`
           : '✗ push service not configured' + (ss.initError ? ` (${ss.initError})` : ''), ss.ready ? 'diag-ok' : 'diag-fail');
       } catch (_) {}
 
-      showStatus('success',
-        '✅ Done! Notifications enabled.<br><br>' +
-        'Tap <b>Send test notification</b> below to verify your phone shows it.<br><br>' +
-        '<span style="font-size:12px;opacity:0.8">If the test arrives but you still miss real notifications:<br>' +
-        '• Android Settings → Apps → Chrome → Notifications → ON<br>' +
-        '• Keep Chrome running in the background</span>');
+      // Only claim success when the server can actually deliver. Showing the
+      // green "Done! Notifications enabled" while the server reports missing
+      // Firebase credentials sent people away believing setup had worked — the
+      // phone half genuinely had (permission, service worker, FCM token all
+      // fine), so the real fault was invisible unless you read the diagnostics
+      // box underneath. The phone can do nothing about it either; it's the PC
+      // running the app that needs fixing.
+      if (serverReady === false) {
+        showStatus('error',
+          '⚠ This phone is registered, but the app cannot send notifications yet.<br><br>' +
+          (/Missing env vars/i.test(serverError)
+            ? 'The PC running SMK TV has no Firebase credentials — its <b>.env</b> file is missing or incomplete.<br><br>' +
+              '<span style="font-size:12px;opacity:0.85">Fix it on that PC, not on this phone:<br>' +
+              '• Update to app build #58 or newer — it carries the credentials itself, or<br>' +
+              '• Run <b>Setup SMK TV.bat</b> there to see exactly what is missing.</span>'
+            : `Server reported: ${serverError || 'push service not configured'}<br><br>` +
+              '<span style="font-size:12px;opacity:0.85">This has to be fixed on the PC running SMK TV. ' +
+              'Run <b>Setup SMK TV.bat</b> there to diagnose it.</span>') +
+          '<br><br><span style="font-size:12px;opacity:0.8">Nothing more to do on this phone — once the PC is fixed, ' +
+          'notifications start arriving here automatically.</span>');
+      } else {
+        showStatus('success',
+          '✅ Done! Notifications enabled.' +
+          (serverReady === null
+            ? '<br><br><span style="font-size:12px;opacity:0.8">(Could not confirm the server side — send a test to be sure.)</span>'
+            : '') +
+          '<br><br>' +
+          'Tap <b>Send test notification</b> below to verify your phone shows it.<br><br>' +
+          '<span style="font-size:12px;opacity:0.8">If the test arrives but you still miss real notifications:<br>' +
+          '• Android Settings → Apps → Chrome → Notifications → ON<br>' +
+          '• Keep Chrome running in the background</span>');
+      }
 
       btn.innerHTML = '🔄 Re-register this device';
       btn.disabled = false;

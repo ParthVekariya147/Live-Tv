@@ -3,6 +3,36 @@
   "maxEntries": 500,
   "entries": [
     {
+      "id": "630f9f4c-c763-4699-a5b3-f61ad0231a03",
+      "sentAt": "2026-08-13T09:31:21.580Z",
+      "event": "SCHEDULER_ALERT",
+      "title": "SMK TV 41",
+      "body": "Scheduler Alert\n\"3 Missed Schedule(s) Detected\" failed  times",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "b7e4db95-8871-46ba-8100-be0cc48a81d0",
+      "sentAt": "2026-08-13T09:31:21.529Z",
+      "event": "SCHEDULER_TRIGGER",
+      "title": "SMK TV 41",
+      "body": "Scheduler: Loop: AM\nAction \"playlist_automation\" at 3:01:20 pm",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
+      "id": "86abbb1d-b802-4d2b-9e2d-c80eb842eb6b",
+      "sentAt": "2026-08-13T09:31:21.519Z",
+      "event": "SCHEDULER_TRIGGER",
+      "title": "SMK TV 41",
+      "body": "Scheduler: Loop: PM\nAction \"playlist_automation\" at 3:01:20 pm",
+      "tokensAttempted": 1,
+      "tokensSucceeded": 1,
+      "tokensFailed": 0
+    },
+    {
       "id": "837078f8-db34-4a1d-817f-4a78a7defcd2",
       "sentAt": "2026-08-11T06:30:02.212Z",
       "event": "SCHEDULER_TRIGGER",
@@ -4965,36 +4995,6 @@
     {
       "id": "8b8896e1-aa90-4414-815d-6535bbe8bf26",
       "sentAt": "2026-07-27T14:51:11.066Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "SMK TV 41",
-      "body": "⚠ Local Player did not run\n\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "8e6fee22-3b6f-4ee9-be13-6670709119f1",
-      "sentAt": "2026-07-27T14:51:10.660Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "SMK TV 41",
-      "body": "⚠ Delay Live did not run\n\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "3c53b07c-a1d8-4ce9-ae0e-446f5c637a29",
-      "sentAt": "2026-07-27T14:51:10.202Z",
-      "event": "SCHEDULER_TRIGGER_FAILED",
-      "title": "SMK TV 41",
-      "body": "⚠ Local Player did not run\n\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",
-      "tokensAttempted": 1,
-      "tokensSucceeded": 1,
-      "tokensFailed": 0
-    },
-    {
-      "id": "b12e9e8c-88e9-4515-ba72-c14c77786ad1",
-      "sentAt": "2026-07-27T14:51:09.769Z",
       "event": "SCHEDULER_TRIGGER_FAILED",
       "title": "SMK TV 41",
       "body": "⚠ Local Player did not run\n\"show\" failed: No confirmation from the app within 130s (closed, backgrounded, or OBS unreachable)",

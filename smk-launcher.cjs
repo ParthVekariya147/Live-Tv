@@ -28,7 +28,29 @@ const IS_WIN = process.platform === 'win32';
 // .exe lives in — so a real .env dropped next to the .exe must be resolved
 // against process.execPath's directory instead, or it would never be found.
 const ENV_DIR = process.pkg ? path.dirname(EXE) : __dirname;
+
+// Unpack the embedded payload (.env, cloudflared.exe, yt-dlp.exe, cookies.txt)
+// BEFORE anything reads it. Ordering is the whole point of doing it here rather
+// than leaving it to server.cjs:
+//   - loadEnv() two lines down needs .env to already exist, otherwise the very
+//     first run of a fresh copy boots with no Firebase credentials and every
+//     push notification is silently dropped.
+//   - tunnel-manager.cjs decides whether cloudflared.exe exists at *require*
+//     time, and server.cjs requires it before its own extract call — so a
+//     first run would have permanently logged "tunnel cannot start".
+// Extraction never overwrites a file that's already there and never throws, so
+// running it here as well as in server.cjs is free.
+let payloadDir = null;
+try {
+  payloadDir = require('./live-tv-controller-react/bundled-sidecars.cjs').extractBundledSidecars().dir;
+} catch (_) { /* dev tree without the payload staged — nothing to unpack */ }
+
 loadEnv(path.join(ENV_DIR, '.env'));
+// When the EXE's own folder is read-only (Program Files, a network share) the
+// payload lands in a temp folder instead. loadEnv never overwrites an already
+// set variable, so reading that copy second keeps the operator's real .env
+// authoritative wherever one exists.
+if (payloadDir && payloadDir !== ENV_DIR) loadEnv(path.join(payloadDir, '.env'));
 
 const API_PORT        = Number(process.env.API_PORT) || 3000;
 const CONTROLLER_PORT = Number(process.env.CONTROLLER_PORT) || 3004;

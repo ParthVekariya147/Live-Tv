@@ -66,7 +66,20 @@ OneDrive sync or antivirus is holding the freshly-written exe. `build.cjs` alrea
 
 ### Exe runs, but push notifications / tunnel silently don't work
 
-The packaged exe reads its environment from **`windows/exe/.env`** (next to `process.execPath`), *not* the repo root `.env`. `build.cjs` now copies the root `.env` into `windows/exe/.env` on every build (`build.cjs:50`), so this stays in sync automatically. If you edit `.env` **after** building, either rebuild or edit `windows/exe/.env` too.
+The packaged exe reads its environment from **`.env` next to `process.execPath`** (i.e. `windows/exe/.env`), *not* the repo root `.env`. Two separate mechanisms keep that file present:
+
+- `build.cjs` copies the root `.env` into `windows/exe/.env` on every build — helps on the **build machine only**.
+- `.env` is also staged into `bundled-bin/` and embedded **inside** the exe, then unpacked next to it on first run by `bundled-sidecars.cjs` — this is what makes a bare exe work on **another PC**. Same mechanism as `yt-dlp.exe` / `cloudflared.exe`.
+
+An existing `.env` next to the exe is never overwritten, so a per-PC override survives upgrades. If you edit the root `.env` **after** building, rebuild (or edit `windows/exe/.env` too).
+
+> The embedded `.env` carries the Firebase service-account private key, and `cookies.txt` carries a live YouTube session. **Treat the exe itself as a secret** — only hand it to machines you trust.
+
+### "It works on my PC but not the other one"
+
+Run **`windows\Setup SMK TV.bat`** on the failing machine. It checks every dependency (bundled payload, `.env` + all three `FIREBASE_*` keys, Node.js ≥20, PO-Token provider, plus a live `/api/notifications/status` probe) and prints exactly what's missing. `.\setup.ps1 -CheckOnly` reports without changing anything.
+
+Historical cause: exe builds up to and including **#57** carried neither `.env` nor `cloudflared.exe`, so a copied exe booted with `Notifications: ❌ NOT ready — Missing env vars: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY` and dropped every push with `[NotificationService] Not ready — skipping`. Everything else (UI, scheduler, players, recording) worked normally, which is why it read as "notifications are broken" rather than "this install has no credentials".
 
 ### A fix to a file in `public/` (setup.html, DelayLive.html, players…) doesn't show up in the exe
 
@@ -96,6 +109,28 @@ Tells you whether Firebase Admin initialized and how many devices are registered
 ### "Firebase not initialized" / no notifications ever sent
 
 The three Firebase Admin env vars are missing or malformed in `.env`: `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` (the private key must keep its `\n` escapes, wrapped in quotes). Running the exe? See [§2 — exe env drift](#exe-runs-but-push-notifications--tunnel-silently-dont-work).
+
+Fastest check on any machine: run `windows\Setup SMK TV.bat`, or read the startup banner — it prints `Notifications: ✅ ready` / `❌ NOT ready — <reason>` on every boot, and `server.cjs` logs `[Env] No FIREBASE_* credentials loaded (looked in …)` when the file itself never turned up.
+
+### What the notification feature actually depends on
+
+| Layer | Dependency | Ships how |
+|---|---|---|
+| Server push | `firebase-admin` ^12.7.0 (+ `google-auth-library`, `gtoken`, `gaxios`) | inside the exe (listed in `pkg.scripts`) |
+| Credentials | `FIREBASE_PROJECT_ID` / `_CLIENT_EMAIL` / `_PRIVATE_KEY` | `.env`, embedded in `bundled-bin/` |
+| Browser SDK | `firebase` ^12.15.0 (`firebase/app`, `firebase/messaging`) | compiled into `dist/` at build time |
+| Browser config | `VITE_FIREBASE_*` incl. `VITE_FIREBASE_VAPID_KEY` | baked into `dist/` at build time — editing `.env` on the target PC does **not** change these |
+| Delivery | `public/firebase-messaging-sw.js` (plain Web Push SW, no CDN) | `public-assets.cjs`, inside the exe |
+| Secure context | `selfsigned` → LAN HTTPS on 3443 | inside the exe |
+| Remote pairing | `cloudflared` ^0.7.1 + `cloudflared.exe` | embedded in `bundled-bin/` |
+| QR pairing | `qrcode` ^1.5.4 | inside the exe |
+| Transport | `express`, `ws` | inside the exe |
+
+Nothing here needs a runtime installed on the target PC — the exe carries its own Node.js 20. (Node.js on PATH is only needed by the separate PO-Token provider, which has nothing to do with notifications.)
+
+### Notifications work on one PC but not another, and credentials check out
+
+Device registrations are **per install**: each app folder has its own `data/fcm-tokens.json`. A phone paired against the first PC is unknown to the second one — `/api/notifications/status` will report `ready: true` with `activeDevices: 0`. Re-scan the QR from the second install's Notifications panel.
 
 ### Test notification says it failed with an FCM error
 
