@@ -25,6 +25,16 @@ const { selectFormats } = require('./relay-format-selector.cjs');
 
 const QUALITY_PRIORITY_HEIGHTS = [2160, 1440, 1080, 720, 480, 360];
 const MASTER_MAX_AGE_MS = 20 * 60 * 1000; // refresh live manifest well before its ~hours expiry
+// YouTube stops honouring a LIVE stream's signed segment URLs roughly 30s after the
+// manifest is resolved, even though the signature itself claims hours of validity and
+// the playlist keeps serving fresh sequence numbers. Measured directly: segments fetch
+// 200 immediately after a resolve, then every newly-produced segment 403s from ~30s on
+// and never recovers. MASTER_MAX_AGE_MS (20 min) is 40x too slow for that, which is why
+// Direct Relay played for a few seconds and then froze for the rest of the window.
+const LIVE_MANIFEST_TTL_MS = 18 * 1000;
+// A resolve costs a yt-dlp spawn (~8-12s), so a failing segment must not be able to
+// kick one on every request — the player retries several times a second while stalled.
+const RESOLVE_THROTTLE_MS = 10 * 1000;
 const WATCHDOG_INTERVAL_MS = 30 * 1000;
 
 // yt-dlp needs BOTH a cookies file AND a JS runtime together to reliably get
@@ -42,6 +52,22 @@ function defaultCookiesFile() {
         ? path.join(path.dirname(process.execPath), 'cookies.txt')
         : path.join(__dirname, 'cookies.txt');
 }
+
+// Path to the bgutil GetPOT plugin + the base URL of the local provider, or null
+// when the plugin isn't deployed. Two-tier resolution matching
+// pot-provider-manager.cjs resolveServerEntry(): next to the EXE when packaged,
+// repo-root sibling in dev. Returning null degrades to the old behaviour rather
+// than passing yt-dlp a --plugin-dirs that doesn't exist.
+function resolvePotArgs() {
+    const base = process.pkg
+        ? path.join(path.dirname(process.execPath), 'pot-provider', 'plugin')
+        : path.resolve(__dirname, '..', 'pot-provider', 'plugin');
+    try {
+        if (!fs.existsSync(path.join(base, 'yt_dlp_plugins', 'extractor', 'getpot_bgutil_http.py'))) return null;
+    } catch (_) { return null; }
+    return ['--plugin-dirs', base, '--extractor-args', 'youtube:getpot_bgutil_baseurl=http://127.0.0.1:4416'];
+}
+
 function resolveCookiesFile() {
     if (process.env.RELAY_COOKIES_FILE) return process.env.RELAY_COOKIES_FILE;
     try { const p = defaultCookiesFile(); return fs.existsSync(p) ? p : null; } catch { return null; }
@@ -115,6 +141,8 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
         reconnectCount: 0,
         watchdogRefreshCount: 0,
         lastError: null,
+        segmentFailStreak: 0,
+        lastSegmentOkAt: null,
         log: [],
     };
 
@@ -168,6 +196,16 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
             // (storyboard-only formats, no real video/audio) even with valid cookies.
             // Node is already a hard dependency of this whole app, so always safe.
             args.push('--js-runtimes', 'node');
+            // Hand yt-dlp the local bgutil PO-Token provider. server.cjs already starts it
+            // on :4416 (pot-provider-manager.cjs) and nothing was consulting it, which is
+            // the configuration yt-dlp recommends for YouTube.
+            //
+            // NOTE: this is NOT the fix for the "Direct Relay plays a few seconds then
+            // freezes" bug — that was measured to be manifest ageing, not PO tokens. A
+            // POT-resolved manifest was soaked for 75s and every new segment still 403'd
+            // (0 OK / 20 failed), the same as without it. See MASTER_MAX_AGE_MS.
+            const potArgs = resolvePotArgs();
+            if (potArgs) args.push(...potArgs);
             const cookiesFile = resolveCookiesFile();
             if (cookiesFile) args.push('--cookies', cookiesFile);
             args.push(`https://www.youtube.com/watch?v=${videoId}`);
@@ -294,7 +332,39 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
     }
 
     function masterIsStale() {
-        return !state.masterManifestUrl || (Date.now() - state.masterFetchedAt) > MASTER_MAX_AGE_MS;
+        if (!state.masterManifestUrl) return true;
+        // LIVE proxy-combined is the case with the ~30s segment-URL lifetime; VOD and the
+        // ffmpeg split path keep the old, relaxed budget.
+        const ttl = (state.type === 'LIVE' && state.mode === 'proxy-combined')
+            ? LIVE_MANIFEST_TTL_MS
+            : MASTER_MAX_AGE_MS;
+        return (Date.now() - state.masterFetchedAt) > ttl;
+    }
+
+    // Re-resolve WITHOUT making the caller wait.
+    //
+    // hls.js polls the media playlist every few seconds; blocking one of those polls for
+    // the ~10s a yt-dlp resolve takes would stall playback worse than the stale manifest
+    // does. So the refresh runs in the background and the current (still-serving) variant
+    // URL keeps being used until the new one lands. Throttled and single-flight.
+    let resolveInFlight = null;
+    let lastResolveKickAt = 0;
+    function kickRefresh(reason) {
+        if (resolveInFlight) return resolveInFlight;
+        if (Date.now() - lastResolveKickAt < RESOLVE_THROTTLE_MS) return null;
+        lastResolveKickAt = Date.now();
+        resolveInFlight = refreshMaster(reason)
+            .then(() => {
+                state.segmentFailStreak = 0;
+                state.lastError = null;
+            })
+            .catch((err) => {
+                state.lastError = `Manifest refresh failed: ${err.message}`;
+                state.reconnectCount++;
+                logEvent(state.lastError);
+            })
+            .finally(() => { resolveInFlight = null; });
+        return resolveInFlight;
     }
 
     // ------------------------------------------------------------------
@@ -435,8 +505,10 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
     }
 
     async function getLiveMediaPlaylist() {
-        if (masterIsStale()) {
-            await refreshMaster('on-demand: master stale at request time');
+        if (!state.masterManifestUrl) {
+            await refreshMaster('on-demand: no manifest yet');
+        } else if (masterIsStale()) {
+            kickRefresh('proactive: live segment URLs approaching their ~30s lifetime');
         }
         if (!state.selectedVariant) throw new Error('No variant selected yet');
 
@@ -718,8 +790,20 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
             const { body, contentType } = await httpsGet(target, { binary: true });
             res.setHeader('Content-Type', contentType || 'video/mp2t');
             res.setHeader('Cache-Control', 'no-cache');
+            state.segmentFailStreak = 0;
+            state.lastSegmentOkAt = Date.now();
             res.send(body);
         } catch (err) {
+            // A failing segment used to be swallowed here: 502 to the player, nothing
+            // recorded, no recovery. /status therefore kept reporting a healthy
+            // "RELAY LIVE 1920x1080" while not one frame was reaching the player, and
+            // the watchdog — which only looks at manifest age — never noticed. Both the
+            // visibility gap and the recovery gap are fixed here.
+            state.segmentFailStreak = (state.segmentFailStreak || 0) + 1;
+            state.lastError = `Segment fetch failed (${state.segmentFailStreak} in a row): ${err.message}`;
+            if (/403/.test(err.message) || state.segmentFailStreak >= 2) {
+                kickRefresh(`recovery: ${state.segmentFailStreak} segment failure(s) — signed URLs no longer accepted`);
+            }
             res.status(502).json({ error: err.message });
         }
     });
@@ -763,6 +847,9 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
             pipelineReady: state.mode === 'ffmpeg-split' ? state.ffmpeg.pipelineReady : null,
             copyConfirmed: state.mode === 'ffmpeg-split' ? state.ffmpeg.copyConfirmed : null,
             lastError: state.lastError,
+            segmentFailStreak: state.segmentFailStreak || 0,
+            lastSegmentOkAt: state.lastSegmentOkAt || null,
+            segmentsFlowing: !!(state.lastSegmentOkAt && (Date.now() - state.lastSegmentOkAt) < 30000),
             recentLog: state.log.slice(-40),
         });
     });

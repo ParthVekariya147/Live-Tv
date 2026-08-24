@@ -266,6 +266,18 @@ wss.on('connection', (ws) => {
         if (unackedAlerts.length > 0) {
             ws.send(JSON.stringify({ type: 'SCHEDULER_ALERTS', data: { alerts: unackedAlerts }, timestamp: new Date().toISOString() }));
         }
+
+        // A controller is now listening, so missed show/hide schedules finally have
+        // somewhere to land. Catch-up used to run inside scheduler.start() during module
+        // load — before server.listen() — so every caught-up trigger was broadcast to an
+        // empty client list, executed nowhere, and 130s later became a "did not run" push.
+        // A restart therefore produced a burst of failure notifications for schedules that
+        // were never actually attempted. Kicked on a short delay so the client finishes
+        // wiring its listeners (Scheduler.jsx attaches on mount) before triggers arrive.
+        if (!catchUpKicked) {
+            catchUpKicked = true;
+            setTimeout(() => scheduler.runCatchUpNow('controller connected'), CATCHUP_CLIENT_SETTLE_MS);
+        }
     } catch (err) {
         console.error('[WebSocket] Error sending initial state:', err.message);
     }
@@ -479,6 +491,7 @@ scheduler.onAlert = (alert) => {
 const StateService = require('./state-service.cjs');
 const tokenStore = require('./token-store.cjs');
 const notificationService = require('./notification-service.cjs');
+const notificationCatalog = require('./notification-catalog.cjs');
 
 const stateService = new StateService({
     dataDir: dataDir
@@ -512,8 +525,22 @@ global.notificationService = notificationService;
 
 
 
-// Start scheduler automatically
+// Start scheduler automatically. Catch-up is NOT part of this any more — see
+// scheduler-service.cjs start(); it is kicked from the WebSocket connection handler
+// above once a controller can actually receive the triggers, with the fallback below
+// so an unattended box still runs non-OBS actions and still reports honestly.
+let catchUpKicked = false;
+// Long enough for the operator's browser/OBS dock to come up after a reboot, short
+// enough that an unattended install isn't left waiting forever.
+const CATCHUP_CLIENT_SETTLE_MS = 3000;
+const CATCHUP_MAX_WAIT_MS = 90000;
 scheduler.start();
+
+setTimeout(() => {
+    if (scheduler.runCatchUpNow('no controller connected within 90s')) {
+        console.warn('[Scheduler] Ran catch-up with no controller connected — show/hide actions cannot be confirmed and will be reported as not run.');
+    }
+}, CATCHUP_MAX_WAIT_MS);
 
 // ============================================
 // WEBSOCKET TICK BROADCAST (1 second)
@@ -1971,6 +1998,10 @@ app.get('/api/recording/status', (req, res) => {
 // POST /api/recording/start
 app.post('/api/recording/start', (req, res) => {
     const { videoId, title } = req.body;
+    // Callers that record on their own (auto-record when Live Player goes on air)
+    // pass trigger:'auto'; anything else is the operator pressing record, so the
+    // notification can say which it was via the {trigger} placeholder.
+    const trigger = req.body?.trigger === 'auto' ? 'auto' : 'manual';
     let notifiedError = false; // spawn's 'error' and 'close' both fire for the same ENOENT/crash — only notify once
     const result = recordingService.start(videoId, (event) => {
         broadcast('RECORDING_EVENT', event);
@@ -1985,7 +2016,7 @@ app.post('/api/recording/start', (req, res) => {
             // yt-dlp crashed), which is exactly what's unattended and worth pushing to a phone.
             if (!event.manual && !notifiedError) {
                 if (event.exitCode === 0) {
-                    notificationService.send('RECORDING_STOPPED', { filename: event.filename }).catch(() => {});
+                    notificationService.send('RECORDING_STOPPED', { filename: event.filename, trigger: 'stream ended' }).catch(() => {});
                 } else {
                     notificationService.send('RECORDING_ERROR', { message: `Recording stopped unexpectedly (yt-dlp exited with code ${event.exitCode})` }).catch(() => {});
                 }
@@ -2003,7 +2034,7 @@ app.post('/api/recording/start', (req, res) => {
             message: `Recording started: ${result.filename}`,
             data: { videoId, filename: result.filename },
         });
-        notificationService.send('RECORDING_STARTED', { filename: result.filename }).catch(() => {});
+        notificationService.send('RECORDING_STARTED', { filename: result.filename, trigger }).catch(() => {});
     } else {
         notificationService.send('RECORDING_ERROR', { message: result.error }).catch(() => {});
     }
@@ -2024,7 +2055,7 @@ app.post('/api/recording/stop', (req, res) => {
             message: `Recording stopped: ${result.filename}`,
             data: { filename: result.filename },
         });
-        notificationService.send('RECORDING_STOPPED', { filename: result.filename }).catch(() => {});
+        notificationService.send('RECORDING_STOPPED', { filename: result.filename, trigger: 'manual' }).catch(() => {});
     }
     res.json(result);
 });
@@ -2125,19 +2156,15 @@ if (process.env.NOTIFICATIONS_SECRET) {
 }
 
 const NOTIFICATION_SETTINGS_KEY = 'notifications.settings';
+// Derived from the catalog rather than duplicated here — an event added to
+// notification-catalog.cjs shows up with the right default without this list
+// having to be kept in sync by hand (which it previously wasn't: MONITOR_LIVE
+// was listed but never sent by anything).
 const DEFAULT_NOTIFICATION_SETTINGS = {
     enabled: true,
     appName: 'SMK TV',
-    events: {
-        SCHEDULER_TRIGGER: true,
-        SCHEDULER_ALERT: true,
-        RECORDING_STARTED: true,
-        RECORDING_STOPPED: true,
-        RECORDING_ERROR: true,
-        BACKUP_COMPLETED: false,
-        MEMORY_WARNING: true,
-        MONITOR_LIVE: true,
-    }
+    events: notificationCatalog.defaultEventFlags(),
+    templates: {},
 };
 
 // Startup: prune tokens inactive for more than 30 days
@@ -2241,20 +2268,198 @@ app.get('/api/notifications/settings', (req, res) => {
     }
 });
 
-// PUT /api/notifications/settings — update per-event preferences
+/**
+ * Accept only the template fields, only for events that exist, and truncate on
+ * code-point boundaries so an emoji at the limit is dropped whole instead of
+ * being cut into a broken surrogate half (which is what turns "😀" into "�").
+ * An empty title/body is stored as a deletion, which makes the catalog default
+ * take over again — that's how "Reset to default" is expressed over the wire.
+ */
+function sanitizeTemplates(incoming, current = {}) {
+    if (!incoming || typeof incoming !== 'object') return current;
+    const out = { ...current };
+    for (const [key, tpl] of Object.entries(incoming)) {
+        if (!notificationCatalog.EVENTS_BY_KEY[key]) continue;   // unknown event — ignore
+        if (tpl === null) { delete out[key]; continue; }          // explicit reset
+        if (typeof tpl !== 'object') continue;
+
+        const entry = { ...(out[key] || {}) };
+        if (typeof tpl.title === 'string') {
+            const t = tpl.title.trim();
+            if (t) entry.title = notificationCatalog.truncate(t, notificationCatalog.MAX_TITLE);
+            else delete entry.title;
+        }
+        if (typeof tpl.body === 'string') {
+            // Body keeps interior newlines (a two-line message is legitimate);
+            // only the outer whitespace goes.
+            const b = tpl.body.replace(/^\s+|\s+$/g, '');
+            if (b) entry.body = notificationCatalog.truncate(b, notificationCatalog.MAX_BODY);
+            else delete entry.body;
+        }
+        if (typeof tpl.useAppNameAsTitle === 'boolean') entry.useAppNameAsTitle = tpl.useAppNameAsTitle;
+
+        if (Object.keys(entry).length === 0) delete out[key];
+        else out[key] = entry;
+    }
+    return out;
+}
+
+// PUT /api/notifications/settings — update per-event preferences and templates
 app.put('/api/notifications/settings', (req, res) => {
     try {
         const body = req.body || {};
         const current = stateService.get(NOTIFICATION_SETTINGS_KEY) || DEFAULT_NOTIFICATION_SETTINGS;
         const updated = {
             enabled: typeof body.enabled === 'boolean' ? body.enabled : current.enabled,
-            appName: typeof body.appName === 'string' && body.appName.trim() ? body.appName.trim().slice(0, 40) : (current.appName || 'SMK TV'),
-            events: { ...current.events, ...(body.events || {}) }
+            appName: typeof body.appName === 'string' && body.appName.trim()
+                // Code-point-safe: .slice(0, 40) could split an emoji here too.
+                ? notificationCatalog.truncate(body.appName.trim(), notificationCatalog.MAX_APP_NAME)
+                : (current.appName || 'SMK TV'),
+            events: { ...current.events, ...(body.events || {}) },
+            templates: sanitizeTemplates(body.templates, current.templates || {}),
         };
         stateService.set(NOTIFICATION_SETTINGS_KEY, updated);
-        res.json({ saved: true });
+        res.json({ saved: true, templates: updated.templates });
     } catch (err) {
+        console.error('[Notifications] settings save error:', err);
         res.status(500).json({ error: 'Failed to save settings' });
+    }
+});
+
+// GET /api/notifications/catalog — every event the app can notify about, with its
+// default wording, its placeholders and which group it belongs to. The panel
+// renders itself entirely from this, so the UI never holds a stale copy of the
+// event list.
+app.get('/api/notifications/catalog', (req, res) => {
+    const settings = stateService.get(NOTIFICATION_SETTINGS_KEY) || DEFAULT_NOTIFICATION_SETTINGS;
+    res.json({
+        groups: notificationCatalog.GROUPS,
+        globalVars: notificationCatalog.GLOBAL_VARS,
+        limits: { title: notificationCatalog.MAX_TITLE, body: notificationCatalog.MAX_BODY },
+        events: notificationCatalog.EVENTS.map(e => ({
+            key: e.key,
+            label: e.label,
+            group: e.group,
+            hint: e.hint,
+            vars: e.vars || [],
+            defaultEnabled: e.defaultEnabled !== false,
+            clientEmit: !!e.clientEmit,
+            defaults: { title: e.title, body: e.body },
+            // What is actually in force right now, defaults included, so the
+            // editor opens on the real current wording.
+            effective: notificationCatalog.resolveTemplate(e.key, settings),
+            enabled: notificationCatalog.isEventEnabled(e.key, settings),
+            sample: notificationCatalog.sampleData(e.key),
+        })),
+    });
+});
+
+// POST /api/notifications/emit — let the browser raise an event.
+//
+// This is what makes manual changes notify at all. Player switches, playlist
+// runs and OBS output toggles are all decided in the React app, and until now
+// only the server could send a notification — which is exactly why only
+// automated (server-side) triggers ever produced one. Only events flagged
+// clientEmit in the catalog are accepted, so a paired phone can't fabricate a
+// server-authoritative event like MEMORY_WARNING or BACKUP_COMPLETED.
+app.post('/api/notifications/emit', (req, res) => {
+    try {
+        const { event, data } = req.body || {};
+        if (!event || typeof event !== 'string') return res.status(400).json({ error: 'event is required' });
+        if (!notificationCatalog.EVENTS_BY_KEY[event]) return res.status(404).json({ error: `Unknown event: ${event}` });
+        if (!notificationCatalog.isClientEmittable(event)) {
+            return res.status(403).json({ error: `${event} cannot be raised by a client` });
+        }
+        // Generous but finite — a switch storm (OBS reconnect loop, a runaway
+        // effect) must not turn into a push storm on the operator's phone.
+        if (!checkRateLimit(`emit:${event}`, 20, 60_000)) {
+            console.warn(`[Notifications] emit rate limit hit for ${event}`);
+            return res.status(429).json({ error: 'Too many requests' });
+        }
+        notificationService.send(event, (data && typeof data === 'object') ? data : {}).catch(() => {});
+        res.json({ queued: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to emit event' });
+    }
+});
+
+// POST /api/notifications/render — render a template WITHOUT sending it.
+//
+// The panel's live preview calls this (debounced) rather than reimplementing the
+// placeholder/emoji/truncation rules in the browser. That keeps exactly one
+// implementation of "what will the phone show" — the same buildPayload() the
+// real sends go through — so the preview cannot drift away from reality.
+app.post('/api/notifications/render', (req, res) => {
+    try {
+        const { event, title, body, useAppNameAsTitle } = req.body || {};
+        if (!event || !notificationCatalog.EVENTS_BY_KEY[event]) {
+            return res.status(400).json({ error: 'A known event is required' });
+        }
+        const settings = stateService.get(NOTIFICATION_SETTINGS_KEY) || DEFAULT_NOTIFICATION_SETTINGS;
+        const payload = notificationCatalog.buildPayload(
+            event,
+            notificationCatalog.sampleData(event),
+            settings,
+            {
+                title: typeof title === 'string' ? title : null,
+                body: typeof body === 'string' ? body : null,
+                useAppNameAsTitle: typeof useAppNameAsTitle === 'boolean' ? useAppNameAsTitle : null,
+            }
+        );
+        res.json({ title: payload.title, body: payload.body });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to render template' });
+    }
+});
+
+// POST /api/notifications/test-template — render a template (including unsaved
+// edits from the panel) and push it, so the operator can check the wording and
+// the emoji on a real device before saving.
+app.post('/api/notifications/test-template', async (req, res) => {
+    try {
+        const { event, title, body, useAppNameAsTitle, deviceId } = req.body || {};
+        if (!event || !notificationCatalog.EVENTS_BY_KEY[event]) {
+            return res.status(400).json({ error: 'A known event is required' });
+        }
+        if (!checkRateLimit(`test-template:${clientKey(req)}`, 10, 60_000)) {
+            return res.status(429).json({ error: 'Too many requests' });
+        }
+
+        const settings = stateService.get(NOTIFICATION_SETTINGS_KEY) || DEFAULT_NOTIFICATION_SETTINGS;
+        const payload = notificationCatalog.buildPayload(
+            event,
+            notificationCatalog.sampleData(event),
+            settings,
+            {
+                title: typeof title === 'string' ? title : null,
+                body: typeof body === 'string' ? body : null,
+                useAppNameAsTitle: typeof useAppNameAsTitle === 'boolean' ? useAppNameAsTitle : null,
+            }
+        );
+
+        let tokens = null;
+        if (deviceId) {
+            const dev = tokenStore.getTokens().find(t => t.id === deviceId);
+            if (!dev) return res.status(404).json({ error: 'Device not found' });
+            tokens = [dev.token];
+        }
+
+        const result = await notificationService.sendPayload({ ...payload, event }, tokens);
+        res.json({ sent: true, ...result, preview: { title: payload.title, body: payload.body } });
+    } catch (err) {
+        console.error('[Notifications] test-template error:', err.message);
+        res.status(500).json({ error: err.message || 'Failed to send test' });
+    }
+});
+
+// DELETE /api/notifications/history — clear the sent log
+app.delete('/api/notifications/history', (req, res) => {
+    try {
+        const historyFile = path.join(dataDir, 'notification-history.json');
+        fs.writeFileSync(historyFile, JSON.stringify({ version: 1, maxEntries: 500, entries: [] }, null, 2), 'utf8');
+        res.json({ cleared: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to clear history' });
     }
 });
 
@@ -2290,20 +2495,43 @@ app.get('/api/notifications/setup-url', async (req, res) => {
         // while the public edge answers with 502/503, so verify live instead of
         // trusting the env var, and kick a reconnect in the background if it's down.
         let tunnelBase = (process.env.TUNNEL_URL || '').replace(/\/$/, '');
+        let dnsUnverified = false;
         if (tunnelBase) {
             const probe = await tunnelManager.probeTunnel(tunnelBase);
             if (!probe.ok) {
-                // A hostname this machine can't resolve yet is Cloudflare DNS still
-                // propagating, not a dead tunnel — forcing a reconnect here just
-                // mints a fresher name with even less propagation and the QR never
-                // settles. Hold and let the client keep polling instead.
-                if (probe.reason === 'dns' && tunnelManager.isUrlPropagating()) {
-                    console.log(`[Notifications] Tunnel hostname still propagating (${tunnelBase}) — holding, not reconnecting`);
-                    return res.json({ pending: true, tunnel: false, propagating: true });
+                // A DNS miss must NEVER force a reconnect here. Doing so mints a
+                // fresher hostname with even less propagation, which resets the
+                // "still propagating" window, which produces another DNS miss —
+                // the panel then spins on "waiting for its new address to spread"
+                // forever and the URL churns every few minutes. On a network whose
+                // resolver simply never serves *.trycloudflare.com it could never
+                // escape. A new name cannot fix a broken resolver.
+                if (probe.reason === 'dns') {
+                    // Brand-new name: genuinely might just be propagating. Keep the
+                    // loader briefly rather than showing a QR nobody can scan yet.
+                    if (tunnelManager.isUrlPropagating() && !tunnelManager.isLocalDnsBlind()) {
+                        console.log(`[Notifications] Tunnel hostname still propagating (${tunnelBase}) — holding, not reconnecting`);
+                        return res.json({ pending: true, tunnel: false, propagating: true });
+                    }
+                    // Past that window (or already known to be a local-resolver
+                    // problem): ask a public resolver. If the name is live out
+                    // there, this PC is simply blind to it — the phone, usually on
+                    // a different resolver entirely, can still reach it. Show the
+                    // QR flagged rather than spinning indefinitely.
+                    const publiclyResolvable = await tunnelManager.resolvesPublicly(tunnelManager.hostOf(tunnelBase));
+                    if (publiclyResolvable !== false) {
+                        console.log(`[Notifications] ${tunnelBase} unresolvable from this PC but ${publiclyResolvable === true ? 'live in public DNS' : 'unverifiable'} — handing out the QR anyway`);
+                        dnsUnverified = true;
+                    } else {
+                        console.warn(`[Notifications] ${tunnelBase} is NXDOMAIN in public DNS too — falling back to LAN URL, requesting reconnect`);
+                        tunnelManager.forceReconnect();
+                        tunnelBase = '';
+                    }
+                } else {
+                    console.warn(`[Notifications] Tunnel unreachable at QR-generation time (${probe.reason}${probe.code ? ' ' + probe.code : ''}) — falling back to LAN URL, requesting reconnect`);
+                    tunnelManager.forceReconnect();
+                    tunnelBase = '';
                 }
-                console.warn(`[Notifications] Tunnel unreachable at QR-generation time (${probe.reason}${probe.code ? ' ' + probe.code : ''}) — falling back to LAN URL, requesting reconnect`);
-                tunnelManager.forceReconnect();
-                tunnelBase = '';
             }
         }
 
@@ -2341,7 +2569,11 @@ app.get('/api/notifications/setup-url', async (req, res) => {
         // lanOnly tells the UI this link only works on the same WiFi network as this
         // PC — the tunnel (which makes it work over mobile data / anywhere) hasn't
         // connected yet. tunnelManager keeps retrying in the background regardless.
-        res.json({ primaryUrl, allUrls, qrDataUrl, port: HTTPS_PORT_VAL, tunnel: !!tunnelBase, lanOnly: !tunnelBase });
+        // dnsUnverified: the tunnel is up and the QR is scannable, but this PC
+        // can't resolve the hostname to confirm it. The phone very likely can —
+        // it's usually on a different resolver — so the UI shows the code with a
+        // caveat instead of hiding it behind an endless loader.
+        res.json({ primaryUrl, allUrls, qrDataUrl, port: HTTPS_PORT_VAL, tunnel: !!tunnelBase, lanOnly: !tunnelBase, dnsUnverified });
     } catch (err) {
         res.status(500).json({ error: 'Failed to generate setup URL: ' + err.message });
     }

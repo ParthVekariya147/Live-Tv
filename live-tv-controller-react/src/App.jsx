@@ -103,10 +103,14 @@ function App() {
             } else {
               logVideoError('Delay Live', data.videoId || 'unknown', data.errorCode, 'Video error', nextAction);
             }
+            // 'auto_handoff', not the default 'manual' — this is the delay player
+            // reaching the end of its video and handing the screen on by itself.
+            // The trigger is what decides which notification the operator gets, so
+            // mislabelling it here would report an automatic switch as one they made.
             if (!ss["Live Player"]) {
-              setSourceVisibility("Loop Player", true);
+              setSourceVisibility("Loop Player", true, 'auto_handoff');
             } else {
-              setSourceVisibility("Delay Live", false);
+              setSourceVisibility("Delay Live", false, 'auto_handoff');
             }
           }
         } catch (e) {
@@ -123,7 +127,7 @@ function App() {
             } else {
               logVideoError('Live Player', data.videoId || 'unknown', data.errorCode, 'Video error', 'switch_to_loop');
             }
-            setSourceVisibility("Loop Player", true);
+            setSourceVisibility("Loop Player", true, 'auto_handoff');
           }
         } catch (e) {
           console.error('Error parsing LivePlayer event:', e);

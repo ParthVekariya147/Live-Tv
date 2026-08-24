@@ -1,18 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { getFCMStatus, unregisterFCM, requestNotificationPermission } from '../services/fcm.js'
+import NotificationPanel from './NotificationPanel'
+import NotificationHistory from './NotificationHistory'
 
-const EVENT_LABELS = {
-    SCHEDULER_TRIGGER: 'Schedule triggered',
-    SCHEDULER_ALERT:   'Scheduler alert',
-    RECORDING_STARTED: 'Recording started',
-    RECORDING_STOPPED: 'Recording stopped',
-    RECORDING_ERROR:   'Recording error',
-    BACKUP_COMPLETED:  'Backup completed',
-    MEMORY_WARNING:    'Memory warning',
-    MONITOR_LIVE:      'Live stream detected',
-}
-
-const DEFAULT_EVENTS = Object.fromEntries(Object.keys(EVENT_LABELS).map(k => [k, k !== 'BACKUP_COMPLETED']))
+// The event list used to be duplicated here as EVENT_LABELS, which meant a new
+// event silently missed the UI until someone remembered to add it twice. Labels
+// now come from /api/notifications/catalog — the same source the server renders
+// from — and the per-event toggles live in the Messages tab beside the wording
+// they control.
 
 function deviceIcon(userAgent = '') {
     const ua = userAgent.toLowerCase()
@@ -45,7 +40,9 @@ function isStale(iso) {
 
 export default function NotificationSettings() {
     const [open, setOpen]           = useState(false)
-    const [settings, setSettings]   = useState({ enabled: true, appName: 'SMK TV', events: DEFAULT_EVENTS })
+    const [tab, setTab]             = useState('devices')
+    const [settings, setSettings]   = useState({ enabled: true, appName: 'SMK TV', events: {}, templates: {} })
+    const [eventLabels, setEventLabels] = useState({})
     const [appNameDraft, setAppNameDraft] = useState('SMK TV')
     const [installPrompt, setInstallPrompt] = useState(null)
     const [devices, setDevices]     = useState([])
@@ -80,6 +77,17 @@ export default function NotificationSettings() {
         } catch (_) {} finally { setRefreshing(false) }
     }, [])
 
+    // Event key -> human label, for the History tab's rows. Cheap, cached for the
+    // life of the panel, and keeps this component free of its own event list.
+    const loadLabels = useCallback(async () => {
+        try {
+            const res = await fetch('/api/notifications/catalog')
+            if (!res.ok) return
+            const data = await res.json()
+            setEventLabels(Object.fromEntries(data.events.map(e => [e.key, e.label])))
+        } catch (_) {}
+    }, [])
+
     // qrLoading only ever covers the very first fetch after the panel opens — the
     // background poll below (which upgrades LAN → tunnel) must never touch it, or
     // the whole QR block blanks out and re-renders every 8s while waiting for the
@@ -95,11 +103,12 @@ export default function NotificationSettings() {
     useEffect(() => {
         if (open) {
             load()
+            loadLabels()
             setQrLoading(true)
             setSetup(null)
             loadSetupUrl().finally(() => setQrLoading(false))
         }
-    }, [open, load, loadSetupUrl])
+    }, [open, load, loadLabels, loadSetupUrl])
 
     // The tunnel connects in the background on server startup (retries — see
     // tunnel-manager.cjs) and can take a few seconds after the app launches. Poll
@@ -116,7 +125,9 @@ export default function NotificationSettings() {
     // showed that dead QR forever. Scanning it gives "site can't be reached",
     // which looks exactly like the QR feature being broken.
     useEffect(() => {
-        if (!open) return
+        // Only while the QR is actually on screen — no point probing the tunnel
+        // every 8s behind the Messages or History tab.
+        if (!open || tab !== 'devices') return
         let attempts = 0
         let timer
         const tick = () => {
@@ -128,7 +139,7 @@ export default function NotificationSettings() {
         }
         timer = setTimeout(tick, setup?.tunnel ? 30000 : 8000)
         return () => clearTimeout(timer)
-    }, [open, setup?.tunnel, loadSetupUrl])
+    }, [open, tab, setup?.tunnel, loadSetupUrl])
 
     async function retryTunnel() {
         setTunnelRetrying(true)
@@ -158,21 +169,27 @@ export default function NotificationSettings() {
         setInstallPrompt(null)
     }
 
+    // Awaited by the Messages tab, which re-reads the catalog once the save lands
+    // so the editor shows what the server actually stored (it trims and truncates)
+    // rather than assuming the draft went in untouched.
     async function saveSettings(patch) {
         const updated = { ...settings, ...patch }
         setSettings(updated)
         setSaving(true)
         try {
-            await fetch('/api/notifications/settings', {
+            const res = await fetch('/api/notifications/settings', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updated),
             })
+            if (res.ok) {
+                const body = await res.json().catch(() => null)
+                // The reply carries the sanitised template map — adopting it drops
+                // the `null` reset markers we just sent instead of keeping them in
+                // local state and re-sending them on every later save.
+                if (body?.templates) setSettings(s => ({ ...s, templates: body.templates }))
+            }
         } catch (_) {} finally { setSaving(false) }
-    }
-
-    function toggleEvent(key) {
-        saveSettings({ events: { ...settings.events, [key]: !settings.events[key] } })
     }
 
     // Only ever called from a real click — auto-requesting permission on page
@@ -262,10 +279,34 @@ export default function NotificationSettings() {
             </button>
 
             {open && (
-                <div className="bg-gray-900 border border-cyan-700/40 rounded-lg p-3 w-80 text-xs mt-1">
+                <div className="bg-gray-900 border border-cyan-700/40 rounded-lg p-3 w-96 text-xs mt-1 max-h-[80vh] overflow-y-auto">
                     <p className="text-cyan-400 font-semibold mb-2">Push Notifications</p>
 
-                    {/* Browser support warnings */}
+                    {/* Tabs — pairing and the device list on one side, the wording of
+                        every message on the other, and proof of what went out last. */}
+                    <div className="flex gap-1 mb-2 border-b border-gray-700 pb-1.5">
+                        {[
+                            { id: 'devices',  label: '📱 Devices & QR' },
+                            { id: 'messages', label: '✎ Messages' },
+                            { id: 'history',  label: '🕘 History' },
+                        ].map(t => (
+                            <button
+                                key={t.id}
+                                onClick={() => setTab(t.id)}
+                                className={`px-2 py-1 rounded font-medium transition-all ${
+                                    tab === t.id
+                                        ? 'bg-cyan-800/60 text-cyan-300 border border-cyan-700/50'
+                                        : 'bg-gray-800 text-gray-400 hover:bg-gray-750 hover:text-gray-300 border border-transparent'
+                                }`}
+                                style={{ fontSize: 10 }}
+                            >
+                                {t.label}
+                            </button>
+                        ))}
+                        {saving && <span className="text-gray-600 ml-auto self-center" style={{ fontSize: 10 }}>saving…</span>}
+                    </div>
+
+                    {/* Browser support warnings — relevant on every tab */}
                     {notSupported && (
                         <p className="text-yellow-500 mb-2 bg-yellow-900/20 rounded p-2">
                             Your browser does not support push notifications.
@@ -277,6 +318,18 @@ export default function NotificationSettings() {
                         </p>
                     )}
 
+                    {tab === 'messages' && (
+                        <NotificationPanel
+                            settings={settings}
+                            onPatch={saveSettings}
+                            appName={appNameDraft || settings.appName}
+                        />
+                    )}
+
+                    {tab === 'history' && <NotificationHistory labels={eventLabels} />}
+
+                    {tab === 'devices' && (
+                    <>
                     {/* Add New Device — QR Code */}
                     <div className="border border-gray-700 rounded-lg p-2 mb-3 bg-gray-800/50">
                         <p className="text-gray-400 font-medium mb-2">📱 Add Device via QR Code</p>
@@ -302,7 +355,26 @@ export default function NotificationSettings() {
                                     className="rounded bg-white p-1"
                                     style={{ width: 120, height: 120 }}
                                 />
-                                {setup.tunnel ? (
+                                {setup.tunnel && setup.dnsUnverified ? (
+                                    <div className="text-amber-400 text-center bg-amber-900/20 rounded p-1" style={{ fontSize: 10 }}>
+                                        <p>✓ Tunnel active — scan it, this should work.</p>
+                                        <p className="text-gray-400 mt-1">
+                                            This PC's network can't look up the tunnel address, but that's usually a
+                                            problem with <i>this</i> router's DNS only — your phone (especially on
+                                            mobile data) uses a different one and can normally reach it fine.
+                                        </p>
+                                        <p className="text-gray-500 mt-1">
+                                            If the phone can't open it either, get a fresh address:
+                                        </p>
+                                        <button
+                                            onClick={retryTunnel}
+                                            disabled={tunnelRetrying}
+                                            className="mt-1 px-2 py-0.5 rounded bg-gray-700 hover:bg-gray-600 text-cyan-400 disabled:opacity-50"
+                                        >
+                                            {tunnelRetrying ? 'Retrying…' : 'New tunnel address'}
+                                        </button>
+                                    </div>
+                                ) : setup.tunnel ? (
                                     <div className="text-green-400 text-center" style={{ fontSize: 10 }}>
                                         <p>✓ Tunnel active — scan with any device on any network.</p>
                                         <p className="text-gray-500 mt-1">
@@ -401,29 +473,20 @@ export default function NotificationSettings() {
                         <span className={settings.enabled ? 'text-gray-200' : 'text-gray-500'}>
                             Enable push notifications
                         </span>
-                        {saving && <span className="text-gray-600 ml-auto">saving…</span>}
                     </label>
 
-                    {/* Per-event toggles */}
+                    {/* Per-event toggles used to sit here against a hardcoded list.
+                        They now live in the Messages tab, next to the wording each
+                        one controls — and that list comes from the server, so new
+                        events can't go missing from it. */}
                     {settings.enabled && !notSupported && (
-                        <div className="mb-3 border-t border-gray-700 pt-2">
-                            <p className="text-gray-500 mb-1 font-medium">Events</p>
-                            <div className="flex flex-col gap-1">
-                                {Object.entries(EVENT_LABELS).map(([key, label]) => (
-                                    <label key={key} className="flex items-center gap-2 cursor-pointer select-none">
-                                        <input
-                                            type="checkbox"
-                                            checked={!!settings.events?.[key]}
-                                            onChange={() => toggleEvent(key)}
-                                            className="accent-cyan-500"
-                                        />
-                                        <span className={settings.events?.[key] ? 'text-gray-300' : 'text-gray-600'}>
-                                            {label}
-                                        </span>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
+                        <button
+                            onClick={() => setTab('messages')}
+                            className="w-full mb-3 py-1 rounded bg-gray-800 hover:bg-gray-700 text-cyan-400 border border-gray-700"
+                            style={{ fontSize: 10 }}
+                        >
+                            ✎ Choose which messages get sent, and their wording →
+                        </button>
                     )}
 
                     {/* Registered devices */}
@@ -525,6 +588,8 @@ export default function NotificationSettings() {
                         >
                             {enabling ? 'Requesting permission…' : '🔔 Enable notifications on this device'}
                         </button>
+                    )}
+                    </>
                     )}
                 </div>
             )}

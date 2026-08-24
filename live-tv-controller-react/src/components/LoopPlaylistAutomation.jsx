@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { PLAYER_EVENT_KEY, parseIdsFromText, extractVideoId } from '../utils/core-utils';
 import { getStateValue, setStateValue } from '../utils/state-api';
+import { readActiveSourceNow } from '../utils/player-switching';
+import { notifyEvent } from '../utils/notify';
 import { useOBS } from '../context/OBSContext';
 import {
     getSchedules, addSchedule, deleteSchedule, toggleSchedule,
@@ -276,7 +278,9 @@ export default function LoopPlaylistAutomation() {
                 // Same Live-priority guard the old client-only scheduler tick used — a
                 // scheduled Group never preempts an actual live broadcast, it just waits
                 // quietly for its next scheduled time instead.
-                if (isLiveActiveRef.current) {
+                // Read through the state round-trip lag too — a switch to Live requested a
+                // moment ago is not visible in sourceState yet (see readActiveSourceNow).
+                if (isLiveActiveRef.current || readActiveSourceNow() === 'Live Player') {
                     setEngineStatus(`Skipped scheduled "${msg.data.title || 'Group'}" — Live Player is active`);
                     return;
                 }
@@ -391,21 +395,58 @@ export default function LoopPlaylistAutomation() {
         // does. Without this, a scheduled/triggered run loads silently and never visibly
         // starts. Skipped when already visible to avoid a redundant OBS call on every
         // mid-chain list-to-list transition.
-        if (!isLoopVisibleRef.current) setSourceVisibility('Loop Player', true, 'automation');
+        //
+        // Never taken while a live broadcast is on air. A live_events Group is triggered by
+        // the very same 'livePlayerAutoLoad' event that makes MonitorManager put the Live
+        // Player on air, so without this the two race for the screen on one detection: the
+        // keyword check awaits a title lookup, and whichever side resumes last wins. That is
+        // why it only went wrong sometimes — the broadcast would cut to live and then flip
+        // back to the loop a moment later. Live wins, consistently, matching the same
+        // live-priority rule the scheduled path above already applies. The playlist is still
+        // loaded and the run still activated, so it takes over the moment live ends.
+        const liveOnAirNow = isLiveActiveRef.current || readActiveSourceNow() === 'Live Player';
+        if (liveOnAirNow) {
+            setEngineStatus(`Queued "${runInfo.listName}" from "${runInfo.groupName}" — waiting for the live broadcast to end`);
+        } else if (!isLoopVisibleRef.current) {
+            // 'playlist' rather than 'automation': this switch is how a playlist run
+            // starts, and PLAYLIST_STARTED below already reports it with the group
+            // and list names. Labelling it 'automation' would notify twice.
+            setSourceVisibility('Loop Player', true, 'playlist');
+        }
         // groupName/listName ride along so the Loop Player card can show what's driving it
         // ("Group → List") without reaching into this component's state.
         window.dispatchEvent(new CustomEvent('loopPlayerLoadPlaylist', {
             detail: { videoIds: list.videoIds, startIndex: startIdx0, groupName: runInfo.groupName, listName: runInfo.listName },
         }));
         setEngineStatus(`${label ? label + ' — ' : ''}Playing "${runInfo.listName}" from "${runInfo.groupName}"`);
+
+        // Every way a run can begin funnels through here — the ▶ Play button, a
+        // schedule, a live-event match, a chain hop, the idle fallback — so `label`
+        // is what tells the operator which of those it was.
+        notifyEvent('PLAYLIST_STARTED', {
+            group: runInfo.groupName,
+            list: runInfo.listName,
+            videoCount: list.videoIds.length,
+            trigger: label || 'Manual',
+        });
         return true;
     }, [advanceResumePointer, setSourceVisibility]);
 
-    const stopAutomation = useCallback(() => {
+    const stopAutomation = useCallback((reason = 'Manual stop') => {
+        const ending = activeRunRef.current;
         activeRunRef.current = null;
         setActiveRun(null);
         window.dispatchEvent(new CustomEvent('loopPlayerAutomationStop'));
         setEngineStatus('Automation stopped — Loop Player controls are back in your hands');
+        // Only worth a notification when something was actually running; stopping
+        // an already-idle engine is a no-op the operator doesn't need told about.
+        if (ending) {
+            notifyEvent('PLAYLIST_STOPPED', {
+                group: ending.groupName,
+                list: ending.listName,
+                trigger: reason,
+            });
+        }
     }, []);
 
     // Falls back to the single starred (★ default) Group whenever automation goes idle with
@@ -435,7 +476,7 @@ export default function LoopPlaylistAutomation() {
 
             const group = groupsRef.current.find(g => g.id === run.groupId);
             const list = group?.lists.find(l => l.id === run.listId);
-            if (!group || !list) { stopAutomation(); return; }
+            if (!group || !list) { stopAutomation('Group or list no longer exists'); return; }
 
             // Use the start index frozen when this run activated, not the live value —
             // advanceResumePointer() below mutates list.startIndex as the run progresses,
@@ -456,6 +497,12 @@ export default function LoopPlaylistAutomation() {
                     },
                 }));
                 setEngineStatus(`Playing "${list.name || 'List'}" (${playedInListRef.current + 1}/${effectiveCount}) from "${group.name || 'Group'}"`);
+                notifyEvent('PLAYLIST_VIDEO_CHANGED', {
+                    group: group.name || 'Group',
+                    list: list.name || 'List',
+                    position: playedInListRef.current + 1,
+                    total: effectiveCount,
+                });
                 return;
             }
 
@@ -464,7 +511,7 @@ export default function LoopPlaylistAutomation() {
                 applySkips(next.skipped);
                 activateRun(next.groupId, next.listId, 'Chained');
             } else if (!tryStartDefaultGroup('Default')) {
-                stopAutomation();
+                stopAutomation('Chain ended — nothing left to play');
             }
         };
         window.addEventListener('storage', handleStorage);
@@ -557,7 +604,7 @@ export default function LoopPlaylistAutomation() {
     const addGroup = () => setGroups(prev => [...prev, newGroup()]);
     const deleteGroup = (groupId) => {
         setGroups(prev => prev.filter(g => g.id !== groupId));
-        if (activeRunRef.current?.groupId === groupId) stopAutomation();
+        if (activeRunRef.current?.groupId === groupId) stopAutomation('Group deleted');
         // Clean up this Group's rows in the shared scheduler too — otherwise they'd linger,
         // still fire, and clutter the main page's Pending Schedules with a dead reference.
         const orphaned = playlistSchedules.filter(s => scheduleGroupId(s) === groupId);
@@ -593,7 +640,7 @@ export default function LoopPlaylistAutomation() {
     const addList = (groupId) => setGroups(prev => prev.map(g => g.id === groupId ? { ...g, lists: [...g.lists, newList()] } : g));
     const deleteList = (groupId, listId) => {
         setGroups(prev => prev.map(g => g.id === groupId ? { ...g, lists: g.lists.filter(l => l.id !== listId) } : g));
-        if (activeRunRef.current?.listId === listId) stopAutomation();
+        if (activeRunRef.current?.listId === listId) stopAutomation('List deleted');
     };
 
     const updateGroup = (groupId, patch) => setGroups(prev => prev.map(g => g.id === groupId ? { ...g, ...patch } : g));
@@ -683,8 +730,11 @@ export default function LoopPlaylistAutomation() {
                         <button onClick={handleExportConfig} className="bg-gray-700 hover:bg-gray-600 text-gray-200 px-3 py-1.5 rounded text-xs font-medium">Export</button>
                         <button onClick={() => fileInputRef.current?.click()} className="bg-gray-700 hover:bg-gray-600 text-gray-200 px-3 py-1.5 rounded text-xs font-medium">Import</button>
                         <input ref={fileInputRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImportConfig} />
+                        {/* stopAutomation is wrapped rather than passed straight to onClick:
+                            React hands the click event to the handler, and it would arrive
+                            as stopAutomation's `reason` and end up in the notification. */}
                         {activeRun && (
-                            <button onClick={stopAutomation} className="bg-red-700 hover:bg-red-600 text-white px-3 py-1.5 rounded text-xs font-medium">Stop Automation</button>
+                            <button onClick={() => stopAutomation('Stopped by hand')} className="bg-red-700 hover:bg-red-600 text-white px-3 py-1.5 rounded text-xs font-medium">Stop Automation</button>
                         )}
                         <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-white text-xl leading-none px-2">×</button>
                     </div>

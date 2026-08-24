@@ -74,13 +74,70 @@ function checkTunnelHealth(url) {
 }
 
 // How long a brand-new hostname is allowed to be unresolvable before we stop
-// blaming DNS and treat it as a genuinely dead tunnel.
+// calling it "still propagating" in the UI. NOTE: this is a labelling deadline,
+// not a kill switch — expiry alone must never trigger a reconnect. See
+// resolvesPublicly() for why.
 const DNS_PROPAGATION_GRACE_MS = 5 * 60 * 1000;
 
 // When the URL currently in process.env.TUNNEL_URL was minted.
 let urlMintedAt = null;
 function isUrlPropagating() {
     return !!urlMintedAt && (Date.now() - urlMintedAt) < DNS_PROPAGATION_GRACE_MS;
+}
+
+// True once we've established that the hostname resolves on the public internet
+// but not from this machine — i.e. our resolver is the broken part, not the
+// tunnel. Latched per URL, reset whenever a new one is minted.
+let localDnsBlind = false;
+function isLocalDnsBlind() { return localDnsBlind; }
+
+/**
+ * Ask a public resolver (Cloudflare DoH, JSON API) whether the hostname exists.
+ *
+ * This exists because the local resolver is the WRONG oracle for the question
+ * we actually care about — "can the phone reach this?". The phone is usually on
+ * mobile data behind a completely different resolver. Observed directly on this
+ * network: 1.1.1.1 answered for a hostname the router still called NXDOMAIN.
+ *
+ * Consulting it breaks a genuine infinite loop. Previously a local NXDOMAIN
+ * outlived the 5-minute grace, counted as a health failure, forced a reconnect,
+ * minted a FRESHER hostname, reset the grace, and repeated — so on a network
+ * whose resolver never serves *.trycloudflare.com the QR could never settle and
+ * the URL churned every few minutes. A new hostname cannot fix a resolver that
+ * won't resolve the domain at all; it strictly makes propagation worse.
+ *
+ * Returns true (exists), false (really NXDOMAIN), or null (couldn't tell — e.g.
+ * this machine can't even reach the DoH endpoint). Null must be treated as
+ * "don't churn", same as true.
+ */
+function resolvesPublicly(hostname) {
+    return new Promise((resolve) => {
+        try {
+            const req = https.get(
+                `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(hostname)}&type=A`,
+                { timeout: 6000, headers: { Accept: 'application/dns-json' } },
+                (res) => {
+                    let body = '';
+                    res.setEncoding('utf8');
+                    res.on('data', (c) => { body += c; });
+                    res.on('end', () => {
+                        try {
+                            const json = JSON.parse(body);
+                            // Status 0 = NOERROR; 3 = NXDOMAIN.
+                            if (json.Status === 3) return resolve(false);
+                            resolve(Array.isArray(json.Answer) && json.Answer.length > 0);
+                        } catch (_) { resolve(null); }
+                    });
+                }
+            );
+            req.on('timeout', () => { req.destroy(); resolve(null); });
+            req.on('error', () => resolve(null));
+        } catch (_) { resolve(null); }
+    });
+}
+
+function hostOf(url) {
+    try { return new URL(url).hostname; } catch (_) { return null; }
 }
 
 function patchEnvFile(url) {
@@ -180,6 +237,7 @@ function startTunnel(port, { maxRetries = 3 } = {}) {
             // Update env var in-process immediately
             process.env.TUNNEL_URL = url;
             urlMintedAt = Date.now();
+            localDnsBlind = false; // verdict belongs to the old hostname, not this one
 
             // Persist to .env so the QR code survives restarts (until it reconnects
             // with a fresh URL — quick tunnels can't pin a fixed subdomain)
@@ -203,13 +261,31 @@ function startTunnel(port, { maxRetries = 3 } = {}) {
                     consecutiveFailures = 0;
                     return;
                 }
-                // Hostname not in DNS yet on this machine — Cloudflare's name is
-                // still propagating to the local resolver. Reconnecting now would
-                // throw away a working tunnel and mint an even fresher hostname,
-                // restarting the same wait. Hold, don't count it as a failure.
-                if (probe.reason === 'dns' && isUrlPropagating()) {
-                    console.log(`[Tunnel] ${url} not resolvable from this machine yet (DNS propagating) — keeping the tunnel`);
-                    return;
+                // Hostname not resolvable from this machine. Never reconnect on
+                // that alone: it throws away a working tunnel and mints an even
+                // fresher hostname, restarting the same wait — the loop that made
+                // the QR panel spin forever on a resolver that never serves
+                // *.trycloudflare.com. Ask a public resolver who's actually at
+                // fault before doing anything destructive.
+                if (probe.reason === 'dns') {
+                    const publiclyResolvable = await resolvesPublicly(hostOf(url));
+                    if (publiclyResolvable !== false) {
+                        // true → live on the internet, our resolver is blind.
+                        // null → we couldn't even ask; assume the tunnel is fine
+                        //        rather than churn on missing information.
+                        if (!localDnsBlind) {
+                            localDnsBlind = publiclyResolvable === true;
+                            console.log(`[Tunnel] ${url} does not resolve from this machine, but ${publiclyResolvable === true ? 'a public resolver says it exists' : 'the public resolver could not be reached'} — keeping the tunnel. Phones on other networks are unaffected.`);
+                        }
+                        consecutiveFailures = 0;
+                        return;
+                    }
+                    // Genuinely NXDOMAIN everywhere. Still worth the propagation
+                    // grace on a brand-new name before treating it as dead.
+                    if (isUrlPropagating()) {
+                        console.log(`[Tunnel] ${url} not in public DNS yet (propagating) — keeping the tunnel`);
+                        return;
+                    }
                 }
                 consecutiveFailures++;
                 console.warn(`[Tunnel] Health check failed (${consecutiveFailures}/2, ${probe.reason}${probe.code ? ' ' + probe.code : ''}): ${url}/setup unreachable`);
@@ -250,4 +326,4 @@ function startTunnel(port, { maxRetries = 3 } = {}) {
     tryStart();
 }
 
-module.exports = { startTunnel, checkTunnelHealth, probeTunnel, isUrlPropagating, forceReconnect, getConnectingSince };
+module.exports = { startTunnel, checkTunnelHealth, probeTunnel, isUrlPropagating, forceReconnect, getConnectingSince, isLocalDnsBlind, resolvesPublicly, hostOf };

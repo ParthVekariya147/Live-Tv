@@ -73,6 +73,7 @@ const Scheduler = () => {
     const [action, setAction] = useState("show");
     const [recurrence, setRecurrence] = useState("daily");
     const [selectedDays, setSelectedDays] = useState([]);
+    const [skipIfLivePlaying, setSkipIfLivePlaying] = useState(false);
     const [title, setTitle] = useState("");
     const [editingId, setEditingId] = useState(null);
     const editingScheduledDayRef = useRef(null); // preserves weekly scheduledDay when editing
@@ -163,18 +164,41 @@ const Scheduler = () => {
 
     // Handle trigger from server - execute OBS action (or queue if OBS is disconnected)
     const handleServerTrigger = useCallback((triggerData) => {
-        // Skip all OBS triggers when Live Player is active/visible
-        if (sourceStateRef.current["Live Player"] === true) {
+        // Katha / playlist actions are handled by their own components' WS listeners, and
+        // the server notifies for them the moment they fire — nothing here should report a
+        // result for one, or it would arrive as a second, contradictory notification.
+        const isObsAction = triggerData.action === 'show' || triggerData.action === 'hide';
+        if (!isObsAction) {
+            return;
+        }
+
+        // "Don't interrupt the live broadcast" is a per-schedule opt-in (skipIfLivePlaying),
+        // not a blanket rule.
+        //
+        // It used to be unconditional, which was survivable while sourceState came from
+        // real OBS scene items — "Live Player visible" was a deliberate, occasional state.
+        // Now that all four players share one OBS browser source, sourceState is derived
+        // from obs.activeSource, so "Live Player is on air" is just one of four ordinary
+        // rotation states. Unconditional meant that the moment the Live Player went on
+        // air the scheduler could never switch away from it again — every later event was
+        // swallowed, including the schedule written specifically to end the live segment.
+        //
+        // A trigger aimed at the Live Player itself is never skipped: that schedule exists
+        // precisely to start or end the live segment, so "live is on air" is its cue, not
+        // a reason to stand down.
+        const liveOnAir = sourceStateRef.current["Live Player"] === true;
+        const targetsLivePlayer = triggerData.source === "Live Player";
+        if (liveOnAir && triggerData.skipIfLivePlaying === true && !targetsLivePlayer) {
             logWarn('SCHEDULER_TRIGGER_SKIPPED', LogCategory.SCHEDULER,
-                { ...triggerData, reason: 'Live Player is active/visible', skippedAt: new Date().toISOString() },
-                `[FRONTEND] Skipped: ${triggerData.action} ${triggerData.source} - Live Player is active/visible`);
+                { ...triggerData, reason: 'Live Player is on air (this schedule opted in to live protection)', skippedAt: new Date().toISOString() },
+                `[FRONTEND] Skipped: ${triggerData.action} ${triggerData.source} - Live Player is on air (this schedule opted in to live protection)`);
             logSchedulerSkip(
                 triggerData.id,
                 triggerData.time,
                 triggerData.action,
                 triggerData.source,
                 triggerData.title,
-                'Live Player is active/visible'
+                'Live Player is on air (this schedule opted in to live protection)'
             );
             // Record the suppressed trigger in history so operators can see it was reached
             setTriggerHistory(prev => [{
@@ -184,7 +208,7 @@ const Scheduler = () => {
                 action: triggerData.action,
                 firedAt: new Date().toISOString(),
                 status: 'skipped',
-                skipReason: 'Live Player Active'
+                skipReason: 'Live Player On Air'
             }, ...prev].slice(0, 20));
             reportTriggerResult({
                 id: triggerData.id,
@@ -193,19 +217,23 @@ const Scheduler = () => {
                 source: triggerData.source,
                 title: triggerData.title,
                 ok: false,
-                reason: 'Live Player is active/visible'
+                reason: 'Live Player is on air (this schedule opted in to live protection)'
             });
             return;
         }
 
-        // Katha actions are handled by KathaMonitor's own WS listener — skip OBS dispatch for them
-        const isObsAction = triggerData.action === 'show' || triggerData.action === 'hide';
-        if (!isObsAction) {
-            return;
-        }
-
-        // If OBS is disconnected, queue for when it reconnects
-        if (!obsConnectedRef.current) {
+        // Only wait on OBS when there are real per-player scene items to toggle.
+        //
+        // sourceIds is populated exclusively from GetSceneItemList entries matching the
+        // four player names, so a non-empty map means the legacy 4-source scene — there,
+        // a disconnected OBS genuinely can't carry out the switch and queueing is right.
+        // In the single-source UnifiedPlayer.html layout it is always empty: the switch is
+        // a state write that UnifiedPlayer.html picks up over /ws, and OBS is not involved
+        // at all. Queueing there meant a disconnected OBS silently swallowed every
+        // scheduled switch that would have worked fine, and left the server waiting for a
+        // confirmation that never came — which it then reported as a failure.
+        const hasPerPlayerSceneItems = Object.keys(sourceIdsRef.current).length > 0;
+        if (!obsConnectedRef.current && hasPerPlayerSceneItems) {
             logWarn('SCHEDULER_TRIGGER_OBS_QUEUED', LogCategory.SCHEDULER,
                 { ...triggerData, queuedAt: new Date().toISOString() },
                 `[FRONTEND] OBS disconnected — queuing: ${triggerData.action} ${triggerData.source}`);
@@ -231,10 +259,28 @@ const Scheduler = () => {
 
         const timeout = setTimeout(() => {
             const now = Date.now();
-            const fresh = pendingOBSTriggersRef.current.filter(
-                t => now - t.queuedAt < OBS_TRIGGER_EXPIRY_MS
-            );
+            const queued = pendingOBSTriggersRef.current;
+            const fresh = queued.filter(t => now - t.queuedAt < OBS_TRIGGER_EXPIRY_MS);
+            const expired = queued.filter(t => now - t.queuedAt >= OBS_TRIGGER_EXPIRY_MS);
             pendingOBSTriggersRef.current = [];
+
+            // Expired triggers used to be dropped in silence, leaving the server to sit on
+            // the notification until its own 130s timeout turned it into a vague "no
+            // confirmation from the app". Say what actually happened instead.
+            expired.forEach(t => {
+                logWarn('SCHEDULER_TRIGGER_EXPIRED', LogCategory.SCHEDULER,
+                    { ...t, expiredAt: new Date().toISOString() },
+                    `[FRONTEND] Dropped queued trigger (OBS stayed down >${OBS_TRIGGER_EXPIRY_MS / 1000}s): ${t.action} ${t.source}`);
+                reportTriggerResult({
+                    id: t.id,
+                    triggerKey: t.triggerKey,
+                    action: t.action,
+                    source: t.source,
+                    title: t.title,
+                    ok: false,
+                    reason: `OBS stayed disconnected for over ${Math.round(OBS_TRIGGER_EXPIRY_MS / 60000)} minutes — trigger dropped`
+                });
+            });
 
             if (fresh.length === 0) return;
 
@@ -243,9 +289,21 @@ const Scheduler = () => {
                 `[FRONTEND] OBS reconnected — executing ${fresh.length} queued trigger(s)`);
 
             fresh.forEach(triggerData => {
-                if (sourceStateRef.current["Live Player"] !== true) {
-                    executeOBSTrigger(triggerData);
+                // Same per-schedule opt-in as the live dispatch path — see handleServerTrigger.
+                const liveOnAir = sourceStateRef.current["Live Player"] === true;
+                if (liveOnAir && triggerData.skipIfLivePlaying === true && triggerData.source !== "Live Player") {
+                    reportTriggerResult({
+                        id: triggerData.id,
+                        triggerKey: triggerData.triggerKey,
+                        action: triggerData.action,
+                        source: triggerData.source,
+                        title: triggerData.title,
+                        ok: false,
+                        reason: 'Live Player is on air'
+                    });
+                    return;
                 }
+                executeOBSTrigger(triggerData);
             });
         }, 2000); // wait 2s for OBS to populate source IDs after connect
 
@@ -395,7 +453,8 @@ const Scheduler = () => {
             days: recurrence === "days" ? selectedDays : [],
             scheduledDay,
             title,
-            enabled: true
+            enabled: true,
+            skipIfLivePlaying
         };
 
         if (editingId) {
@@ -416,6 +475,7 @@ const Scheduler = () => {
         setRecurrence(schedule.recurrence);
         setTitle(schedule.title);
         setSelectedDays(schedule.days || []);
+        setSkipIfLivePlaying(schedule.skipIfLivePlaying === true);
         setEditingId(schedule.id);
         // Preserve original scheduledDay so editing on a different weekday doesn't change it
         editingScheduledDayRef.current = schedule.recurrence === 'weekly'
@@ -455,6 +515,7 @@ const Scheduler = () => {
         setAction("show");
         setRecurrence("daily");
         setSelectedDays([]);
+        setSkipIfLivePlaying(false);
         setTitle("");
         setEditingId(null);
         editingScheduledDayRef.current = null;
@@ -879,6 +940,17 @@ const Scheduler = () => {
                         ))}
                     </div>
                 )}
+
+                {/* Live-broadcast protection — per schedule, off by default */}
+                <label className="flex items-center gap-2 mb-3 text-xs text-gray-300 cursor-pointer w-fit">
+                    <input
+                        type="checkbox"
+                        checked={skipIfLivePlaying}
+                        onChange={(e) => setSkipIfLivePlaying(e.target.checked)}
+                        className="accent-cyan-500 cursor-pointer"
+                    />
+                    <span>Skip this event while the Live Player is on air</span>
+                </label>
 
                 {/* Description & Add Button */}
                 <div className="flex gap-2">

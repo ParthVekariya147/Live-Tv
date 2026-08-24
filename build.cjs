@@ -89,10 +89,17 @@ if (fs.existsSync(cloudflaredBinSrc)) {
 //
 // bundled-bin/ is embedded as a pkg asset (see package.json) and unpacked at
 // first run by live-tv-controller-react/bundled-sidecars.cjs, so a bare exe is
-// self-sufficient. ffmpeg/ffprobe are ~200 MB together and only buy the
-// higher-quality split-mux path (the relay falls back to proxy-combined
-// without them), so they're opt-in via BUNDLE_FFMPEG=1 rather than doubling
-// every build's size.
+// self-sufficient.
+//
+// ffmpeg/ffprobe ride along too. They used to be opt-in (BUNDLE_FFMPEG=1) on the
+// grounds that they're ~200 MB and "only" buy the higher-quality split-mux path.
+// That reasoning assumed the operator's PC would have its own ffmpeg — but
+// findFfmpegBinaries() in server.cjs deliberately does NOT fall back to PATH in a
+// packaged build, so a system-wide ffmpeg install is invisible to the exe. The
+// result on every fresh PC was a permanent silent downgrade to proxy-combined
+// with "ffmpeg not found", which is exactly the class of bug the payload exists
+// to prevent. Bundling costs disk; not bundling costs a broken feature nobody can
+// diagnose. Set BUNDLE_FFMPEG=0 to opt out for a deliberately slim build.
 //
 // .env and cloudflared.exe are in the payload for exactly the same reason, and
 // their absence caused the same class of silent failure: a bare exe on a fresh
@@ -102,6 +109,25 @@ if (fs.existsSync(cloudflaredBinSrc)) {
 // Without cloudflared.exe there's also no HTTPS tunnel, so even a correctly
 // credentialed install can only register phones over the LAN.
 const PAYLOAD_DIR = path.join(ROOT, 'bundled-bin');
+
+/**
+ * Absolute path to a binary on the BUILD machine's PATH, or null.
+ *
+ * Only ever used to find a file to copy INTO the payload at build time — the
+ * packaged exe still never consults PATH at runtime (see findFfmpegBinaries in
+ * server.cjs, which resolves next to process.execPath only, on purpose).
+ */
+function resolveOnPath(binName) {
+  const cmd = process.platform === 'win32' ? 'where' : 'which';
+  try {
+    const out = execSync(`${cmd} ${binName}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    // `where` can return several hits (multiple installs) — take the first.
+    const first = out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0];
+    return first && fs.existsSync(first) ? first : null;
+  } catch (_) {
+    return null; // not installed on this machine
+  }
+}
 
 function stagePayload() {
   fs.mkdirSync(PAYLOAD_DIR, { recursive: true });
@@ -119,14 +145,24 @@ function stagePayload() {
       src: path.join(ROOT, 'live-tv-controller-react', 'node_modules', 'cloudflared', 'bin', 'cloudflared.exe'),
     },
   ];
-  if (process.env.BUNDLE_FFMPEG === '1') {
-    wanted.push({ name: 'ffmpeg.exe',  executable: true, required: false });
-    wanted.push({ name: 'ffprobe.exe', executable: true, required: false });
+  if (process.env.BUNDLE_FFMPEG !== '0') {
+    // src falls back to wherever the build machine's own ffmpeg lives (winget,
+    // choco, a manual PATH entry) so the payload isn't silently skipped just
+    // because nobody copied a build into exe/ by hand.
+    wanted.push({ name: 'ffmpeg.exe',  executable: true, required: true, srcFallback: () => resolveOnPath('ffmpeg') });
+    wanted.push({ name: 'ffprobe.exe', executable: true, required: true, srcFallback: () => resolveOnPath('ffprobe') });
   }
 
   const files = [];
   for (const item of wanted) {
-    const src = item.src || path.join(EXE_DIR, item.name);
+    let src = item.src || path.join(EXE_DIR, item.name);
+    if (!fs.existsSync(src) && item.srcFallback) {
+      const viaPath = item.srcFallback();
+      if (viaPath) {
+        console.log(`  · ${item.name} not in exe/ — using the build machine's own copy: ${viaPath}`);
+        src = viaPath;
+      }
+    }
     const dest = path.join(PAYLOAD_DIR, item.name);
     if (fs.existsSync(src)) {
       fs.copyFileSync(src, dest);
@@ -149,6 +185,7 @@ function stagePayload() {
   // dead on arrival — that bug survived several releases precisely because it
   // was silent at build time and silent at runtime.
   verifyEnvPayload();
+  verifyFfmpegPayload();
 
   fs.writeFileSync(
     path.join(PAYLOAD_DIR, 'manifest.json'),
@@ -158,6 +195,31 @@ function stagePayload() {
 
   if (files.some(f => f.name === 'cookies.txt' || f.name === '.env')) {
     console.warn('  ⚠ cookies.txt / .env are baked into this exe — they contain a live YouTube session and the Firebase service-account private key. Treat the exe itself as a secret and only share it with machines you trust.');
+  }
+}
+
+// A staged ffmpeg that can't actually run is worse than none: findFfmpegBinaries()
+// only checks that the file EXISTS, so a truncated or wrong-architecture copy would
+// be picked as the relay's muxer and fail at broadcast time instead of build time.
+// Verify by executing it, the same way the operator's machine eventually will.
+function verifyFfmpegPayload() {
+  if (process.env.BUNDLE_FFMPEG === '0') {
+    console.warn('  ⚠ BUNDLE_FFMPEG=0 — this exe ships without ffmpeg. The LIVE relay will stay on the lower-quality proxy-combined path on any PC that has no ffmpeg.exe sitting next to the exe (a system-wide/PATH install does NOT count — the packaged build never looks there).');
+    return;
+  }
+  for (const name of ['ffmpeg.exe', 'ffprobe.exe']) {
+    const staged = path.join(PAYLOAD_DIR, name);
+    if (!fs.existsSync(staged)) {
+      console.warn(`  ⚠ ${name} is NOT in the payload — install ffmpeg on this build machine (winget install Gyan.FFmpeg) or drop ${name} into windows/exe/, then rebuild.`);
+      continue;
+    }
+    try {
+      const out = execSync(`"${staged}" -version`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      const version = (out.split(/\r?\n/)[0] || '').trim();
+      console.log(`  ✓ ${name} runs — ${version}`);
+    } catch (err) {
+      console.warn(`  ⚠ ${name} is staged but failed to execute (${err.message.split('\n')[0]}) — the relay would fail at broadcast time. Replace it and rebuild.`);
+    }
   }
 }
 
@@ -203,7 +265,7 @@ function downloadYtDlp(dest) {
   return false;
 }
 
-console.log('\n[0/5] Staging bundled sidecars (yt-dlp, cookies)...');
+console.log(`\n[0/5] Staging bundled sidecars (yt-dlp, cookies, .env, cloudflared${process.env.BUNDLE_FFMPEG === '0' ? '' : ', ffmpeg, ffprobe'})...`);
 stagePayload();
 
 // Step 1: Build React UI

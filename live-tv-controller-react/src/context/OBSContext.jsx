@@ -1,20 +1,14 @@
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { logSourceChange, logOBSConnection, logError, LogCategory, LogType } from '../utils/logger';
 import { setStateValue, StateKeys } from '../utils/state-api';
+import { SOURCE_NAMES, ACTIVE_SOURCE_KEY, resolveHideFallback, readActiveSourceNow } from '../utils/player-switching';
+import { notifyEvent, playerSwitchEventFor } from '../utils/notify';
 
 const OBSContext = createContext();
 
 export const useOBS = () => useContext(OBSContext);
 
-const SOURCE_NAMES = [
-    "Live Player",
-    "Loop Player",
-    "Delay Live",
-    "Local Player",
-    // "OrdaChesta",
-];
 const POLL_INTERVAL_MS = 1000;
-const ACTIVE_SOURCE_KEY = "obsActiveSource";
 const OBS_SETTINGS_KEY = "obsSettings";
 
 const readOBSSettings = () => {
@@ -63,6 +57,35 @@ export const OBSProvider = ({ children }) => {
     // Always-current ref to setSourceVisibility, so handleOBSMessage (declared above it)
     // can replay a pending request without a stale closure.
     const setSourceVisibilityRef = useRef(null);
+
+    // Last known state of OBS's three outputs, used purely to spot real
+    // transitions. `undefined` means "OBS hasn't told us yet" — distinct from a
+    // reported false, which matters because the React state below starts at false:
+    // without this, connecting to an OBS that is *already* streaming would read as
+    // false -> true and announce a stream start that happened hours ago.
+    const outputStateRef = useRef({ stream: undefined, record: undefined, vcam: undefined });
+
+    /**
+     * Notify on an OBS output actually changing state.
+     *
+     * Deliberately driven by OBS's own status/events rather than by our toggle
+     * buttons, so starting the stream from inside OBS notifies exactly like
+     * starting it from this app — "even if I change it manually" includes changing
+     * it somewhere else entirely.
+     */
+    const noteOutputChange = useCallback((kind, active) => {
+        const previous = outputStateRef.current[kind];
+        outputStateRef.current[kind] = active;
+        if (previous === undefined || previous === active) return;   // first report, or no change
+
+        if (kind === 'stream') {
+            notifyEvent(active ? 'STREAM_STARTED' : 'STREAM_STOPPED', {});
+        } else if (kind === 'record') {
+            notifyEvent(active ? 'OBS_RECORDING_STARTED' : 'OBS_RECORDING_STOPPED', {});
+        } else if (kind === 'vcam') {
+            notifyEvent('VIRTUALCAM_TOGGLED', { state: active ? 'started' : 'stopped' });
+        }
+    }, []);
 
     const sendRequest = useCallback((type, data = {}) => {
         const ws = socketRef.current;
@@ -166,7 +189,14 @@ export const OBSProvider = ({ children }) => {
                         }
                     }
                     setSourceState(prev => ({ ...prev, ...newSourceState }));
-                    setSourceIds(prev => ({ ...prev, ...newSourceIds }));
+                    // Replace rather than merge: scene item IDs belong to one scene, and this
+                    // response describes that scene completely. Merging kept IDs from a
+                    // previously-inspected scene alive forever — so after switching OBS to the
+                    // single-source Unified Player layout, the four stale IDs lingered and made
+                    // the app act as if the old per-player scene items were still there:
+                    // SetSceneItemEnabled fired against IDs that no longer exist and the
+                    // scheduler treated a disconnected OBS as a reason to queue.
+                    setSourceIds(newSourceIds);
 
                     // Replay a visibility change that came in before the scene/sources were
                     // known (e.g. right at startup) now that they've just resolved.
@@ -179,12 +209,15 @@ export const OBSProvider = ({ children }) => {
                 }
                 case "GetStreamStatus":
                     setStreamActive(msg.d.responseData.outputActive);
+                    noteOutputChange('stream', msg.d.responseData.outputActive);
                     break;
                 case "GetRecordStatus":
                     setRecordActive(msg.d.responseData.outputActive);
+                    noteOutputChange('record', msg.d.responseData.outputActive);
                     break;
                 case "GetVirtualCamStatus":
                     setVirtualCamActive(msg.d.responseData.outputActive);
+                    noteOutputChange('vcam', msg.d.responseData.outputActive);
                     break;
                 default:
                     break;
@@ -209,12 +242,15 @@ export const OBSProvider = ({ children }) => {
                 }
                 case "StreamStateChanged":
                     setStreamActive(msg.d.eventData.outputActive);
+                    noteOutputChange('stream', msg.d.eventData.outputActive);
                     break;
                 case "RecordStateChanged":
                     setRecordActive(msg.d.eventData.outputActive);
+                    noteOutputChange('record', msg.d.eventData.outputActive);
                     break;
                 case "VirtualCamStateChanged":
                     setVirtualCamActive(msg.d.eventData.outputActive);
+                    noteOutputChange('vcam', msg.d.eventData.outputActive);
                     break;
                 case "CurrentProgramSceneChanged": {
                     const newScene = msg.d.eventData.sceneName;
@@ -225,7 +261,7 @@ export const OBSProvider = ({ children }) => {
                 }
             }
         }
-    }, [sendRequest]);
+    }, [sendRequest, noteOutputChange]);
 
     const connectOBS = useCallback(() => {
         // Avoid double connections — also block if socket is CLOSING (mid-teardown)
@@ -452,16 +488,58 @@ export const OBSProvider = ({ children }) => {
         // OBS-scene-item logic below. UnifiedPlayer.html (single-source layout) has
         // no scene items to toggle at all — it just watches this key over /ws — so
         // this must not be gated behind OBS having a matching scene item or scene name.
+        //
+        // The return value means "did the switch happen", and callers act on it —
+        // OBSControlPanel.switchToSource flags the player as not working when it's false.
+        // So once this write IS the switch, it has to count as success: returning false
+        // here made every manual switch button in the panel show a failure warning for a
+        // switch that had in fact just worked.
+        // Read who was on air *before* the write below, so the notification can say
+        // what it switched away from.
+        const previousActive = readActiveSourceNow();
+
+        let switched = false;
+        let notifyTarget = null;
         if (visible) {
             localStorage.setItem(ACTIVE_SOURCE_KEY, sourceName);
             setStateValue(StateKeys.OBS_ACTIVE_SOURCE, sourceName);
+            notifyTarget = sourceName;
+            switched = true;
+        } else {
+            const fallback = resolveHideFallback(sourceName, currentSourceState);
+            if (fallback) {
+                localStorage.setItem(ACTIVE_SOURCE_KEY, fallback);
+                setStateValue(StateKeys.OBS_ACTIVE_SOURCE, fallback);
+                notifyTarget = fallback;
+            }
+            // A hide with no fallback is a legitimate no-op (already off air), not a failure.
+            switched = true;
+        }
+
+        // Every player switch in the app funnels through here, whoever caused it,
+        // so this one call covers the manual buttons, the end-of-video handoffs and
+        // the playlist engine alike — that's why the notification lives here rather
+        // than being repeated at each call site. Scheduled switches are excluded by
+        // playerSwitchEventFor (the server notifies those only after OBS confirms),
+        // and a switch to the player already on air notifies nothing: OBS reconnects
+        // and re-renders re-assert the current source routinely, and none of those
+        // are a change worth a buzz.
+        if (notifyTarget && notifyTarget !== previousActive) {
+            const event = playerSwitchEventFor(trigger);
+            if (event) {
+                notifyEvent(event, {
+                    player: notifyTarget,
+                    previousPlayer: previousActive || 'nothing',
+                    trigger,
+                });
+            }
         }
 
         if (!sceneNameRef.current) {
             // Normal race at startup/reconnect — OBS hasn't reported its current scene yet.
             // Queue it; the GetSceneItemList handler replays it as soon as the scene resolves.
             pendingVisibilityRef.current = { sourceName, visible, trigger };
-            return false;
+            return switched;
         }
 
         // Use == null (covers undefined AND null) instead of ! so that a
@@ -479,8 +557,9 @@ export const OBSProvider = ({ children }) => {
                     { function: 'setSourceVisibility', sourceName, visible, trigger, knownSourceIds: currentSourceIds },
                     `setSourceVisibility("${sourceName}") failed — source ID not found in OBS scene`
                 );
+                return false;
             }
-            return false;
+            return switched;
         }
 
         const payload = {
@@ -534,21 +613,28 @@ export const OBSProvider = ({ children }) => {
     const setSourceVisibilityConfirmed = useCallback(async (sourceName, visible, trigger = 'scheduler') => {
         const currentSourceIds = sourceIdsRef.current;
 
-        // Push the shared active-source state unconditionally — same reasoning as
-        // setSourceVisibility above. In the single-source layout there is no OBS scene
-        // item to confirm against at all, so this write IS the confirmation.
-        if (visible) {
-            localStorage.setItem(ACTIVE_SOURCE_KEY, sourceName);
-            await setStateValue(StateKeys.OBS_ACTIVE_SOURCE, sourceName);
+        // Push the shared active-source state — same reasoning as setSourceVisibility
+        // above. In the single-source layout there is no OBS scene item to confirm
+        // against at all, so this write IS the confirmation: report the server's own
+        // answer rather than assuming it landed, since that answer is now the only
+        // evidence the switch really happened.
+        let stateOk = true;   // stays true when there was legitimately nothing to write
+        const target = visible ? sourceName : resolveHideFallback(sourceName, sourceStateRef.current);
+        if (target) {
+            localStorage.setItem(ACTIVE_SOURCE_KEY, target);
+            stateOk = await setStateValue(StateKeys.OBS_ACTIVE_SOURCE, target);
         }
+        const stateResult = stateOk
+            ? { ok: true, reason: null }
+            : { ok: false, reason: `Could not save player state to the server (${visible ? 'show' : 'hide'} ${sourceName})` };
 
-        if (!sceneNameRef.current) {
-            return visible ? { ok: true, reason: null } : { ok: false, reason: 'OBS scene name unknown' };
-        }
-        if (currentSourceIds[sourceName] == null) {
-            // No OBS scene item to toggle (expected in the single-source layout) —
-            // the state push above already did the only thing there is to do.
-            return { ok: true, reason: null };
+        // A failed state write means the switch did not happen, whatever OBS says.
+        if (!stateOk) return stateResult;
+
+        if (!sceneNameRef.current || currentSourceIds[sourceName] == null) {
+            // No OBS scene item to toggle — expected for all four names in the
+            // single-source layout, where the state push above is the whole switch.
+            return stateResult;
         }
 
         const result = await sendRequestConfirmed('SetSceneItemEnabled', {

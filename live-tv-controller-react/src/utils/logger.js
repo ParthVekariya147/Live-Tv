@@ -3,6 +3,8 @@
  * Sends logs to Express server which saves to monthly JSON files
  */
 
+import { notifyEvent } from './notify';
+
 // API endpoint - works both in dev and production
 const API_BASE = '';
 
@@ -130,8 +132,18 @@ export const logError = (type, category, data, message) => log(LogLevel.ERROR, t
 
 /**
  * Log video load event
+ *
+ * Every player card already routes its loads through here with a trigger, so
+ * this doubles as the one place that can notice "the operator loaded a video by
+ * hand" for all four players at once. Only the plain 'manual' trigger notifies:
+ * 'manual_prepared' means the video is queued for a source that isn't on air yet
+ * (nothing has visibly changed), and 'automation' / 'monitor_autoload' loads are
+ * already covered by the playlist and live-detection notifications.
  */
 export const logVideoLoad = (player, videoId, videoTitle, trigger, extraData = {}) => {
+    if (trigger === 'manual') {
+        notifyEvent('VIDEO_CHANGED_MANUAL', { player, videoId, videoTitle: videoTitle || '' });
+    }
     return logInfo(
         LogType.VIDEO_LOAD,
         LogCategory.VIDEO,

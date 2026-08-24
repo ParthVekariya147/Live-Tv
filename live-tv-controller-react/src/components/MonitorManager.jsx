@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import MonitorCard from './MonitorCard';
 import UpcomingEventMonitor from './UpcomingEventMonitor';
 import { logLiveMonitorEvent, logVideoLoad } from '../utils/logger';
+import { notifyEvent } from '../utils/notify';
 import { useOBS } from '../context/OBSContext';
 
 const LIVE_DETAILS_POLL_INTERVAL_MS = 20000;
@@ -173,8 +174,17 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled, channelOptions, sele
                 // to be recreated — adding sourceState to the callback's deps would reset the
                 // 20-second interval every ~1s because the OBS poll updates sourceState every tick.
                 if (!sourceStateRef.current["Live Player"]) {
-                    setSourceVisibility('Live Player', true);
+                    // 'monitor' keeps the generic switch notification quiet here so the
+                    // operator gets the MONITOR_LIVE one below instead — same event,
+                    // but it can name the channel and the stream title.
+                    setSourceVisibility('Live Player', true, 'monitor');
                 }
+
+                notifyEvent('MONITOR_LIVE', {
+                    channelName: channelName || 'Monitored channel',
+                    title: videoTitle,
+                    videoId: videoIdToAutoLoad,
+                });
             }
 
         } catch (err) {

@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "lastModified": "2026-08-13T09:31:20.280Z",
+  "lastModified": "2026-08-22T12:07:21.097Z",
   "schedulerEnabled": true,
   "schedules": [
     {
@@ -41,8 +41,8 @@
       "scheduledDay": null,
       "title": "Test",
       "enabled": true,
-      "lastTriggered": "2026-08-13-12:18",
-      "lastTriggeredAt": "2026-08-13T09:31:19.955Z",
+      "lastTriggered": "2026-08-22-12:18",
+      "lastTriggeredAt": "2026-08-22T11:26:43.416Z",
       "createdAt": "2026-08-06T06:45:46.616Z"
     },
     {
@@ -62,8 +62,8 @@
       ],
       "title": "Loop: AM",
       "enabled": true,
-      "lastTriggered": "2026-08-13-05:00",
-      "lastTriggeredAt": "2026-08-13T09:31:20.047Z",
+      "lastTriggered": "2026-08-22-05:00",
+      "lastTriggeredAt": "2026-08-22T11:26:43.520Z",
       "createdAt": "2026-08-06T11:22:08.455Z"
     },
     {
@@ -83,8 +83,8 @@
       ],
       "title": "Loop: PM",
       "enabled": true,
-      "lastTriggered": "2026-08-13-12:00",
-      "lastTriggeredAt": "2026-08-13T09:31:20.183Z",
+      "lastTriggered": "2026-08-22-12:00",
+      "lastTriggeredAt": "2026-08-22T11:26:43.638Z",
       "createdAt": "2026-08-06T11:26:21.647Z"
     },
     {
@@ -110,102 +110,6 @@
     }
   ],
   "executionHistory": [
-    {
-      "id": 1785048918498,
-      "timestamp": "2026-07-26T06:55:18.498Z",
-      "scheduleId": 1781411950013,
-      "source": "Live Player",
-      "action": "show",
-      "title": "",
-      "status": "success",
-      "reason": "catch-up",
-      "executionTimeMs": 247,
-      "error": null
-    },
-    {
-      "id": 1785048918893,
-      "timestamp": "2026-07-26T06:55:18.893Z",
-      "scheduleId": 1782760713334,
-      "source": "Live Player",
-      "action": "show",
-      "title": "",
-      "status": "success",
-      "reason": "catch-up",
-      "executionTimeMs": 240,
-      "error": null
-    },
-    {
-      "id": 1785048919292,
-      "timestamp": "2026-07-26T06:55:19.292Z",
-      "scheduleId": 1782761666534,
-      "source": "Loop Player",
-      "action": "show",
-      "title": "",
-      "status": "success",
-      "reason": "catch-up",
-      "executionTimeMs": 238,
-      "error": null
-    },
-    {
-      "id": 1785048919705,
-      "timestamp": "2026-07-26T06:55:19.705Z",
-      "scheduleId": 1782761797035,
-      "source": "Loop Player",
-      "action": "show",
-      "title": "",
-      "status": "success",
-      "reason": "catch-up",
-      "executionTimeMs": 258,
-      "error": null
-    },
-    {
-      "id": 1785048920127,
-      "timestamp": "2026-07-26T06:55:20.127Z",
-      "scheduleId": 1782761806971,
-      "source": "Local Player",
-      "action": "show",
-      "title": "",
-      "status": "success",
-      "reason": "catch-up",
-      "executionTimeMs": 249,
-      "error": null
-    },
-    {
-      "id": 1785048920528,
-      "timestamp": "2026-07-26T06:55:20.528Z",
-      "scheduleId": 1782761879770,
-      "source": "Local Player",
-      "action": "show",
-      "title": "",
-      "status": "success",
-      "reason": "catch-up",
-      "executionTimeMs": 247,
-      "error": null
-    },
-    {
-      "id": 1785048920922,
-      "timestamp": "2026-07-26T06:55:20.922Z",
-      "scheduleId": 1782762594091,
-      "source": "Delay Live",
-      "action": "show",
-      "title": "",
-      "status": "success",
-      "reason": "catch-up",
-      "executionTimeMs": 240,
-      "error": null
-    },
-    {
-      "id": 1785048921374,
-      "timestamp": "2026-07-26T06:55:21.374Z",
-      "scheduleId": 1782762631707,
-      "source": "Local Player",
-      "action": "show",
-      "title": "",
-      "status": "success",
-      "reason": "catch-up",
-      "executionTimeMs": 295,
-      "error": null
-    },
     {
       "id": 1785048921782,
       "timestamp": "2026-07-26T06:55:21.782Z",
@@ -1308,6 +1212,102 @@
       "status": "success",
       "reason": "catch-up",
       "executionTimeMs": 57,
+      "error": null
+    },
+    {
+      "id": 1787398003480,
+      "timestamp": "2026-08-22T11:26:43.480Z",
+      "scheduleId": 1785998746616,
+      "source": "Delay Live",
+      "action": "show",
+      "title": "Test",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 68,
+      "error": null
+    },
+    {
+      "id": 1787398003600,
+      "timestamp": "2026-08-22T11:26:43.600Z",
+      "scheduleId": "pa_id-lbq18hebe_1786015328452_8c0z",
+      "source": "Playlist Automation",
+      "action": "playlist_automation",
+      "title": "Loop: AM",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 77,
+      "error": null
+    },
+    {
+      "id": 1787398003715,
+      "timestamp": "2026-08-22T11:26:43.715Z",
+      "scheduleId": "pa_id-dlngywivx_1786015581641_lvio",
+      "source": "Playlist Automation",
+      "action": "playlist_automation",
+      "title": "Loop: PM",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 78,
+      "error": null
+    },
+    {
+      "id": 1787398200988,
+      "timestamp": "2026-08-22T11:30:00.988Z",
+      "scheduleId": 1787398151681,
+      "source": "Delay Live",
+      "action": "show",
+      "title": "E2E show",
+      "status": "success",
+      "reason": "scheduled",
+      "executionTimeMs": 67,
+      "error": null
+    },
+    {
+      "id": 1787398261073,
+      "timestamp": "2026-08-22T11:31:01.073Z",
+      "scheduleId": 1787398151723,
+      "source": "Delay Live",
+      "action": "hide",
+      "title": "E2E hide",
+      "status": "success",
+      "reason": "scheduled",
+      "executionTimeMs": 107,
+      "error": null
+    },
+    {
+      "id": 1787398460901,
+      "timestamp": "2026-08-22T11:34:20.901Z",
+      "scheduleId": 1787398444634,
+      "source": "Delay Live",
+      "action": "show",
+      "title": "CATCHUP probe",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 74,
+      "error": null
+    },
+    {
+      "id": 1787398501106,
+      "timestamp": "2026-08-22T11:35:01.106Z",
+      "scheduleId": 1787398498674,
+      "source": "Delay Live",
+      "action": "show",
+      "title": "E2E show",
+      "status": "success",
+      "reason": "scheduled",
+      "executionTimeMs": 74,
+      "error": null
+    },
+    {
+      "id": 1787398560150,
+      "timestamp": "2026-08-22T11:36:00.150Z",
+      "scheduleId": 1787398498728,
+      "source": "Delay Live",
+      "action": "hide",
+      "title": "E2E hide",
+      "status": "success",
+      "reason": "scheduled",
+      "executionTimeMs": 76,
       "error": null
     }
   ]

@@ -51,11 +51,15 @@
   // their last state on page load. Destroying/recreating the iframe on switch
   // (an earlier version of this file did that for Live/Local) left them with an
   // empty <video> and no way to recover without the operator re-clicking Load.
+  // cmdKey / stateKey are how this page silences the players that are off air.
+  // In the old 4-scene-item layout OBS did that for free: a disabled scene item
+  // produced no audio. Here there is one always-visible browser source, so every
+  // player's audio is mixed into it and muting is entirely this page's job.
   const SOURCES = {
-    "Loop Player": { url: "/LoopPlayer.html" },
-    "Live Player": { url: "/LivePlayer.html" },
-    "Delay Live": { url: "/DelayLive.html" },
-    "Local Player": { url: "/LocalPCPlayer.html" }
+    "Loop Player":  { url: "/LoopPlayer.html",    cmdKey: "loopPlayerCommand",      stateKey: "player.loop"  },
+    "Live Player":  { url: "/LivePlayer.html",    cmdKey: "livePlayerCommand",      stateKey: "player.live"  },
+    "Delay Live":   { url: "/DelayLive.html",     cmdKey: "delayLivePlayerCommand", stateKey: "player.delay" },
+    "Local Player": { url: "/LocalPCPlayer.html", cmdKey: "localPCPlayerCommand",   stateKey: "player.local" }
   };
 
   const root = document.getElementById("root");
@@ -79,13 +83,52 @@
     iframes[key] = iframe;
   }
 
-  function setMuted(iframe, muted) {
+  // Operator's own mute preference per player, mirrored from the shared state service
+  // (player.loop.isMuted etc. — the same flag the player cards write). Going off air
+  // always mutes; coming on air only unmutes a player the operator hasn't deliberately
+  // muted, so this can't fight the mute button on the card.
+  const mutePreference = {};
+
+  function applyStateMutePrefs(state) {
+    if (!state) return;
+    for (const key of Object.keys(SOURCES)) {
+      const entry = state[SOURCES[key].stateKey];
+      if (entry && typeof entry.isMuted === "boolean") mutePreference[key] = entry.isMuted;
+    }
+  }
+
+  // Player pages accept "mute"/"unmute" over the same localStorage command channel the
+  // control panel uses, and act on them through whatever API they own — crucially
+  // YT.Player.mute() for the YouTube-based players. Reaching into <video> elements is
+  // not enough: LoopPlayer.html and DelayLive.html contain no <video> at all (the
+  // YouTube player lives in a nested cross-origin iframe), so the old direct approach
+  // silently did nothing for them and their audio bled over whatever was on air.
+  function sendCommand(cmdKey, command) {
     try {
-      const doc = iframe.contentDocument;
-      if (!doc) return;
-      doc.querySelectorAll("video").forEach((v) => { v.muted = muted; });
+      localStorage.setItem(cmdKey, JSON.stringify({ command: command, startSeconds: 0, endSeconds: 0 }));
+      setTimeout(() => { localStorage.removeItem(cmdKey); }, 100);
     } catch (e) {
-      // Cross-origin or not-yet-loaded — best effort only.
+      // Storage unavailable — nothing else we can do from here.
+    }
+  }
+
+  function setMuted(name, muted) {
+    const cfg = SOURCES[name];
+    if (!cfg) return;
+
+    // Direct <video> muting stays as the instant path for the HLS/local players — it
+    // takes effect without waiting on the player page's command loop.
+    try {
+      const doc = iframes[name].contentDocument;
+      if (doc) doc.querySelectorAll("video").forEach((v) => { v.muted = muted; });
+    } catch (e) {
+      // Not-yet-loaded — the command below still reaches it once ready.
+    }
+
+    if (muted) {
+      sendCommand(cfg.cmdKey, "mute");
+    } else if (mutePreference[name] !== true) {
+      sendCommand(cfg.cmdKey, "unmute");
     }
   }
 
@@ -96,20 +139,17 @@
     currentActive = name;
 
     for (const key of Object.keys(SOURCES)) {
-      const wrap = wraps[key];
-      const iframe = iframes[key];
       const isActive = key === name;
-
-      wrap.classList.toggle("active", isActive);
-      setMuted(iframe, !isActive);
+      wraps[key].classList.toggle("active", isActive);
+      setMuted(key, !isActive);
     }
   }
 
   // Re-apply mute state once each iframe finishes its one-time initial load —
-  // covers the case where activateSource() ran before the video element existed.
+  // covers the case where activateSource() ran before the player was ready.
   for (const key of Object.keys(SOURCES)) {
     iframes[key].addEventListener("load", () => {
-      setMuted(iframes[key], key !== currentActive);
+      setMuted(key, key !== currentActive);
     });
   }
 
@@ -122,16 +162,24 @@
       try { msg = JSON.parse(event.data); } catch (e) { return; }
 
       if (msg.type === "STATE_SYNC") {
+        applyStateMutePrefs(msg.data);
         const value = msg.data && msg.data["obs.activeSource"];
         if (value) activateSource(value);
       } else if (msg.type === "STATE_CHANGE") {
         const d = msg.data;
         if (d.type === "SET" && d.key === "obs.activeSource") {
           activateSource(d.value);
+        } else if (d.type === "SET" && d.value && typeof d.value === "object") {
+          // A player card saved its own state — pick up any change to its mute flag.
+          applyStateMutePrefs({ [d.key]: d.value });
         } else if (d.type === "SET_MULTIPLE" && Array.isArray(d.changes)) {
+          const asState = {};
+          d.changes.forEach((c) => { asState[c.key] = c.value; });
+          applyStateMutePrefs(asState);
           const change = d.changes.find((c) => c.key === "obs.activeSource");
           if (change) activateSource(change.value);
         } else if (d.type === "RESET" && d.state) {
+          applyStateMutePrefs(d.state);
           const value = d.state["obs.activeSource"];
           if (value) activateSource(value);
         }
@@ -148,10 +196,15 @@
   }
 
   // Resolve the initial state over plain HTTP first so the right player is showing
-  // immediately, without waiting on the WebSocket handshake.
-  fetch("/api/state/obs.activeSource")
+  // immediately, without waiting on the WebSocket handshake. Pull the whole state so the
+  // operator's per-player mute preferences are known before the first switch.
+  fetch("/api/state")
     .then((r) => (r.ok ? r.json() : null))
-    .then((data) => activateSource((data && data.value) || "Loop Player"))
+    .then((data) => {
+      const state = (data && data.state) || {};
+      applyStateMutePrefs(state);
+      activateSource(state["obs.activeSource"] || "Loop Player");
+    })
     .catch(() => activateSource("Loop Player"));
 
   connectWebSocket();

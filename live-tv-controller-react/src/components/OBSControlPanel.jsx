@@ -324,17 +324,23 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
                                 <p className="text-gray-500 mb-2 leading-relaxed">
                                     Auto-configure OBS sources, encoder, and RTMP settings for SMK TV.
                                 </p>
-                                <button
-                                    onClick={() => window.open('/obs-auto-setup.html', '_blank', 'width=600,height=700')}
-                                    className="w-full py-1.5 bg-indigo-700 hover:bg-indigo-600 text-white rounded font-medium text-xs transition-all flex items-center justify-center gap-1.5"
-                                >
-                                    🚀 Open OBS Auto-Setup
-                                </button>
+                                {/* Unified is the current layout — one "Unified Player" browser
+                                    source hosting all four players. It must stay first and
+                                    primary: the legacy setup below recreates the four separate
+                                    sources, which puts the scene back to the old layout and
+                                    stacks four players on top of the unified one. */}
                                 <button
                                     onClick={() => window.open('/obs-auto-setup-unified.html', '_blank', 'width=600,height=700')}
-                                    className="w-full mt-1.5 py-1.5 bg-violet-700 hover:bg-violet-600 text-white rounded font-medium text-xs transition-all flex items-center justify-center gap-1.5"
+                                    className="w-full py-1.5 bg-violet-700 hover:bg-violet-600 text-white rounded font-medium text-xs transition-all flex items-center justify-center gap-1.5"
                                 >
                                     🚀 Open Unified Auto-Setup
+                                </button>
+                                <button
+                                    onClick={() => window.open('/obs-auto-setup.html', '_blank', 'width=600,height=700')}
+                                    title="Creates four separate browser sources. Only for the pre-merge layout — do not run this on a Unified Player scene."
+                                    className="w-full mt-1.5 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded font-medium text-xs transition-all flex items-center justify-center gap-1.5"
+                                >
+                                    Legacy Auto-Setup (old 4-source layout)
                                 </button>
                                 {!isConnected && (
                                     <p className="text-yellow-600 mt-1.5 text-xs">⚠ OBS not connected — auto-setup will try to connect on its own.</p>

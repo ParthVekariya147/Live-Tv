@@ -66,6 +66,10 @@ class SchedulerService {
 
         // Event handlers (set by server)
         this.onTrigger = null;
+        // See start(): catch-up is deferred until a client can actually receive the
+        // broadcasts, unless a caller explicitly opts back into the inline behaviour.
+        this.autoCatchUp = options.autoCatchUp === true;
+        this.catchUpDone = false;
         this.onLog = null;
         this.onExecutionComplete = null; // Called when execution is confirmed
 
@@ -347,8 +351,19 @@ class SchedulerService {
         // Create initial backup
         this.createBackup();
 
-        // Check for missed schedules on startup
-        this.catchUpMissedSchedules();
+        // Check for missed schedules on startup.
+        //
+        // Deferred by default. start() is called while the module is still loading —
+        // thousands of lines before server.listen() — so a catch-up here broadcasts
+        // every missed show/hide to an HTTP server that isn't listening yet and a
+        // WebSocket nobody can have connected to. The triggers reached zero clients,
+        // nothing ever confirmed them, and 130s later each one turned into a
+        // "did not run" push. That is why a restart produced a burst of failure
+        // notifications AND left the missed schedules unexecuted.
+        //
+        // The owner (server.cjs) now runs it once a controller is actually connected,
+        // via runCatchUpNow(). Pass autoCatchUp: true to keep the old inline behaviour.
+        if (this.autoCatchUp) this.catchUpMissedSchedules();
 
         // Start the check loop (configurable interval)
         this.checkInterval = setInterval(() => {
@@ -364,6 +379,18 @@ class SchedulerService {
         this.startRetryProcessor();
 
         this.saveSchedules();
+    }
+
+    /**
+     * Run the startup catch-up, once. Safe to call from several places (first client
+     * connected / grace-period timer) — only the first call does anything.
+     */
+    runCatchUpNow(reason = 'deferred') {
+        if (this.catchUpDone) return false;
+        this.catchUpDone = true;
+        this.log('INFO', 'CATCHUP_START', `Running startup catch-up (${reason})`);
+        this.catchUpMissedSchedules();
+        return true;
     }
 
     stop() {
@@ -418,6 +445,7 @@ class SchedulerService {
             title: schedule.title,
             time: schedule.time,
             triggerKey: triggerKey,
+            skipIfLivePlaying: schedule.skipIfLivePlaying === true,
             error: error,
             attempts: attempts + 1,
             addedAt: new Date().toISOString(),
@@ -464,7 +492,8 @@ class SchedulerService {
                         time: item.time,
                         triggerKey: item.triggerKey,
                         reason: 'retry',
-                        retryAttempt: item.attempts + 1
+                        retryAttempt: item.attempts + 1,
+                        skipIfLivePlaying: item.skipIfLivePlaying === true
                     });
 
                     // Success!
@@ -611,7 +640,11 @@ class SchedulerService {
                     title: schedule.title,
                     time: schedule.time,
                     triggerKey: triggerKey,
-                    reason: reason
+                    reason: reason,
+                    // Per-schedule "don't interrupt the live broadcast" opt-in. The frontend
+                    // needs it on the trigger itself — it only ever sees this payload, not
+                    // the stored schedule (see Scheduler.jsx handleServerTrigger).
+                    skipIfLivePlaying: schedule.skipIfLivePlaying === true
                 });
 
                 const executionTime = Date.now() - startTime;
@@ -799,6 +832,10 @@ class SchedulerService {
             scheduledDay: scheduleData.scheduledDay,
             title: scheduleData.title || '',
             enabled: scheduleData.enabled !== false,
+            // Opt-in: hold this event back while the Live Player is on air. Whitelisted
+            // here explicitly — this builder drops any field it doesn't name, so without
+            // it the flag never survived the round-trip from the UI.
+            skipIfLivePlaying: scheduleData.skipIfLivePlaying === true,
             lastTriggered: null,
             lastTriggeredAt: null,
             createdAt: new Date().toISOString()
