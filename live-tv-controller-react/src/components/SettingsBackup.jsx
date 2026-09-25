@@ -290,10 +290,49 @@ export default function SettingsBackup() {
     const [autoSettings, setAutoSettings] = useState(null); // { mode, intervalHours, intervalDays, dayOfWeek }
     const [savingAutoSettings, setSavingAutoSettings] = useState(false);
 
+    // ── Google Drive mirror ──────────────────────────────────────────────────
+    // Backups keep going to the local folder exactly as before; when this is on, each
+    // one is copied a second time into a folder Google Drive for Desktop syncs. The
+    // folder and the shareable Drive link are both editable here so they can be pointed
+    // somewhere else later without a rebuild. See BackupService in server.cjs.
+    const [cloudSettings, setCloudSettings] = useState(null); // { enabled, folderPath, driveLink, lastSync }
+    const [cloudFolderExists, setCloudFolderExists] = useState(false);
+    const [cloudFolderInput, setCloudFolderInput] = useState('');
+    const [cloudLinkInput, setCloudLinkInput] = useState('');
+    const [savingCloud, setSavingCloud] = useState(false);
+    const [syncingCloud, setSyncingCloud] = useState(false);
+    // Where Google Drive for Desktop is mounted, and whether the chosen folder is actually
+    // inside it. Without this the panel happily reported "18 files copied" into a folder
+    // Google Drive cannot see, which looks like success and uploads nothing.
+    const [driveRoots, setDriveRoots] = useState([]);
+    const [driveInstalled, setDriveInstalled] = useState(true);
+    const [folderCheck, setFolderCheck] = useState(null); // { level: 'ok'|'warn'|'error'|'empty', message }
+    // The local folder the pasted Drive link resolves to, when Drive has that folder
+    // available on this PC. Non-null means the link alone is enough — no path to type.
+    const [linkResolvedPath, setLinkResolvedPath] = useState(null);
+    const [linkInfo, setLinkInfo] = useState(null); // { folderId, path, writable }
+
     function flash(type, msg) {
         setStatus({ type, msg });
         setTimeout(() => setStatus(null), 4000);
     }
+
+    const applyCloudSettings = useCallback((settings, folderExists, detection) => {
+        if (detection) {
+            if (Array.isArray(detection.driveRoots)) setDriveRoots(detection.driveRoots);
+            if (detection.driveInstalled !== undefined) setDriveInstalled(!!detection.driveInstalled);
+            if (detection.folderCheck) setFolderCheck(detection.folderCheck);
+            if (detection.linkResolvedPath !== undefined) setLinkResolvedPath(detection.linkResolvedPath);
+            if (detection.linkInfo !== undefined) setLinkInfo(detection.linkInfo);
+        }
+        setCloudSettings(settings);
+        // /api/backup/status doesn't stat the folder, so it passes undefined — leave the
+        // last known answer alone rather than reporting a missing folder it never checked.
+        if (folderExists !== undefined) setCloudFolderExists(!!folderExists);
+        // Only seed the inputs from the server — never overwrite what is being typed.
+        setCloudFolderInput(prev => (prev === '' ? (settings?.folderPath || '') : prev));
+        setCloudLinkInput(prev => (prev === '' ? (settings?.driveLink || '') : prev));
+    }, []);
 
     const loadBackupStatus = useCallback(async () => {
         try {
@@ -302,9 +341,71 @@ export default function SettingsBackup() {
                 const data = await res.json();
                 setBackupStatus(data);
                 if (data.autoSettings) setAutoSettings(data.autoSettings);
+                if (data.cloudSettings) applyCloudSettings(data.cloudSettings, undefined);
             }
         } catch (_) {}
-    }, []);
+    }, [applyCloudSettings]);
+
+    const loadCloudSettings = useCallback(async () => {
+        try {
+            const res = await fetch('/api/backup/cloud-settings');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) applyCloudSettings(data.settings, data.folderExists, data);
+            }
+        } catch (_) {}
+    }, [applyCloudSettings]);
+
+    async function saveCloudConfig(patch) {
+        setSavingCloud(true);
+        try {
+            const res = await fetch('/api/backup/cloud-settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(patch),
+            });
+            const data = await res.json();
+            if (data.success) {
+                applyCloudSettings(data.settings, data.folderExists, data);
+                setCloudFolderInput(data.settings.folderPath || '');
+                setCloudLinkInput(data.settings.driveLink || '');
+                if (data.folderCheck?.level === 'warn') flash('warn', data.folderCheck.message);
+                else if (data.autoSync) {
+                    const errs = data.autoSync.errors?.length ? ` — ${data.autoSync.errors.length} failed` : '';
+                    flash(data.autoSync.errors?.length ? 'warn' : 'success',
+                        `Saved — ${data.autoSync.copied} backup(s) copied to Drive${errs}`);
+                } else flash('success', 'Drive backup settings saved');
+                return true;
+            }
+            flash('error', data.error || 'Failed to save Drive settings');
+            return false;
+        } catch (e) {
+            flash('error', e.message);
+            return false;
+        } finally {
+            setSavingCloud(false);
+        }
+    }
+
+    async function handleCloudSync() {
+        setSyncingCloud(true);
+        try {
+            const res = await fetch('/api/backup/cloud-sync', { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                await loadCloudSettings();
+                const errSuffix = data.errors?.length ? ` — ${data.errors.length} failed` : '';
+                flash(data.errors?.length ? 'warn' : 'success',
+                    `Drive: ${data.copied} copied, ${data.skipped} already there${errSuffix}`);
+            } else {
+                flash('error', data.error || 'Sync failed');
+            }
+        } catch (e) {
+            flash('error', e.message);
+        } finally {
+            setSyncingCloud(false);
+        }
+    }
 
     const loadBackupList = useCallback(async () => {
         try {
@@ -321,8 +422,11 @@ export default function SettingsBackup() {
     }, [loadBackupStatus]);
 
     useEffect(() => {
-        if (showBackups) loadBackupList();
-    }, [showBackups, loadBackupList]);
+        if (showBackups) {
+            loadBackupList();
+            loadCloudSettings();
+        }
+    }, [showBackups, loadBackupList, loadCloudSettings]);
 
     async function saveAutoConfig(cfg) {
         setSavingAutoSettings(true);
@@ -549,6 +653,7 @@ export default function SettingsBackup() {
             let clipboardSuccess = false;
             let serverSaveSuccess = false;
             let serverFilename = '';
+            let cloudResult = null; // Drive mirror outcome, reported by the server
             let errorDetails = [];
 
             // 1. Copy JSON to clipboard
@@ -571,6 +676,7 @@ export default function SettingsBackup() {
                 if (saveData.success) {
                     serverSaveSuccess = true;
                     serverFilename = saveData.filename;
+                    cloudResult = saveData.cloud || null;
                 } else {
                     errorDetails.push(`Server save failed: ${saveData.error || 'unknown error'}`);
                 }
@@ -581,12 +687,17 @@ export default function SettingsBackup() {
 
             // Reload manual backup list
             await loadBackupStatus();
+            await loadCloudSettings();
             if (showBackups) await loadBackupList();
 
             // Formulate user feedback
             const steps = [];
             if (clipboardSuccess) steps.push('✓ JSON copied to clipboard');
             if (serverSaveSuccess) steps.push(`✓ Backup saved to folder (${serverFilename})`);
+            if (cloudResult?.attempted) {
+                if (cloudResult.ok) steps.push('✓ Copied to Drive folder');
+                else errorDetails.push(`Drive copy failed: ${cloudResult.error}`);
+            }
 
             if (errorDetails.length > 0) {
                 const errorMsg = `Completed with warnings: ${errorDetails.join(', ')}`;
@@ -854,6 +965,174 @@ export default function SettingsBackup() {
                                 >{day}</button>
                             ))}
                         </div>
+                    </div>
+
+                    {/* ── Google Drive mirror ──────────────────────────── */}
+                    <div className="border-t border-gray-700 pt-2 mb-3">
+                        <div className="flex items-center justify-between mb-1">
+                            <p className="text-sky-400 font-semibold">☁ Drive Backup</p>
+                            <button
+                                disabled={savingCloud}
+                                // Turning it on also commits whatever is currently typed, so enabling
+                                // with an unsaved path can't leave it silently mirroring nowhere.
+                                onClick={() => saveCloudConfig(
+                                    cloudSettings?.enabled
+                                        ? { enabled: false }
+                                        : { enabled: true, folderPath: cloudFolderInput, driveLink: cloudLinkInput }
+                                )}
+                                title="When on, every backup is also copied into the folder below"
+                                className={`px-2 py-0.5 rounded text-xs font-medium transition-all ${
+                                    cloudSettings?.enabled ? 'bg-sky-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                                }`}
+                            >
+                                {cloudSettings?.enabled ? 'ON' : 'OFF'}
+                            </button>
+                        </div>
+
+                        <p className="text-gray-500 mb-2 leading-snug">
+                            Backups stay in the local folder and are copied into a Google Drive for
+                            Desktop folder, which uploads them for you.
+                        </p>
+
+                        <label className="text-gray-500 block mb-0.5">
+                            1. Drive folder link
+                            <span className="text-gray-600"> — paste it and press Save</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={cloudLinkInput}
+                            onChange={(e) => setCloudLinkInput(e.target.value)}
+                            placeholder="https://drive.google.com/drive/folders/..."
+                            title="The shareable link for that same Drive folder — used by the Open Drive button below"
+                            className="w-full mb-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-gray-200 text-xs"
+                        />
+
+                        <label className="text-gray-500 block mb-0.5">
+                            2. Folder on this PC
+                            <span className="text-gray-600"> — where backups are actually written</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={cloudFolderInput}
+                            onChange={(e) => setCloudFolderInput(e.target.value)}
+                            // JSX attribute strings are not JS string literals — backslashes are
+                            // NOT escape sequences here, so "G:\\My Drive" rendered as a literal
+                            // "G:\\My Drive" and taught everyone the wrong path format.
+                            placeholder={'G:\\My Drive\\SMK TV Backups'}
+                            title="Any folder Google Drive for Desktop syncs. It is created if it doesn't exist."
+                            className="w-full mb-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-gray-200 text-xs font-mono"
+                        />
+
+                        {driveRoots.length > 0 && (
+                            <div className="mb-1">
+                                <span className="text-gray-500 mr-1">Detected:</span>
+                                {driveRoots.map(r => (
+                                    <button
+                                        key={r.path}
+                                        onClick={() => setCloudFolderInput(`${r.path}\\SMK TV Backups`)}
+                                        title={`Use ${r.path}\\SMK TV Backups`}
+                                        className="mr-1 mb-1 px-1.5 py-0.5 bg-gray-700 hover:bg-sky-700 text-gray-300 rounded text-xs"
+                                    >
+                                        {r.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {linkResolvedPath && (
+                            <p className="text-green-400 mb-1 leading-snug">
+                                ✓ Your Drive link points at a folder on this PC — backups go straight into it.
+                                {/* Naming the resolved path matters: it is the only way to tell a link
+                                    that resolved to the RIGHT shared folder from one that silently
+                                    resolved somewhere else. Leave the folder box empty to use this. */}
+                                <span className="block font-mono text-gray-400 break-all">{linkResolvedPath}</span>
+                            </p>
+                        )}
+                        {linkInfo?.path && !linkInfo.writable && (
+                            <p className="text-yellow-400 mb-1 leading-snug">
+                                ⚠ That Drive folder is shared with you read-only, so Drive refuses to write
+                                into it. Use a folder you own: make one in My Drive, put its link here, or just
+                                keep the folder below and share it to get a link.
+                            </p>
+                        )}
+                        {cloudLinkInput.trim() && !linkInfo?.path && driveRoots.length > 0 && (
+                            <p className="text-gray-500 mb-1 leading-snug">
+                                That link’s folder isn’t on this PC. In Drive open it and choose
+                                “Add shortcut to Drive”, or use the folder below instead.
+                            </p>
+                        )}
+                        {folderCheck?.level === 'warn' && (
+                            <p className="text-yellow-400 mb-1 leading-snug">⚠ {folderCheck.message}</p>
+                        )}
+                        {!driveInstalled && driveRoots.length === 0 && (
+                            <p className="text-yellow-400 mb-1 leading-snug">
+                                ⚠ Google Drive for Desktop was not found on this PC. Install it and sign in,
+                                then pick the folder it creates — until then nothing can upload to Drive.
+                            </p>
+                        )}
+
+                        <div className="flex gap-1 mb-1">
+                            <button
+                                disabled={savingCloud}
+                                onClick={() => saveCloudConfig({ folderPath: cloudFolderInput, driveLink: cloudLinkInput })}
+                                className="flex-1 py-1 bg-sky-700 hover:bg-sky-600 text-white rounded text-xs disabled:opacity-50"
+                            >
+                                {savingCloud ? '...' : '💾 Save'}
+                            </button>
+                            <button
+                                disabled={syncingCloud || !cloudSettings?.folderPath}
+                                onClick={handleCloudSync}
+                                title="Copy every existing backup that isn't in the Drive folder yet"
+                                className="flex-1 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs disabled:opacity-50"
+                            >
+                                {syncingCloud ? '...' : '⟳ Sync now'}
+                            </button>
+                        </div>
+
+                        <div className="flex gap-1">
+                            <button
+                                disabled={!cloudSettings?.folderPath}
+                                onClick={() => fetch('/api/backup/cloud-open', { method: 'POST' })}
+                                title="Open the sync folder in Explorer"
+                                className="flex-1 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs disabled:opacity-50"
+                            >
+                                📂 Folder ↗
+                            </button>
+                            <a
+                                href={cloudSettings?.driveLink || '#'}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => { if (!cloudSettings?.driveLink) e.preventDefault(); }}
+                                title={cloudSettings?.driveLink || 'Save a Drive link above first'}
+                                className={`flex-1 py-1 rounded text-xs text-center ${
+                                    cloudSettings?.driveLink
+                                        ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                                        : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                                }`}
+                            >
+                                ☁ Open Drive ↗
+                            </a>
+                        </div>
+
+                        {cloudSettings?.folderPath && !cloudFolderExists && (
+                            <p className="text-yellow-400 mt-1 leading-snug">
+                                ⚠ Folder not found right now — backups will still save locally and the
+                                copy is retried on the next backup.
+                            </p>
+                        )}
+                        {cloudSettings?.folderPath && !cloudSettings?.lastSync && (
+                            <p className="text-gray-500 mt-1 leading-snug">
+                                Not copied to this folder yet — press ⟳ Sync now.
+                            </p>
+                        )}
+                        {cloudSettings?.lastSync && (
+                            <p className={`mt-1 leading-snug ${cloudSettings.lastSync.ok ? 'text-gray-500' : 'text-red-400'}`}>
+                                Last copy: {fmtDate(cloudSettings.lastSync.at)}
+                                {cloudSettings.lastSync.ok
+                                    ? ` — ${cloudSettings.lastSync.filename}`
+                                    : ` — failed: ${cloudSettings.lastSync.error}`}
+                            </p>
+                        )}
                     </div>
 
                     {/* ── Manual Backup History ────────────────────────── */}

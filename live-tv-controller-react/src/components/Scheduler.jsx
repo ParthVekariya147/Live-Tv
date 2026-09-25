@@ -73,7 +73,7 @@ const Scheduler = () => {
     const [action, setAction] = useState("show");
     const [recurrence, setRecurrence] = useState("daily");
     const [selectedDays, setSelectedDays] = useState([]);
-    const [skipIfLivePlaying, setSkipIfLivePlaying] = useState(false);
+
     const [title, setTitle] = useState("");
     const [editingId, setEditingId] = useState(null);
     const editingScheduledDayRef = useRef(null); // preserves weekly scheduledDay when editing
@@ -172,33 +172,23 @@ const Scheduler = () => {
             return;
         }
 
-        // "Don't interrupt the live broadcast" is a per-schedule opt-in (skipIfLivePlaying),
-        // not a blanket rule.
-        //
-        // It used to be unconditional, which was survivable while sourceState came from
-        // real OBS scene items — "Live Player visible" was a deliberate, occasional state.
-        // Now that all four players share one OBS browser source, sourceState is derived
-        // from obs.activeSource, so "Live Player is on air" is just one of four ordinary
-        // rotation states. Unconditional meant that the moment the Live Player went on
-        // air the scheduler could never switch away from it again — every later event was
-        // swallowed, including the schedule written specifically to end the live segment.
-        //
-        // A trigger aimed at the Live Player itself is never skipped: that schedule exists
-        // precisely to start or end the live segment, so "live is on air" is its cue, not
-        // a reason to stand down.
+        // Unconditional live-priority rule: while the Live Player is on air, every
+        // scheduler event is skipped — no other player may interrupt the live broadcast.
+        // A trigger aimed at the Live Player itself is never skipped: that schedule
+        // exists precisely to start or end the live segment.
         const liveOnAir = sourceStateRef.current["Live Player"] === true;
         const targetsLivePlayer = triggerData.source === "Live Player";
-        if (liveOnAir && triggerData.skipIfLivePlaying === true && !targetsLivePlayer) {
+        if (liveOnAir && !targetsLivePlayer) {
             logWarn('SCHEDULER_TRIGGER_SKIPPED', LogCategory.SCHEDULER,
-                { ...triggerData, reason: 'Live Player is on air (this schedule opted in to live protection)', skippedAt: new Date().toISOString() },
-                `[FRONTEND] Skipped: ${triggerData.action} ${triggerData.source} - Live Player is on air (this schedule opted in to live protection)`);
+                { ...triggerData, reason: 'Live Player is on air — all non-Live events are skipped', skippedAt: new Date().toISOString() },
+                `[FRONTEND] Skipped: ${triggerData.action} ${triggerData.source} - Live Player is on air`);
             logSchedulerSkip(
                 triggerData.id,
                 triggerData.time,
                 triggerData.action,
                 triggerData.source,
                 triggerData.title,
-                'Live Player is on air (this schedule opted in to live protection)'
+                'Live Player is on air — all non-Live events are skipped'
             );
             // Record the suppressed trigger in history so operators can see it was reached
             setTriggerHistory(prev => [{
@@ -217,7 +207,7 @@ const Scheduler = () => {
                 source: triggerData.source,
                 title: triggerData.title,
                 ok: false,
-                reason: 'Live Player is on air (this schedule opted in to live protection)'
+                reason: 'Live Player is on air — all non-Live events are skipped'
             });
             return;
         }
@@ -289,9 +279,9 @@ const Scheduler = () => {
                 `[FRONTEND] OBS reconnected — executing ${fresh.length} queued trigger(s)`);
 
             fresh.forEach(triggerData => {
-                // Same per-schedule opt-in as the live dispatch path — see handleServerTrigger.
+                // Same unconditional live-priority rule as handleServerTrigger.
                 const liveOnAir = sourceStateRef.current["Live Player"] === true;
-                if (liveOnAir && triggerData.skipIfLivePlaying === true && triggerData.source !== "Live Player") {
+                if (liveOnAir && triggerData.source !== "Live Player") {
                     reportTriggerResult({
                         id: triggerData.id,
                         triggerKey: triggerData.triggerKey,
@@ -453,8 +443,7 @@ const Scheduler = () => {
             days: recurrence === "days" ? selectedDays : [],
             scheduledDay,
             title,
-            enabled: true,
-            skipIfLivePlaying
+            enabled: true
         };
 
         if (editingId) {
@@ -475,7 +464,7 @@ const Scheduler = () => {
         setRecurrence(schedule.recurrence);
         setTitle(schedule.title);
         setSelectedDays(schedule.days || []);
-        setSkipIfLivePlaying(schedule.skipIfLivePlaying === true);
+
         setEditingId(schedule.id);
         // Preserve original scheduledDay so editing on a different weekday doesn't change it
         editingScheduledDayRef.current = schedule.recurrence === 'weekly'
@@ -515,7 +504,7 @@ const Scheduler = () => {
         setAction("show");
         setRecurrence("daily");
         setSelectedDays([]);
-        setSkipIfLivePlaying(false);
+
         setTitle("");
         setEditingId(null);
         editingScheduledDayRef.current = null;
@@ -941,16 +930,7 @@ const Scheduler = () => {
                     </div>
                 )}
 
-                {/* Live-broadcast protection — per schedule, off by default */}
-                <label className="flex items-center gap-2 mb-3 text-xs text-gray-300 cursor-pointer w-fit">
-                    <input
-                        type="checkbox"
-                        checked={skipIfLivePlaying}
-                        onChange={(e) => setSkipIfLivePlaying(e.target.checked)}
-                        className="accent-cyan-500 cursor-pointer"
-                    />
-                    <span>Skip this event while the Live Player is on air</span>
-                </label>
+
 
                 {/* Description & Add Button */}
                 <div className="flex gap-2">

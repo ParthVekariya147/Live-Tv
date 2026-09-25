@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { PLAYER_EVENT_KEY, parseIdsFromText, extractVideoId } from '../utils/core-utils';
 import { getStateValue, setStateValue } from '../utils/state-api';
 import { readActiveSourceNow } from '../utils/player-switching';
+import { subscribePlayerEvents } from '../utils/playerEventBus';
 import { notifyEvent } from '../utils/notify';
 import { useOBS } from '../context/OBSContext';
 import {
@@ -465,13 +466,14 @@ export default function LoopPlaylistAutomation() {
     }, [activateRun, applySkips]);
 
     // ---- Engine: react to the Loop Player's videoEnded broadcasts while a run is active ----
+    // Subscribed through playerEventBus rather than a raw "storage" listener: Loop Player
+    // runs inside OBS's embedded browser in the real setup, which has its own localStorage,
+    // so the storage event never reached here and a chained run would play its first video
+    // and then sit there forever. The bus adds the server WebSocket delivery path.
     useEffect(() => {
-        const handleStorage = (e) => {
-            if (e.key !== PLAYER_EVENT_KEY || !e.newValue) return;
+        const handlePlayerEvent = (data) => {
             const run = activeRunRef.current;
             if (!run) return;
-            let data;
-            try { data = JSON.parse(e.newValue); } catch { return; }
             if (data.playerType !== 'loop' || (data.event !== 'videoEnded' && data.event !== 'videoError')) return;
 
             const group = groupsRef.current.find(g => g.id === run.groupId);
@@ -514,8 +516,7 @@ export default function LoopPlaylistAutomation() {
                 stopAutomation('Chain ended — nothing left to play');
             }
         };
-        window.addEventListener('storage', handleStorage);
-        return () => window.removeEventListener('storage', handleStorage);
+        return subscribePlayerEvents(PLAYER_EVENT_KEY, handlePlayerEvent);
     }, [activateRun, stopAutomation, advanceResumePointer, applySkips, tryStartDefaultGroup]);
 
     // ---- Engine: idle fallback — start the ★ default Group when Loop Player becomes visible

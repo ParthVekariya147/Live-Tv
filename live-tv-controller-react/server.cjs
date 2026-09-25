@@ -406,26 +406,93 @@ const pendingTriggerConfirmations = new Map(); // `${id}-${triggerKey}` -> { tim
 // without contradicting a success report that arrives right after.
 const TRIGGER_CONFIRM_TIMEOUT_MS = 130000;
 
-function awaitTriggerConfirmation(triggerData) {
-    const key = `${triggerData.id}-${triggerData.triggerKey}`;
-    const timeout = setTimeout(() => {
-        pendingTriggerConfirmations.delete(key);
+// One trigger = one notification, no matter how many controllers answer for it.
+//
+// A trigger is broadcast to EVERY connected client, and every one of them executes it and
+// reports its own TRIGGER_RESULT. The old code notified once per report, so two phones and
+// a couple of browser tabs meant four identical pushes for one switch. Measured in this
+// install's own notification history: 99 distinct trigger events were sent more than once,
+// up to 6 identical pushes inside the same second. First result wins; every later report
+// for the same trigger is dropped.
+//
+// This also stops the contradictory pair — a late success arriving after the 130s timeout
+// had already announced "did not run" used to notify a second time, saying the opposite.
+const notifiedTriggers = new Map(); // key -> { at, ok }
+const NOTIFIED_TRIGGER_TTL_MS = 15 * 60 * 1000;
+
+function markTriggerNotified(key, ok) {
+    if (!key) return;
+    notifiedTriggers.set(key, { at: Date.now(), ok });
+    const cutoff = Date.now() - NOTIFIED_TRIGGER_TTL_MS;
+    for (const [k, v] of notifiedTriggers) {
+        if (v.at < cutoff) notifiedTriggers.delete(k);
+    }
+}
+
+function triggerKeyOf(id, triggerKey) {
+    // A degenerate key would collapse unrelated triggers into one another, so an
+    // unidentifiable report is simply not deduped rather than wrongly suppressed.
+    return (id !== undefined && id !== null && triggerKey !== undefined && triggerKey !== null)
+        ? `${id}-${triggerKey}` : null;
+}
+
+// Confirmations that time out share one cause — nothing was connected to carry them out —
+// so they get one notification between them. Observed: 11 separate "did not run" pushes
+// inside 2 seconds, all from the same closed controller.
+const TIMEOUT_BATCH_WINDOW_MS = 5000;
+let timedOutBatch = [];
+let timedOutBatchTimer = null;
+
+function flushTimedOutBatch() {
+    timedOutBatchTimer = null;
+    const batch = timedOutBatch;
+    timedOutBatch = [];
+    if (!batch.length) return;
+    const reason = `No confirmation from the app within ${Math.round(TRIGGER_CONFIRM_TIMEOUT_MS / 1000)}s (closed, backgrounded, or OBS unreachable)`;
+    if (batch.length === 1) {
         notificationService.send('SCHEDULER_TRIGGER_FAILED', {
-            scheduleName: triggerData.title || triggerData.source,
-            action: triggerData.action,
-            reason: `No confirmation from the app within ${Math.round(TRIGGER_CONFIRM_TIMEOUT_MS / 1000)}s (closed, backgrounded, or OBS unreachable)`,
+            scheduleName: batch[0].title || batch[0].source,
+            action: batch[0].action,
+            reason,
         }).catch(() => {});
+        return;
+    }
+    const names = [...new Set(batch.map(b => b.title || b.source))];
+    notificationService.send('SCHEDULER_TRIGGER_FAILED', {
+        scheduleName: `${batch.length} schedules`,
+        action: 'run',
+        reason: `${reason} — ${names.slice(0, 4).join(', ')}${names.length > 4 ? ` +${names.length - 4} more` : ''}`,
+    }).catch(() => {});
+}
+
+function awaitTriggerConfirmation(triggerData) {
+    const key = triggerKeyOf(triggerData.id, triggerData.triggerKey);
+    const timeout = setTimeout(() => {
+        if (key) pendingTriggerConfirmations.delete(key);
+        markTriggerNotified(key, false);
+        timedOutBatch.push(triggerData);
+        if (!timedOutBatchTimer) {
+            timedOutBatchTimer = setTimeout(flushTimedOutBatch, TIMEOUT_BATCH_WINDOW_MS);
+            if (timedOutBatchTimer.unref) timedOutBatchTimer.unref();
+        }
     }, TRIGGER_CONFIRM_TIMEOUT_MS);
-    pendingTriggerConfirmations.set(key, { timeout, triggerData });
+    if (key) pendingTriggerConfirmations.set(key, { timeout, triggerData });
 }
 
 function handleTriggerResult({ id, triggerKey, ok, reason, action, source, title } = {}) {
-    const key = `${id}-${triggerKey}`;
-    const pending = pendingTriggerConfirmations.get(key);
+    const key = triggerKeyOf(id, triggerKey);
+    if (key && notifiedTriggers.has(key)) {
+        // Another controller already reported this one — expected whenever more than one
+        // client is open, so this is a debug detail, not a warning.
+        console.log(`[Scheduler] Duplicate trigger result for ${key} ignored (already notified)`);
+        return;
+    }
+    const pending = key ? pendingTriggerConfirmations.get(key) : null;
     if (pending) {
         clearTimeout(pending.timeout);
         pendingTriggerConfirmations.delete(key);
     }
+    markTriggerNotified(key, ok);
 
     if (ok) {
         notificationService.send('SCHEDULER_TRIGGER', {
@@ -471,7 +538,11 @@ scheduler.onAlert = (alert) => {
     // Push notification
     notificationService.send('SCHEDULER_ALERT', {
         scheduleName: alert.title,
-        retries: alert.retryCount || '',
+        // alert.message is the only field every alert kind carries; retryCount exists
+        // only on retry-exhaustion alerts. Sending an empty retries produced
+        // '"OBS Disconnected" failed  times' — see notification-catalog.cjs.
+        detail: alert.message
+            || (alert.retryCount ? `Failed ${alert.retryCount} time(s)` : 'No further detail'),
     }).catch(() => {});
 
     // Write alert to main logs
@@ -791,6 +862,35 @@ app.post('/api/videos/upload', (req, res) => {
     });
 
     req.pipe(writeStream);
+});
+
+// ============================================
+// PLAYER EVENT BRIDGE
+// ============================================
+//
+// The four player pages (LoopPlayer/LivePlayer/DelayLive/LocalPCPlayer) report
+// lifecycle events — videoEnded, videoError, timeUpdate, relayStatus — by writing
+// a localStorage key and letting the controller pick it up through the browser's
+// "storage" event. That only ever worked while the player page and the controller
+// UI lived in the SAME browser profile.
+//
+// In the real deployment they do not: the players run inside UnifiedPlayer.html in
+// OBS's embedded CEF browser, while the controller is open in Chrome (or on a phone
+// over the tunnel). Those are separate browsers with separate localStorage, so the
+// "storage" event never crosses over and EVERY event was silently dropped — which is
+// why Live Player's Stream-End Rules never fired when a broadcast ended.
+//
+// This endpoint is the bridge: player pages POST the same payload here and it is
+// re-broadcast over the WebSocket every controller is already connected to. The
+// localStorage path is kept as-is so nothing regresses in same-browser setups; the
+// controller de-duplicates the two deliveries by the eventId each payload carries.
+app.post('/api/player-event', (req, res) => {
+    const evt = req.body;
+    if (!evt || typeof evt !== 'object' || typeof evt.event !== 'string' || typeof evt.key !== 'string') {
+        return res.status(400).json({ success: false, error: 'key and event are required' });
+    }
+    broadcast('PLAYER_EVENT', evt);
+    res.json({ success: true });
 });
 
 // ============================================
@@ -1432,11 +1532,17 @@ class BackupService {
 
         console.log(`[Backup] ${type} backup saved as ${prefix} → ${filepath}`);
 
+        // Second copy into the Google Drive sync folder, if one is configured. Never
+        // allowed to fail the backup — the local copy is already safely on disk, and a
+        // Drive folder that is missing (external drive unplugged, Drive for Desktop not
+        // running yet) must not turn a good backup into a reported failure.
+        const cloud = await this.mirrorToCloud(filepath, filename, type);
+
         // Retention: manual=30 files, auto=14 files (2 weeks)
         this._pruneOld(dir, type === 'manual' ? 30 : 14);
 
         const countVal = payload.localStorage ? Object.keys(payload.localStorage).length : 0;
-        return { filename, savedDir: dir, backedUpAt: payload.exportedAt || payload.backedUpAt || new Date().toISOString(), fileCount: countVal };
+        return { filename, savedDir: dir, backedUpAt: payload.exportedAt || payload.backedUpAt || new Date().toISOString(), fileCount: countVal, cloud };
     }
 
     getBackupContent(type, filename) {
@@ -1507,6 +1613,349 @@ class BackupService {
             }
             return { restored: 2, channelsRestored, backedUpAt: payload.exportedAt || payload.backedUpAt };
         }
+    }
+
+    // ── Google Drive mirror ─────────────────────────────────
+    // Every backup is written to disk first (unchanged), then copied a second time into
+    // a folder that Google Drive for Desktop syncs. That is the whole mechanism — no
+    // Google credentials, no OAuth, no API quota, and it keeps working offline: Drive
+    // uploads the file whenever it next reconnects.
+    //
+    // driveLink is the shareable folder URL that the same Drive folder has in the browser.
+    // The server never calls it; it is stored so the controller can offer an "Open Drive"
+    // button and so the operator can hand the link to someone else. Both the path and the
+    // link are editable from the controller (Settings → History → Drive Backup).
+    //
+    // Schema, data/cloud_backup_settings.json:
+    //   { enabled, folderPath, driveLink, lastSync: { at, filename, ok, error } }
+
+    // Where Google Drive for Desktop actually mounts, if it is installed at all.
+    // Nothing about this feature works without it: the whole mechanism is "write the file
+    // into a folder Drive syncs". Any other folder silently accepts the copy and the file
+    // never reaches Drive — which is exactly the trap that needs surfacing in the UI.
+    detectDriveRoots() {
+        const os = require('os');
+        const roots = [];
+        const push = (dir, label) => {
+            try { if (dir && fs.existsSync(dir)) roots.push({ path: dir, label }); } catch (_) {}
+        };
+        if (process.platform === 'win32') {
+            // Streaming mode mounts a virtual drive letter holding "My Drive".
+            for (const letter of 'DEFGHIJKLMNOPQRSTUVWXYZ') {
+                push(`${letter}:\\My Drive`, `${letter}: \u2014 My Drive`);
+                push(`${letter}:\\Shared drives`, `${letter}: \u2014 Shared drives`);
+            }
+            // Mirror mode / legacy Backup and Sync keep a real folder in the user profile.
+            push(path.join(os.homedir(), 'Google Drive'), 'Google Drive (mirrored)');
+            push(path.join(os.homedir(), 'My Drive'), 'My Drive (mirrored)');
+        } else if (process.platform === 'darwin') {
+            push('/Volumes/GoogleDrive/My Drive', 'My Drive');
+            const cloud = path.join(os.homedir(), 'Library', 'CloudStorage');
+            try {
+                for (const entry of fs.readdirSync(cloud)) {
+                    if (entry.startsWith('GoogleDrive-')) push(path.join(cloud, entry, 'My Drive'), entry);
+                }
+            } catch (_) {}
+        }
+        return roots;
+    }
+
+    // The mount points themselves, not just the "My Drive" folder inside them. Everything
+    // under a mount belongs to Google Drive — including ".shortcut-targets-by-id", which is
+    // where a folder that was shared with you (rather than one you own) actually resolves
+    // on disk. Used to judge whether a chosen folder is a Drive folder at all.
+    driveMountRoots() {
+        const os = require('os');
+        const roots = [];
+        const exists = (d) => { try { return !!d && fs.existsSync(d); } catch (_) { return false; } };
+        if (process.platform === 'win32') {
+            for (const letter of 'DEFGHIJKLMNOPQRSTUVWXYZ') {
+                if (exists(`${letter}:\\My Drive`) || exists(`${letter}:\\Shared drives`)) {
+                    roots.push(`${letter}:\\`);
+                }
+            }
+            for (const d of ['Google Drive', 'My Drive']) {
+                const full = path.join(os.homedir(), d);
+                if (exists(full)) roots.push(full);
+            }
+        } else if (process.platform === 'darwin') {
+            if (exists('/Volumes/GoogleDrive')) roots.push('/Volumes/GoogleDrive');
+            const cloud = path.join(os.homedir(), 'Library', 'CloudStorage');
+            try {
+                for (const entry of fs.readdirSync(cloud)) {
+                    if (entry.startsWith('GoogleDrive-')) roots.push(path.join(cloud, entry));
+                }
+            } catch (_) {}
+        }
+        return roots;
+    }
+
+    // Turns the shareable folder URL the operator pastes into the actual folder on this PC.
+    //
+    // This is what makes "give the link, backups land in that folder" true rather than a
+    // coincidence: Drive for Desktop exposes every folder shared with you (or shortcut-ed
+    // into your Drive) at <mount>/.shortcut-targets-by-id/<folderId>, so the id in the URL
+    // maps straight to a writable path. Returns null for a folder you own outright and
+    // never shortcut-ed — there is no id-keyed path for those, so the operator picks it.
+    _isWritableDir(dir) {
+        const probe = path.join(dir, `.smk-write-test-${process.pid}`);
+        try {
+            fs.writeFileSync(probe, 'ok', 'utf8');
+        } catch (_) {
+            return false;
+        }
+        // Creating the file IS the permission test. Cleanup is best-effort on
+        // purpose: Drive for Desktop can briefly hold a just-created file open,
+        // and treating that as "not writable" would condemn a folder that
+        // actually accepts backups perfectly well.
+        try { fs.unlinkSync(probe); } catch (_) { /* stray probe file, harmless */ }
+        return true;
+    }
+
+    // Drive for Desktop does NOT expose a shared folder at
+    // <mount>/.shortcut-targets-by-id/<id>. That path is a synthetic container
+    // directory holding the target, and the container itself is never writable —
+    // every write into it fails with "Invalid request code" from the Drive
+    // filesystem regardless of what rights you hold on the folder inside.
+    // Measured directly on a folder shared "Anyone with the link — Editor":
+    //     .shortcut-targets-by-id/<id>              -> write FAILS
+    //     .shortcut-targets-by-id/<id>/LIVE_BACKUP  -> write and delete BOTH OK
+    // Probing the container is what made a correctly-shared, fully writable
+    // folder report as "shared with you read-only", so the link never resolved,
+    // folderPath stayed empty and not one backup was ever copied to Drive.
+    _resolveShortcutTarget(container) {
+        if (this._isWritableDir(container)) return { path: container, writable: true };
+        let dirs = [];
+        try {
+            dirs = fs.readdirSync(container, { withFileTypes: true })
+                .filter(e => e.isDirectory())
+                .map(e => path.join(container, e.name));
+        } catch (_) { /* unreadable container — fall through */ }
+        for (const dir of dirs) {
+            if (this._isWritableDir(dir)) return { path: dir, writable: true };
+        }
+        // Genuinely not writable. Report the most specific path found so the UI's
+        // read-only warning names the real folder, not the container.
+        return { path: dirs.length === 1 ? dirs[0] : container, writable: false };
+    }
+
+    inspectDriveLink(driveLink) {
+        const match = String(driveLink || '').match(/\/folders\/([A-Za-z0-9_-]{10,})/);
+        if (!match) return { folderId: null, path: null, writable: false };
+        const folderId = match[1];
+        for (const root of this.driveMountRoots()) {
+            const container = path.join(root, '.shortcut-targets-by-id', folderId);
+            try {
+                if (!fs.existsSync(container)) continue;
+                // Present is not the same as usable. A folder someone shared with you
+                // read-only mounts here perfectly happily and then fails every write —
+                // so the only trustworthy test is to actually write a byte.
+                const target = this._resolveShortcutTarget(container);
+                return { folderId, path: target.path, writable: target.writable, containerPath: container };
+            } catch (_) {}
+        }
+        return { folderId, path: null, writable: false };
+    }
+
+    resolveDriveLinkFolder(driveLink) {
+        const info = this.inspectDriveLink(driveLink);
+        return info.path && info.writable ? info.path : null;
+    }
+
+    driveInstalled() {
+        if (this.detectDriveRoots().length > 0) return true;
+        try {
+            const os = require('os');
+            return fs.existsSync(path.join(os.homedir(), 'AppData', 'Local', 'Google', 'DriveFS'))
+                || fs.existsSync('C:\\Program Files\\Google\\Drive File Stream');
+        } catch (_) { return false; }
+    }
+
+    // Judges whether a chosen folder can ever reach Google Drive, so the UI can say so
+    // instead of reporting a cheerful "18 files copied" into a folder Drive cannot see.
+    //   error — refuse to save (would corrupt the local backup folder)
+    //   warn  — save it, but tell the operator these files are not going to Drive
+    //   ok    — inside a real Google Drive folder
+    classifyCloudFolder(folderPath) {
+        if (!folderPath) return { level: 'empty', message: '' };
+        const norm = (v) => path.resolve(v).toLowerCase().replace(/[\\/]+$/, '');
+        const target = norm(folderPath);
+
+        // Mirroring the backups folder into itself nests a copy of every backup inside
+        // the backup folder, which then gets copied again on the next run.
+        const base = norm(path.dirname(this.manualDir));
+        if (target === base || target.startsWith(base + path.sep)) {
+            return {
+                level: 'error',
+                message: "That is this app's own backups folder — pick a Google Drive folder instead, "
+                       + 'otherwise every backup gets copied inside itself.',
+            };
+        }
+
+        const insideDrive = [
+            ...this.driveMountRoots(),
+            ...this.detectDriveRoots().map(r => r.path),
+        ].some(root => {
+            const r = norm(root);
+            return target === r || target.startsWith(r + path.sep);
+        });
+        if (insideDrive) {
+            if (fs.existsSync(folderPath) && !this._isWritableDir(folderPath)) {
+                return {
+                    level: 'warn',
+                    message: 'This Drive folder is read-only for your account (it was shared with you, '
+                           + 'not owned by you), so nothing can be written into it. Use a folder you own.',
+                };
+            }
+            return { level: 'ok', message: '' };
+        }
+
+        // Drive for Desktop can also be pointed at a plain folder instead of a drive letter,
+        // which detectDriveRoots() has no way to enumerate. Accept the path on its own name
+        // in that case rather than nagging about a folder that is genuinely a Drive folder.
+        // target came through path.resolve(), so it is already normalised to path.sep.
+        const segments = target.split(path.sep);
+        if (segments.some(seg => seg === 'my drive' || seg === 'shared drives'
+                              || seg === 'google drive' || seg.startsWith('googledrive'))) {
+            return { level: 'ok', message: '' };
+        }
+
+        if (!this.driveInstalled()) {
+            return {
+                level: 'warn',
+                message: 'Google Drive for Desktop is not installed on this PC, so nothing in this folder '
+                       + 'can reach Google Drive. Backups will still be copied here.',
+            };
+        }
+        return {
+            level: 'warn',
+            message: 'This folder is not inside your Google Drive folder, so copies here will not upload. '
+                   + 'Pick one of the detected Drive folders.',
+        };
+    }
+
+    getCloudSettings() {
+        const defaults = { enabled: false, folderPath: '', driveLink: '', lastSync: null };
+        try {
+            const f = path.join(this.dataDir, 'cloud_backup_settings.json');
+            if (fs.existsSync(f)) {
+                return Object.assign(defaults, JSON.parse(fs.readFileSync(f, 'utf8')));
+            }
+        } catch (_) { /* malformed — fall through to defaults rather than break backups */ }
+        return defaults;
+    }
+
+    saveCloudSettings(patch) {
+        const merged = Object.assign(this.getCloudSettings(), patch || {});
+        fs.writeFileSync(
+            path.join(this.dataDir, 'cloud_backup_settings.json'),
+            JSON.stringify(merged, null, 2), 'utf8'
+        );
+        return merged;
+    }
+
+    _recordSync(result) {
+        try { this.saveCloudSettings({ lastSync: result }); } catch (_) { /* best effort */ }
+        return result;
+    }
+
+    // Destination for one backup file: <folderPath>/manual_backup|auto_backup/<filename>,
+    // mirroring the local layout so the Drive folder reads the same as the local one.
+    cloudTargetDir(folderPath, type) {
+        return path.join(folderPath, type === 'manual' ? 'manual_backup' : 'auto_backup');
+    }
+
+    // Async and time-bounded ON PURPOSE. Google Drive for Desktop can stall a
+    // single write for minutes — measured directly: the first mkdir into a
+    // newly-shared folder blocked for over two minutes while DriveFS completed
+    // its sync handshake, then worked instantly forever after. With the previous
+    // synchronous fs calls that stall happened ON THE EVENT LOOP, which would
+    // freeze the whole 24/7 app — every player command, every WebSocket, the
+    // relay watchdog, all of it — because a backup was being copied. fs.promises
+    // runs on the threadpool, so a Drive stall now costs nothing but this copy.
+    // Retried because Drive for Desktop fails transiently under its own sync
+    // churn — observed directly: recreating a folder that DriveFS was still
+    // syncing a deletion for stalled once, then surfaced as a baffling
+    // "EINVAL: invalid argument, mkdir 'G:'" (Node's recursive mkdir walking up
+    // to the drive root after the real error). The identical call succeeded in
+    // 15ms moments later. One retry turns that class of blip into a non-event
+    // instead of a failed nightly backup.
+    async _driveOp(label, fn, { timeoutMs = 45000, attempts = 2 } = {}) {
+        let lastErr;
+        for (let i = 1; i <= attempts; i++) {
+            let timer;
+            try {
+                return await Promise.race([
+                    fn(),
+                    new Promise((_, rej) => {
+                        timer = setTimeout(
+                            () => rej(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s — Google Drive for Desktop is not responding`)),
+                            timeoutMs);
+                    }),
+                ]);
+            } catch (e) {
+                lastErr = e;
+                if (i < attempts) {
+                    console.warn(`[Backup] ${label} failed (${e.message}) — retrying`);
+                    await new Promise(r => setTimeout(r, 2000));
+                }
+            } finally { clearTimeout(timer); }
+        }
+        throw lastErr;
+    }
+
+    async mirrorToCloud(srcPath, filename, type) {
+        const cfg = this.getCloudSettings();
+        if (!cfg.enabled || !cfg.folderPath) return { attempted: false };
+        const destDir = this.cloudTargetDir(cfg.folderPath, type);
+        const destPath = path.join(destDir, filename);
+        try {
+            await this._driveOp('Drive mkdir', () => fs.promises.mkdir(destDir, { recursive: true }));
+            await this._driveOp('Drive copy', () => fs.promises.copyFile(srcPath, destPath));
+            console.log(`[Backup] mirrored to Drive folder → ${destPath}`);
+            return this._recordSync({ attempted: true, ok: true, at: new Date().toISOString(), filename, error: null });
+        } catch (e) {
+            console.error('[Backup] Drive mirror failed:', e.message);
+            return this._recordSync({ attempted: true, ok: false, at: new Date().toISOString(), filename, error: e.message });
+        }
+    }
+
+    // Backfill: copy every local backup the Drive folder does not already have. Used by
+    // the controller's "Sync now" button, and worth running once right after pointing at
+    // a new folder so the existing history goes up too, not just backups from now on.
+    // Async for the same reason as mirrorToCloud: this backfills up to 44 files
+    // into Drive and runs straight off a button press, so doing it synchronously
+    // put a multi-minute DriveFS stall directly on the event loop.
+    async syncAllToCloud() {
+        const cfg = this.getCloudSettings();
+        if (!cfg.folderPath) throw new Error('No Drive sync folder configured');
+        let copied = 0, skipped = 0;
+        const errors = [];
+        for (const type of ['manual', 'auto']) {
+            const srcDir = type === 'manual' ? this.manualDir : this.autoDir;
+            const destDir = this.cloudTargetDir(cfg.folderPath, type);
+            try {
+                await this._driveOp('Drive mkdir', () => fs.promises.mkdir(destDir, { recursive: true }));
+            } catch (e) { errors.push(`${type}: ${e.message}`); continue; }
+            let entries = [];
+            try { entries = fs.readdirSync(srcDir).filter(f => f.endsWith('.json')); } catch (_) { continue; }
+            for (const entry of entries) {
+                const destPath = path.join(destDir, entry);
+                try {
+                    // Already-mirrored files are left alone — re-copying them would churn
+                    // Drive's sync queue for no benefit on a folder with months of history.
+                    if (fs.existsSync(destPath)) { skipped++; continue; }
+                    await this._driveOp('Drive copy', () => fs.promises.copyFile(path.join(srcDir, entry), destPath));
+                    copied++;
+                } catch (e) { errors.push(`${entry}: ${e.message}`); }
+            }
+        }
+        const result = {
+            attempted: true, ok: errors.length === 0, at: new Date().toISOString(),
+            filename: `${copied} file(s)`, error: errors.length ? errors.join('; ') : null,
+        };
+        this._recordSync(result);
+        return { copied, skipped, errors, lastSync: result };
     }
 
     // ── Auto-backup settings ────────────────────────────────────────────
@@ -1944,6 +2393,7 @@ app.get('/api/backup/status', (req, res) => {
         manual: { count: manual.length, latest: manual[0] || null },
         auto:   { count: auto.length,   latest: auto[0]   || null },
         autoSettings: backupService.getAutoSettings(),
+        cloudSettings: backupService.getCloudSettings(),
         paths: { manual: backupService.manualDir, auto: backupService.autoDir },
     });
 });
@@ -1968,6 +2418,139 @@ app.put('/api/backup/auto-settings', (req, res) => {
     backupService.saveAutoSettings(settings);
     backupService.startAutoBackup(); // restart with new schedule
     res.json({ success: true, settings });
+});
+
+// ============================================
+// GOOGLE DRIVE MIRROR ENDPOINTS
+// ============================================
+
+// GET /api/backup/cloud-settings — current Drive folder + link, and whether the folder is reachable
+app.get('/api/backup/cloud-settings', (req, res) => {
+    const settings = backupService.getCloudSettings();
+    const folderExists = !!settings.folderPath && fs.existsSync(settings.folderPath);
+    res.json({
+        success: true,
+        settings,
+        folderExists,
+        driveRoots: backupService.detectDriveRoots(),
+        driveInstalled: backupService.driveInstalled(),
+        folderCheck: backupService.classifyCloudFolder(settings.folderPath),
+        linkResolvedPath: backupService.resolveDriveLinkFolder(settings.driveLink),
+        linkInfo: backupService.inspectDriveLink(settings.driveLink),
+    });
+});
+
+// PUT /api/backup/cloud-settings — change the Drive folder path and/or the shareable link
+// body: { enabled?, folderPath?, driveLink? }
+app.put('/api/backup/cloud-settings', async (req, res) => {
+    const { enabled, folderPath, driveLink } = req.body || {};
+    const patch = {};
+
+    if (folderPath !== undefined) {
+        const trimmed = String(folderPath).trim();
+        if (trimmed) {
+            // Created rather than merely required: pointing at a not-yet-existing subfolder
+            // inside the Drive folder ("...\\My Drive\\SMK TV Backups") is the normal case.
+            try {
+                fs.mkdirSync(trimmed, { recursive: true });
+            } catch (e) {
+                return res.status(400).json({ success: false, error: `Folder is not usable: ${e.message}` });
+            }
+            // Prove it is actually writable now rather than failing silently at 3am.
+            try {
+                const probe = path.join(trimmed, '.smk-write-test');
+                fs.writeFileSync(probe, 'ok', 'utf8');
+                fs.unlinkSync(probe);
+            } catch (e) {
+                return res.status(400).json({ success: false, error: `Folder is not writable: ${e.message}` });
+            }
+        }
+        // Refuse outright only for the destructive case (mirroring into the backups folder).
+        // A merely-not-Drive folder is still saved — the operator may be pointing at a
+        // network share on purpose — but the response says plainly that it won't upload.
+        const check = backupService.classifyCloudFolder(trimmed);
+        if (check.level === 'error') {
+            return res.status(400).json({ success: false, error: check.message });
+        }
+        patch.folderPath = trimmed;
+    }
+
+    if (driveLink !== undefined) {
+        const link = String(driveLink).trim();
+        if (link && !/^https?:\/\//i.test(link)) {
+            return res.status(400).json({ success: false, error: 'Drive link must be a full https:// URL' });
+        }
+        patch.driveLink = link;
+    }
+
+    if (enabled !== undefined) patch.enabled = !!enabled;
+
+    // The link on its own is enough. If it points at a folder Drive has made available on
+    // this PC, that folder becomes the destination — so backups land in the folder the
+    // operator actually linked, instead of some other folder that merely happens to be
+    // typed in the box above. An explicitly typed folder always wins over this.
+    const linkForResolve = patch.driveLink !== undefined ? patch.driveLink : backupService.getCloudSettings().driveLink;
+    if (!patch.folderPath) {
+        const resolved = backupService.resolveDriveLinkFolder(linkForResolve);
+        if (resolved) patch.folderPath = resolved;
+    }
+
+    // Pointing at a different folder makes the previous folder's "Last copy" line a lie —
+    // it read as though a sync had already run against the new folder and found nothing to
+    // do, which is exactly the wrong thing to tell someone who just changed the folder.
+    const previousPath = backupService.getCloudSettings().folderPath;
+    const folderChanged = patch.folderPath !== undefined && patch.folderPath !== previousPath;
+    if (folderChanged) patch.lastSync = null;
+
+    let settings = backupService.saveCloudSettings(patch);
+
+    // Saving a new folder backfills it straight away. Requiring a separate "Sync now" click
+    // after Save was a trap: the panel looked correctly configured while the Drive folder
+    // was still empty, with nothing on screen saying a second button was needed.
+    let autoSync = null;
+    if (folderChanged && settings.enabled && settings.folderPath) {
+        try {
+            autoSync = await backupService.syncAllToCloud();
+            settings = backupService.getCloudSettings();
+        } catch (e) {
+            autoSync = { copied: 0, skipped: 0, errors: [e.message] };
+        }
+    }
+
+    res.json({
+        success: true,
+        settings,
+        autoSync,
+        folderExists: !!settings.folderPath && fs.existsSync(settings.folderPath),
+        driveRoots: backupService.detectDriveRoots(),
+        driveInstalled: backupService.driveInstalled(),
+        folderCheck: backupService.classifyCloudFolder(settings.folderPath),
+        linkResolvedPath: backupService.resolveDriveLinkFolder(settings.driveLink),
+        linkInfo: backupService.inspectDriveLink(settings.driveLink),
+    });
+});
+
+// POST /api/backup/cloud-sync — copy every local backup the Drive folder doesn't have yet
+app.post('/api/backup/cloud-sync', async (req, res) => {
+    try {
+        res.json({ success: true, ...(await backupService.syncAllToCloud()) });
+    } catch (e) {
+        res.status(400).json({ success: false, error: e.message });
+    }
+});
+
+// POST /api/backup/cloud-open — open the Drive sync folder in the OS file manager
+app.post('/api/backup/cloud-open', (req, res) => {
+    const { exec } = require('child_process');
+    const target = backupService.getCloudSettings().folderPath;
+    if (!target) return res.status(400).json({ success: false, error: 'No Drive sync folder configured' });
+    try { fs.mkdirSync(target, { recursive: true }); } catch (_) { /* opening a missing folder just fails visibly */ }
+    let cmd;
+    if (process.platform === 'win32') cmd = `explorer "${target}"`;
+    else if (process.platform === 'darwin') cmd = `open "${target}"`;
+    else cmd = `xdg-open "${target}"`;
+    exec(cmd, () => {});
+    res.json({ success: true, path: target });
 });
 
 // POST /api/backup/open-folder — open the backups folder in OS file manager

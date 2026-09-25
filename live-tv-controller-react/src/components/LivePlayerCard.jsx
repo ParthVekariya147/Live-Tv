@@ -5,12 +5,14 @@ import { sendPlayerCommand, LIVE_PLAYER_EVENT_KEY, secondsToHMS } from '../utils
 import { usePlayerTime, usePlayerEvents, usePlayerRelayStatus } from '../utils/usePlayerHooks';
 import { useVideoInfo } from '../hooks/useVideoInfo';
 import { logVideoLoad, logVideoPlay, logError, LogCategory, LogType } from '../utils/logger';
-import { setStateValue } from '../utils/state-api';
+import { setStateValue, getStateValue } from '../utils/state-api';
 import PlayerControlBtn from './common/PlayerControlBtn';
 import ThumbnailLoader from './common/ThumbnailLoader';
+import VideoIdChip from './common/VideoIdChip';
 import LiveEndRulesManager from './LiveEndRulesManager';
 import {
-    LIVE_END_RULES_LOCAL_KEY, LIVE_END_RULES_UPDATED_EVENT, resolveLiveEndTarget, migrateLegacyEndGroup,
+    LIVE_END_RULES_LOCAL_KEY, LIVE_END_RULES_SERVER_KEY, LIVE_END_RULES_UPDATED_EVENT,
+    resolveLiveEndTarget, migrateLegacyEndGroup,
 } from '../utils/liveEndRules';
 
 const DEFAULT_LIVE_VIDEO_ID = "T3wvnwSSw8g";
@@ -30,17 +32,31 @@ const LivePlayerCard = () => {
     // "Stream-End Rules" — when the live stream goes offline (YouTube reports ENDED), match
     // its ended title against saved keyword rules and hand off to Loop Player, starting
     // whichever Group/Playlist that rule points at. See LiveEndRulesManager.jsx for the
-    // matching logic and the manager UI. No match (or an empty rule list) = do nothing, same
-    // as leaving the old fixed dropdown on "None".
+    // matching logic and the manager UI. A matching rule ALWAYS hands off to Loop Player;
+    // starting a playlist is the optional extra when that rule names a Group. Only an empty
+    // rule list (or a title matching nothing, with no Default row) means do nothing.
     const [liveEndRules, setLiveEndRules] = useState([]);
     const liveEndRulesRef = useRef(liveEndRules);
     useEffect(() => { liveEndRulesRef.current = liveEndRules; }, [liveEndRules]);
     useEffect(() => {
-        const loadRules = () => {
+        // localStorage first, then the SERVER copy as a fallback.
+        //
+        // The editor (LiveEndRulesManager) has always had this fallback; the code that
+        // actually RUNS the rules did not, and read localStorage alone. So on any browser
+        // or PC that had not personally saved the rules — a second machine, a phone, a
+        // fresh profile, cleared site data — the editor happily displayed the rules while
+        // the runtime saw an empty list and the stream-end handoff silently did nothing.
+        // Confirmed on this install: the dev instance had player.live.endRules in its
+        // server state and the packaged instance had none at all.
+        const loadRules = async () => {
             try {
                 const saved = localStorage.getItem(LIVE_END_RULES_LOCAL_KEY);
                 const parsed = saved ? JSON.parse(saved) : [];
-                setLiveEndRules(Array.isArray(parsed) ? parsed : []);
+                if (Array.isArray(parsed) && parsed.length > 0) { setLiveEndRules(parsed); return; }
+            } catch { /* fall through to the server copy */ }
+            try {
+                const server = await getStateValue(LIVE_END_RULES_SERVER_KEY);
+                setLiveEndRules(Array.isArray(server) ? server : []);
             } catch { setLiveEndRules([]); }
         };
         loadRules();
@@ -358,18 +374,41 @@ const LivePlayerCard = () => {
     const setSourceVisibilityRef = useRef(setSourceVisibility);
     useEffect(() => { setSourceVisibilityRef.current = setSourceVisibility; }, [setSourceVisibility]);
 
-    // When the live stream goes offline (YouTube reports ENDED), hand off to Loop Player and
-    // tell the automation engine which Group to start, if one was picked below.
-    const handleLiveVideoEnded = useCallback(() => {
+    // Guards against acting on the same stream ending twice. A broadcast finishing can
+    // legitimately produce two videoEnded reports: with Direct Relay on, LivePlayer.html
+    // reports the HLS stream running out AND the YouTube iframe it falls back to then
+    // reaches ENDED moments later. Without this, the second one would restart the Group
+    // the first one had just handed off to, from the top. Cleared whenever a different
+    // video is loaded, so the next stream's end is handled normally.
+    const endHandledForVideoIdRef = useRef(null);
+    useEffect(() => { endHandledForVideoIdRef.current = null; }, [videoId]);
+
+    // When the live stream goes offline (the player reports ENDED), hand off to Loop Player
+    // and tell the automation engine which Group to start, if one was picked below.
+    const handleLiveVideoEnded = useCallback((data) => {
+        const endedId = data?.videoId || videoIdRef.current || null;
+        if (endedId && endHandledForVideoIdRef.current === endedId) return;
+        endHandledForVideoIdRef.current = endedId;
+
         const target = resolveLiveEndTarget(liveEndRulesRef.current, videoTitleRef.current);
-        if (!target) return;
+        if (!target) {
+            setStatusText("Stream ended — no End Rule matched, stayed on Live Player");
+            return;
+        }
+        // The handoff happens for ANY matching rule. Starting a playlist is a separate,
+        // optional step: a rule with no Group still means "when this stream ends, go to
+        // Loop Player". Fusing the two is what made a Group-less rule do nothing at all.
         const setSrcVis = setSourceVisibilityRef.current ?? setSourceVisibility;
         setSrcVis("Live Player", false);
         setSrcVis("Loop Player", true);
-        setStatusText("Stream ended — switched to Loop Player");
-        window.dispatchEvent(new CustomEvent('loopAutomationStartGroup', {
-            detail: { groupId: target.groupId, listId: target.listId, label: 'Live Player stream ended' },
-        }));
+        if (target.groupId) {
+            setStatusText("Stream ended — switched to Loop Player");
+            window.dispatchEvent(new CustomEvent('loopAutomationStartGroup', {
+                detail: { groupId: target.groupId, listId: target.listId, label: 'Live Player stream ended' },
+            }));
+        } else {
+            setStatusText("Stream ended — switched to Loop Player (rule has no Group, nothing to start)");
+        }
     }, [setSourceVisibility]);
     usePlayerEvents(LIVE_PLAYER_EVENT_KEY, 'live', handleLiveVideoEnded);
 
@@ -650,6 +689,7 @@ const LivePlayerCard = () => {
             <ThumbnailLoader src={videoThumbnail} alt="Live Player Thumbnail" loading={thumbLoading} />
             <p className="video-title">{thumbLoading ? 'Loading...' : (videoTitle || 'No video loaded')}</p>
             <p className="video-time-display">{timeInfo.currentTime} / {timeInfo.remainingTime}</p>
+            <VideoIdChip value={videoId} label="Video ID" title="Click to copy this video ID" />
 
             <input
                 type="text"
@@ -719,14 +759,32 @@ const LivePlayerCard = () => {
             </div>
 
             {useRelay && (
-                <p className={`text-xs mt-1 px-2 ${relayStatus.active ? 'text-green-400' : 'text-yellow-400'}`}>
+                // An active relay that is mid-recovery must not read as a plain
+                // green "RELAY LIVE". The player now rides out relay restarts and
+                // network blips instead of dying on the first one, so "active" no
+                // longer implies "nothing is happening" — the operator needs to
+                // see a reconnect while it is in progress, not only after it fails.
+                <p className={`text-xs mt-1 px-2 ${
+                    !relayStatus.active ? 'text-yellow-400'
+                        : relayStatus.lastError ? 'text-amber-400'
+                        : 'text-green-400'
+                }`}>
                     {relayStatus.active
-                        ? `● RELAY LIVE — ${relayStatus.resolution || '?'}${relayStatus.mode ? ` (${relayStatus.mode})` : ''}`
+                        ? (relayStatus.lastError
+                            ? `◐ RELAY RECONNECTING — ${relayStatus.lastError}`
+                            : `● RELAY LIVE — ${relayStatus.resolution || '?'}${relayStatus.mode ? ` (${relayStatus.mode})` : ''}`)
                         : `○ Falling back to YouTube player${
                             relayStatus.reason ? ` — ${relayStatus.reason}` :
                             relayStatus.lastError ? ` — ${relayStatus.lastError}` :
                             relayStatus.updatedAt ? '' : ' — not started yet'
                           }`}
+                </p>
+            )}
+
+            {relayStatus.cookiesRejected && (
+                <p className="text-xs mt-1 px-2 text-orange-400">
+                    ⚠ Saved cookies.txt was rejected by YouTube — playing without it. Replace it
+                    from ⚙ Cookies, or delete it if you don't need members-only streams.
                 </p>
             )}
 

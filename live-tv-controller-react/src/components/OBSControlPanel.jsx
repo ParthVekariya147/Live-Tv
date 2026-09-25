@@ -8,6 +8,7 @@ import CookieSettings from './CookieSettings';
 import ChannelManager from './ChannelManager';
 import { LIVE_PLAYER_EVENT_KEY, PLAYER_EVENT_KEY, DELAY_PLAYER_EVENT_KEY, LOCAL_PLAYER_EVENT_KEY } from '../utils/core-utils';
 import { logError, LogCategory, LogType } from '../utils/logger';
+import { subscribePlayerEvents } from '../utils/playerEventBus';
 
 // Maps OBS source name -> the localStorage event key / playerType its player page reports timeUpdate on
 const SOURCE_EVENT_INFO = {
@@ -122,22 +123,20 @@ const OBSControlPanel = ({ currentTime, monitor1Enabled, toggleMonitor1, monitor
         }, HEALTH_CHECK_TIMEOUT_MS);
     }, [setSourceVisibility, isConnected, SCENE_NAME]);
 
-    // Listen for the player page's timeUpdate ping — proof the switched-to source is actually playing
+    // Listen for the player page's timeUpdate ping — proof the switched-to source is actually
+    // playing. Through playerEventBus, so the ping still arrives from a player running in OBS's
+    // browser; before that, every switch showed the "no playback signal" warning ring.
     useEffect(() => {
-        const handleStorageEvent = (event) => {
-            if (!event.newValue || !loadingSource) return;
-            const info = SOURCE_EVENT_INFO[loadingSource];
-            if (!info || event.key !== info.eventKey) return;
-            try {
-                const data = JSON.parse(event.newValue);
-                if (data.playerType !== info.playerType || data.event !== 'timeUpdate') return;
-                if (healthTimeoutRef.current) clearTimeout(healthTimeoutRef.current);
-                setLoadingSource(null);
-                setWarnSource(prev => (prev === loadingSource ? null : prev));
-            } catch { /* ignore parse errors */ }
+        if (!loadingSource) return;
+        const info = SOURCE_EVENT_INFO[loadingSource];
+        if (!info) return;
+        const handlePlayerEvent = (data) => {
+            if (data.playerType !== info.playerType || data.event !== 'timeUpdate') return;
+            if (healthTimeoutRef.current) clearTimeout(healthTimeoutRef.current);
+            setLoadingSource(null);
+            setWarnSource(prev => (prev === loadingSource ? null : prev));
         };
-        window.addEventListener('storage', handleStorageEvent);
-        return () => window.removeEventListener('storage', handleStorageEvent);
+        return subscribePlayerEvents(info.eventKey, handlePlayerEvent);
     }, [loadingSource]);
 
     useEffect(() => () => { if (healthTimeoutRef.current) clearTimeout(healthTimeoutRef.current); }, []);

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { copyToClipboard, formatDateToDDMMMYYYY } from '../utils/core-utils';
 import TimePickerAMPM from './common/TimePickerAMPM';
 import { CHANNELS_UPDATED_EVENT } from './ChannelManager';
+import { skipScheduleDay, cancelScheduleSkip } from '../utils/scheduler-api';
 
 const KATHA_CHANNEL_SELECT_KEY = 'kathaSelectedChannelId';
 
@@ -95,6 +96,10 @@ const KathaMonitor = () => {
     const [playerSchedulerEnabled, setPlayerSchedulerEnabled] = useState(false);
     const [playerSchedulerTime, setPlayerSchedulerTime] = useState("00:00");
     const [pendingTimeouts, setPendingTimeouts] = useState([]);
+
+    // Schedule IDs — needed for skip/cancel-skip API calls
+    const [refreshScheduleId, setRefreshScheduleId] = useState(null);
+    const [playerScheduleId, setPlayerScheduleId] = useState(null);
 
     const isInitialized = useRef(false);
     const fetchAllVideosRef = useRef(null);
@@ -250,10 +255,12 @@ const KathaMonitor = () => {
                     if (kathaRefresh) {
                         setRefreshSchedulerEnabled(kathaRefresh.enabled);
                         setRefreshSchedulerTime(kathaRefresh.time);
+                        setRefreshScheduleId(kathaRefresh.id);
                     }
                     if (kathaPlayer) {
                         setPlayerSchedulerEnabled(kathaPlayer.enabled);
                         setPlayerSchedulerTime(kathaPlayer.time);
+                        setPlayerScheduleId(kathaPlayer.id);
                     }
                 }
                 isInitialized.current = true;
@@ -305,8 +312,7 @@ const KathaMonitor = () => {
             title: type === 'refresh' ? 'Refresh Katha Content' : 'Load Katha to Delay Player',
             time,
             enabled,
-            recurrence: 'daily',
-            skipIfLivePlaying: false
+            recurrence: 'daily'
         };
         try {
             const res = await fetch('/api/schedules');
@@ -351,9 +357,12 @@ const KathaMonitor = () => {
                         .filter(t => t.action === 'katha_refresh' || t.action === 'katha_player')
                         .map(t => ({
                             id: t.action,
+                            scheduleId: t.id,
                             title: t.title || t.source,
                             nextTrigger: new Date(t.nextTrigger),
-                            delay: t.delay
+                            delay: t.delay,
+                            skipUntil: t.skipUntil ? new Date(t.skipUntil) : null,
+                            nextFireAfterSkip: t.nextFireAfterSkip ? new Date(t.nextFireAfterSkip) : null
                         }));
                     setPendingTimeouts(kathaTimeouts);
                 }
@@ -491,21 +500,58 @@ const KathaMonitor = () => {
 
             {/* Pending Timeouts Display */}
             {pendingTimeouts.length > 0 && (
-                <div className="pending-timeouts-card mb-4 p-3 bg-gray-800 rounded-lg w-full border border-cyan-600">
+            <div className="pending-timeouts-card mb-4 p-3 bg-gray-800 rounded-lg w-full border border-cyan-600">
                     <h4 className="text-sm font-semibold text-cyan-400 mb-2">
                         ⏰ Pending Katha Schedules ({pendingTimeouts.length})
                     </h4>
                     <div className="grid gap-2">
                         {pendingTimeouts.map((pt) => {
                             const remaining = pt.nextTrigger.getTime() - Date.now();
+                            const isSkipped = pt.skipUntil && pt.skipUntil.getTime() > Date.now();
                             return (
-                                <div key={pt.id} className="flex justify-between items-center p-2 bg-gray-900 rounded border border-gray-700">
-                                    <span className="text-white font-medium text-sm">{pt.title}</span>
-                                    <div className="text-right">
-                                        <div className="text-cyan-400 text-xs">
-                                            {pt.nextTrigger.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                                <div key={pt.id} className={`flex justify-between items-center p-2 bg-gray-900 rounded border ${isSkipped ? 'border-yellow-600' : 'border-gray-700'}`}>
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-white font-medium text-sm">{pt.title}</span>
+                                        {isSkipped && (
+                                            <span className="text-yellow-400 text-xs font-semibold">
+                                                ⏭ SKIPPED — resumes {pt.nextTrigger.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="text-right">
+                                            {!isSkipped && (
+                                                <>
+                                                    <div className="text-cyan-400 text-xs">
+                                                        {pt.nextTrigger.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                                                    </div>
+                                                    <div className="text-yellow-400 text-xs">in {formatTimeRemaining(remaining)}</div>
+                                                </>
+                                            )}
                                         </div>
-                                        <div className="text-yellow-400 text-xs">in {formatTimeRemaining(remaining)}</div>
+                                        {isSkipped ? (
+                                            <button
+                                                type="button"
+                                                className="px-2 py-1 rounded text-xs font-medium bg-yellow-700 hover:bg-yellow-600 text-white whitespace-nowrap"
+                                                onClick={async () => {
+                                                    await cancelScheduleSkip(pt.scheduleId);
+                                                }}
+                                                title="Cancel skip — resume normal schedule"
+                                            >
+                                                Undo Skip
+                                            </button>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                className="px-2 py-1 rounded text-xs font-medium bg-gray-700 hover:bg-amber-700 text-amber-400 hover:text-white whitespace-nowrap"
+                                                onClick={async () => {
+                                                    await skipScheduleDay(pt.scheduleId);
+                                                }}
+                                                title="Skip today's trigger — auto-resumes after midnight"
+                                            >
+                                                Skip Today
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             );

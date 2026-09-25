@@ -22,6 +22,7 @@ const { spawn } = require('child_process');
 const express = require('express');
 const { FfmpegPipeline } = require('./relay-ffmpeg-pipeline.cjs');
 const { selectFormats } = require('./relay-format-selector.cjs');
+const { HlsLedger } = require('./relay-hls-ledger.cjs');
 
 const QUALITY_PRIORITY_HEIGHTS = [2160, 1440, 1080, 720, 480, 360];
 const MASTER_MAX_AGE_MS = 20 * 60 * 1000; // refresh live manifest well before its ~hours expiry
@@ -35,7 +36,32 @@ const LIVE_MANIFEST_TTL_MS = 18 * 1000;
 // A resolve costs a yt-dlp spawn (~8-12s), so a failing segment must not be able to
 // kick one on every request — the player retries several times a second while stalled.
 const RESOLVE_THROTTLE_MS = 10 * 1000;
-const WATCHDOG_INTERVAL_MS = 30 * 1000;
+// 30s was far too coarse to notice a dead ffmpeg. The watchdog is now cheap
+// (it reads in-memory ledger counters, not the network) so it can tick fast
+// enough to catch a stall inside the player's buffer window.
+const WATCHDOG_INTERVAL_MS = 5 * 1000;
+
+// ---- ffmpeg split-mux health/refresh policy -------------------------------
+// A segment lands every 4s. Six missed in a row means the source is gone, the
+// process is wedged in a read, or ffmpeg died without exiting — all of which
+// used to be completely invisible (the only health signal was process exit,
+// and -reconnect keeps a dead pull alive indefinitely).
+const FFMPEG_STALL_MS = 25 * 1000;
+// Signed googlevideo URLs carry their own ?expire= (typically ~6h). Restarting
+// blindly every 20 minutes threw away hours of perfectly good stream time and
+// cost a visible glitch each time; refresh is now driven by the actual expiry
+// with a safety margin, and the stall watchdog above is the net for URLs that
+// die early.
+const FFMPEG_REFRESH_MARGIN_MS = 5 * 60 * 1000;
+const FFMPEG_REFRESH_MIN_MS = 10 * 60 * 1000;
+const FFMPEG_REFRESH_MAX_MS = 4 * 60 * 60 * 1000;
+const FFMPEG_REFRESH_FALLBACK_MS = 20 * 60 * 1000; // no ?expire= in the URL
+// After this many consecutive failed restarts with nothing on air, give up on
+// the split path for this stream and drop to the proxy-combined path rather
+// than retrying a broken configuration forever.
+const FFMPEG_MAX_FAILURES_BEFORE_FALLBACK = 5;
+
+const sleep = (ms) => new Promise(r => { const t = setTimeout(r, ms); if (t.unref) t.unref(); });
 
 // yt-dlp needs BOTH a cookies file AND a JS runtime together to reliably get
 // past YouTube's bot-check ("Sign in to confirm you're not a bot") — neither
@@ -100,6 +126,11 @@ const STRIPPED_TAG_PREFIXES = ['#EXT-X-DATERANGE', '#EXT-X-CUEPOINT'];
 
 function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, ffprobePath: null }), hlsOutputDir = null }) {
     const relayStartedAt = Date.now();
+    // The single continuous HLS playlist the player consumes, stitched across
+    // however many ffmpeg runs it takes to keep the stream up. See
+    // relay-hls-ledger.cjs for why the player must never see ffmpeg's own
+    // playlist directly.
+    const ledger = hlsOutputDir ? new HlsLedger(hlsOutputDir) : null;
     const state = {
         // Bumped by every loadVideo() call and by POST /stop. loadVideo() re-checks
         // this against the value it captured at the start after each slow await
@@ -127,13 +158,27 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
         // proxy path above can never do since it's capped to whatever
         // resolution YouTube's combined manifest happens to expose.
         ffmpeg: {
-            pipeline: null,       // FfmpegPipeline instance, or null
+            pipeline: null,       // FfmpegPipeline currently ON AIR, or null
             selected: null,       // {mode:'split', video, audio} from selectFormats()
-            generation: 0,
             pipelineReady: false,
-            resolvedAt: null,     // for the watchdog's proactive URL-refresh window
+            resolvedAt: null,
+            refreshDueAt: null,   // derived from the source URLs' own ?expire=
             copyConfirmed: null,
             pid: null,
+            runId: null,
+            // Single-flight guard. Previously the 20-minute watchdog refresh and
+            // the crash-recovery timer could both call startFfmpegRelay(), giving
+            // two ffmpeg processes the same output directory to fight over — each
+            // wiping the other's segments, with the loser orphaned forever.
+            restartInFlight: null,
+            // Drives the retry backoff and is RESET BY A SUCCESSFUL RESTART. The
+            // old code used state.reconnectCount for this, which was also bumped
+            // by unrelated watchdog/media-fetch blips and only ever cleared on a
+            // brand-new /load — so after a few hiccups every crash sat out the
+            // full 15s cap before even trying.
+            consecutiveFailures: 0,
+            restartCount: 0,
+            lastRestartReason: null,
         },
 
         startedAt: null,
@@ -171,10 +216,18 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
         state.ffmpeg.pipeline = null;
         state.ffmpeg.selected = null;
         state.ffmpeg.pipelineReady = false;
-        state.ffmpeg.generation = 0;
         state.ffmpeg.resolvedAt = null;
+        state.ffmpeg.refreshDueAt = null;
         state.ffmpeg.copyConfirmed = null;
         state.ffmpeg.pid = null;
+        state.ffmpeg.runId = null;
+        state.ffmpeg.consecutiveFailures = 0;
+        state.ffmpeg.restartCount = 0;
+        state.ffmpeg.lastRestartReason = null;
+        // A NEW video is the only time the segment history may be thrown away.
+        // Restarts of the SAME video deliberately keep it — that continuity is
+        // what lets the playlist go on serving while a replacement ffmpeg starts.
+        if (ledger) ledger.reset();
         state.startedAt = Date.now();
         state.readyAt = null;
         state.reconnectCount = 0;
@@ -182,7 +235,7 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
         state.lastError = null;
     }
 
-    function fetchVideoInfo(videoId) {
+    function runYtDlpJson(videoId, cookiesFile) {
         return new Promise((resolve, reject) => {
             const ytDlp = findYtDlp();
             // This message is surfaced verbatim in LivePlayerCard's Direct Relay
@@ -206,7 +259,6 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
             // (0 OK / 20 failed), the same as without it. See MASTER_MAX_AGE_MS.
             const potArgs = resolvePotArgs();
             if (potArgs) args.push(...potArgs);
-            const cookiesFile = resolveCookiesFile();
             if (cookiesFile) args.push('--cookies', cookiesFile);
             args.push(`https://www.youtube.com/watch?v=${videoId}`);
             const proc = spawn(ytDlp, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -232,6 +284,32 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
                 }
             });
         });
+    }
+
+    // Cookies help for members-only and age-restricted streams, but a stale jar is worse
+    // than none at all: YouTube answers a request carrying invalid cookies with a flat
+    // "Video unavailable", which used to reject straight out of loadVideo() and leave the
+    // relay dead — state.type null, no ffmpeg, /live.m3u8 returning 409 — while the player
+    // page sat on a frozen frame believing the relay was still live. A public stream that
+    // resolves perfectly well anonymously must not go off air because a saved cookie file
+    // went bad, so fall back to an anonymous resolve and record that it happened.
+    async function fetchVideoInfo(videoId) {
+        const cookiesFile = resolveCookiesFile();
+        if (!cookiesFile) {
+            state.cookiesRejected = false;
+            return runYtDlpJson(videoId, null);
+        }
+        try {
+            const info = await runYtDlpJson(videoId, cookiesFile);
+            state.cookiesRejected = false;
+            return info;
+        } catch (err) {
+            logEvent(`yt-dlp failed using saved cookies (${err.message}) — retrying without them`);
+            const info = await runYtDlpJson(videoId, null);
+            state.cookiesRejected = true;
+            logEvent('Resolved anonymously — the saved cookies.txt is being rejected by YouTube and should be replaced');
+            return info;
+        }
     }
 
     function classify(info) {
@@ -309,7 +387,25 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
         return items.slice().sort((a, b) => (b.height || 0) - (a.height || 0))[0];
     }
 
-    async function refreshMaster(reason) {
+    // Single-flight across EVERY caller — loadVideo, the watchdog, kickRefresh,
+    // getLiveMediaPlaylist's recovery path and /live.m3u8's on-demand refresh all
+    // funnel through here. Each resolve spawns a yt-dlp process for ~4s, and
+    // these callers overlap constantly in normal operation: observed live, the
+    // watchdog fired a second resolve 3.7s into the initial load's own resolve,
+    // so two yt-dlp processes raced and both wrote state.selectedVariant. A
+    // caller that arrives mid-resolve now simply awaits the one already running.
+    let masterRefreshInFlight = null;
+    function refreshMaster(reason) {
+        if (masterRefreshInFlight) {
+            logEvent(`Master refresh already in flight — coalescing (${reason})`);
+            return masterRefreshInFlight;
+        }
+        masterRefreshInFlight = doRefreshMaster(reason)
+            .finally(() => { masterRefreshInFlight = null; });
+        return masterRefreshInFlight;
+    }
+
+    async function doRefreshMaster(reason) {
         logEvent(`Refreshing master manifest (${reason})...`);
         const info = await fetchVideoInfo(state.videoId);
         const manifestUrl = info.manifest_url
@@ -387,109 +483,243 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
         ].join('\n');
     }
 
-    // Spawns/tracks one ffmpeg process copy-muxing the given video-only +
-    // audio-only selection into local fragmented-MP4 HLS output. Resolves
-    // only once ffmpeg has produced real, fetchable playable output (the
-    // pipeline's 'ready' event) — so /load naturally waits for that before
-    // responding, and /live.m3u8 + /hls/* both refuse to serve anything
-    // until pipelineReady is true.
+    // Signed googlevideo URLs carry the moment they stop being honoured in the
+    // query string itself. Reading it turns the refresh from a blind timer into
+    // a deadline, which is the difference between one glitch every 20 minutes
+    // and one every few hours.
+    function urlExpiryMs(url) {
+        try {
+            const exp = new URL(url).searchParams.get('expire');
+            if (exp && /^\d+$/.test(exp)) return parseInt(exp, 10) * 1000;
+        } catch (_) { /* fall through to the path-style form below */ }
+        const m = String(url || '').match(/[?&/]expire[=/](\d{10,})/);
+        return m ? parseInt(m[1], 10) * 1000 : null;
+    }
+
+    function computeRefreshDueAt(selection) {
+        const now = Date.now();
+        const stamps = [selection.video, selection.audio, selection.combined]
+            .filter(Boolean)
+            .map(f => urlExpiryMs(f.url))
+            .filter(v => v && v > now);
+        if (!stamps.length) return now + FFMPEG_REFRESH_FALLBACK_MS;
+        const due = Math.min(...stamps) - FFMPEG_REFRESH_MARGIN_MS;
+        return Math.min(Math.max(due, now + FFMPEG_REFRESH_MIN_MS), now + FFMPEG_REFRESH_MAX_MS);
+    }
+
+    // Is playable output actually reaching the playlist right now? The ledger is
+    // the only component that knows, because it is the only one that sees
+    // segments appear. state.ffmpeg.pipelineReady says "a run started
+    // successfully once", which is a different and much weaker claim.
+    function ffmpegOnAir() {
+        return !!(ledger && ledger.hasSegments() && (ledger.msSinceLastSegment() ?? Infinity) < FFMPEG_STALL_MS);
+    }
+
+    function lastFfmpegError(stderrTail) {
+        const lines = String(stderrTail || '').split('\n').map(l => l.trim()).filter(Boolean);
+        const err = lines.reverse().find(l => /error|invalid|failed|denied|403|404|refused/i.test(l));
+        return err ? err.slice(0, 200) : 'no diagnostic output';
+    }
+
+    // Starts a NEW ffmpeg run and cuts over to it once it has produced real,
+    // fetchable output — make-before-break, the way a broadcast encoder fails
+    // over. The run already on air keeps producing (and keeps being served)
+    // right up to the cutover, so a refresh or a recovery costs one
+    // #EXT-X-DISCONTINUITY instead of the 20-40s hole the old
+    // stop-then-resolve-then-start order left with nothing to serve.
+    //
+    // Never call this directly for a restart — go through requestFfmpegRestart(),
+    // which serialises callers. Two concurrent starts are the bug that let two
+    // ffmpeg processes share one output directory.
     function startFfmpegRelay(selection) {
         return new Promise((resolve, reject) => {
             const { ffmpegPath } = findFfmpeg();
             if (!ffmpegPath) { reject(new Error('ffmpeg not found')); return; }
-            if (!hlsOutputDir) { reject(new Error('relay HLS output directory not configured')); return; }
+            if (!hlsOutputDir || !ledger) { reject(new Error('relay HLS output directory not configured')); return; }
 
-            state.mode = 'ffmpeg-split';
-            state.ffmpeg.selected = selection;
-            state.ffmpeg.pipelineReady = false;
-            state.ffmpeg.generation += 1;
-            state.ffmpeg.resolvedAt = Date.now();
-            state.ffmpeg.copyConfirmed = null;
-
+            const previous = state.ffmpeg.pipeline; // null on a cold start; still on air during a restart
             const pipeline = new FfmpegPipeline(ffmpegPath, hlsOutputDir);
-            state.ffmpeg.pipeline = pipeline;
             let settled = false;
 
+            // A replacement that fails must take only itself down. The stream
+            // currently on air is untouched, and the half-started process is
+            // reaped rather than left to write into the output directory.
+            const fail = (err) => {
+                if (settled) return;
+                settled = true;
+                try { pipeline.kill(); } catch (_) { /* noop */ }
+                // It never reached the playlist, so its output is dead weight —
+                // remove it rather than let every failed restart attempt leave a
+                // partial run behind on disk.
+                ledger.discardRun(pipeline.runId);
+                reject(err);
+            };
+
             pipeline.once('ready', () => {
+                if (settled) return;
+                settled = true;
+                // Atomic period swap: the outgoing run stops contributing in the
+                // same tick the incoming one starts, so the two can never
+                // interleave segments in the playlist.
+                if (previous && previous !== pipeline) {
+                    ledger.retireRun(previous.runId);
+                    previous.stop();
+                    logEvent(`Cut over from run ${previous.runId} to ${pipeline.runId} (no gap)`);
+                }
+                ledger.promoteRun(pipeline.runId);
+                state.ffmpeg.pipeline = pipeline;
+                state.ffmpeg.selected = selection;
                 state.ffmpeg.pipelineReady = true;
+                state.ffmpeg.runId = pipeline.runId;
+                state.ffmpeg.pid = pipeline.proc && pipeline.proc.pid;
                 state.ffmpeg.copyConfirmed = pipeline.getCopyConfirmation();
+                state.ffmpeg.resolvedAt = Date.now();
+                state.ffmpeg.refreshDueAt = computeRefreshDueAt(selection);
+                state.ffmpeg.consecutiveFailures = 0;
+                state.mode = 'ffmpeg-split';
                 if (!state.readyAt) state.readyAt = Date.now();
-                logEvent(`ffmpeg split-mux ready: ${selection.video.width}x${selection.video.height}`);
-                if (!settled) { settled = true; resolve(); }
-            });
-            pipeline.once('ready-timeout', () => {
-                logEvent('ffmpeg produced no playable output within 30s');
-                pipeline.kill();
-                if (!settled) { settled = true; reject(new Error('ffmpeg did not produce playable output in time')); }
-            });
-            pipeline.on('error', (err) => {
-                state.lastError = err.message;
-                logEvent(`ffmpeg process error: ${err.message}`);
-                if (!settled) { settled = true; reject(err); }
-            });
-            pipeline.on('close', ({ wasIntentional }) => {
-                if (state.ffmpeg.pipeline === pipeline) state.ffmpeg.pipeline = null;
-                if (wasIntentional) {
-                    // stopFfmpegRelay()-initiated (e.g. a new video was loaded while this
-                    // pipeline was still starting) — no recovery needed, but still settle
-                    // the promise if nobody has yet, so an in-flight caller (e.g. a
-                    // recovery attempt superseded mid-start) doesn't hang forever.
-                    if (!settled) { settled = true; reject(new Error('relay stopped before ffmpeg finished starting')); }
-                    return;
-                }
-                logEvent('ffmpeg exited unexpectedly');
-                if (!settled) {
-                    settled = true;
-                    reject(new Error('ffmpeg exited unexpectedly before producing output'));
-                    return;
-                }
-                if (state.type === 'LIVE' && state.mode === 'ffmpeg-split') scheduleFfmpegRecovery();
+                const mins = Math.round((state.ffmpeg.refreshDueAt - Date.now()) / 60000);
+                logEvent(`ffmpeg split-mux ready: ${selection.video.width}x${selection.video.height} (run ${pipeline.runId}, next URL refresh in ~${mins}min)`);
+                resolve();
             });
 
+            pipeline.once('ready-timeout', () => {
+                logEvent(`ffmpeg run ${pipeline.runId} produced no playable output within 30s`);
+                fail(new Error('ffmpeg did not produce playable output in time'));
+            });
+
+            pipeline.on('error', (err) => {
+                state.lastError = err.message;
+                logEvent(`ffmpeg process error (run ${pipeline.runId}): ${err.message}`);
+                fail(err);
+            });
+
+            pipeline.on('close', ({ wasIntentional, runId, stderrTail }) => {
+                ledger.retireRun(runId);
+                if (!settled) {
+                    fail(new Error(wasIntentional
+                        ? 'relay stopped before ffmpeg finished starting'
+                        : `ffmpeg exited before producing output — ${lastFfmpegError(stderrTail)}`));
+                    return;
+                }
+                // Only the run currently on air can trigger recovery. A run that
+                // has already been superseded by a newer one exiting is expected
+                // and must stay silent — that stray path is how the old code
+                // ended up with a recovery timer racing a mode switch.
+                if (state.ffmpeg.pipeline !== pipeline) return;
+                state.ffmpeg.pipeline = null;
+                if (wasIntentional) return;
+                logEvent(`ffmpeg run ${runId} exited unexpectedly — ${lastFfmpegError(stderrTail)}`);
+                if (state.type === 'LIVE' && state.mode === 'ffmpeg-split') {
+                    requestFfmpegRestart('ffmpeg exited unexpectedly');
+                }
+            });
+
+            // Staged: the ledger owns this run's files from now on (so a failure
+            // can be cleaned up), but it publishes nothing until promoteRun().
+            ledger.registerRun({
+                runId: pipeline.runId,
+                playlistFile: pipeline.playlistFile,
+                initFile: pipeline.initFile,
+                staged: true,
+            });
             pipeline.start(selection);
-            state.ffmpeg.pid = pipeline.proc && pipeline.proc.pid;
         });
     }
 
     function stopFfmpegRelay() {
         return new Promise((resolve) => {
             const pipeline = state.ffmpeg.pipeline;
+            // Cleared BEFORE stopping so the close handler above recognises this
+            // as a deliberate teardown and does not schedule a recovery.
+            state.ffmpeg.pipeline = null;
+            state.ffmpeg.pipelineReady = false;
+            state.ffmpeg.runId = null;
             if (!pipeline) { resolve(); return; }
-            pipeline.once('close', () => resolve());
+            ledger && ledger.retireRun(pipeline.runId);
+            let done = false;
+            const finish = () => { if (done) return; done = true; resolve(); };
+            pipeline.once('close', finish);
+            // pipeline.stop() already escalates SIGTERM -> SIGKILL after 5s, but a
+            // promise that can never settle would hang /load and /stop behind a
+            // process that is never going to exit. Bound it here too.
+            const guard = setTimeout(finish, 8000);
+            if (guard.unref) guard.unref();
             pipeline.stop();
         });
     }
 
-    // Re-resolves via yt-dlp (fresh signed URLs) and restarts ffmpeg, with
-    // backoff — mirrors ffmpeg-poc/start.js's auto-recovery. Falls back to
-    // the proxy-combined path if split formats are no longer available
-    // (e.g. the broadcaster's encoder configuration changed mid-stream).
-    function scheduleFfmpegRecovery() {
-        const videoIdAtSchedule = state.videoId;
-        state.reconnectCount++;
-        const delay = Math.min(2000 * state.reconnectCount, 15000);
-        logEvent(`ffmpeg auto-recovery in ${delay}ms (reconnect #${state.reconnectCount})`);
-        setTimeout(async () => {
-            // A new /load (different or same video) superseded this recovery attempt.
-            if (state.type !== 'LIVE' || state.videoId !== videoIdAtSchedule) return;
-            try {
-                const info = await fetchVideoInfo(state.videoId);
-                const selection = selectFormats(info);
-                if (selection.mode === 'split' && findFfmpeg().ffmpegPath) {
-                    await startFfmpegRelay(selection);
-                } else {
-                    logEvent('Split formats no longer available or ffmpeg missing — falling back to proxy-combined');
-                    await refreshMaster('ffmpeg recovery: falling back to combined');
+    // The ONE entry point for replacing the running ffmpeg — scheduled URL
+    // refresh, output stall and crash recovery all funnel through here, so they
+    // can never overlap. Re-resolves via yt-dlp for fresh signed URLs, starts a
+    // replacement beside the current run, and cuts over. Falls back to the
+    // proxy-combined path only after repeated failures with nothing on air.
+    function requestFfmpegRestart(reason) {
+        if (state.ffmpeg.restartInFlight) return state.ffmpeg.restartInFlight;
+
+        const videoIdAtStart = state.videoId;
+        const genAtStart = state.loadGeneration;
+        const superseded = () => state.loadGeneration !== genAtStart
+            || state.videoId !== videoIdAtStart
+            || state.type !== 'LIVE';
+
+        const run = (async () => {
+            for (;;) {
+                if (superseded()) return;
+                const failures = state.ffmpeg.consecutiveFailures;
+                if (failures > 0) {
+                    const delay = Math.min(2000 * failures, 15000);
+                    logEvent(`ffmpeg restart backoff ${delay}ms (consecutive failure #${failures})`);
+                    await sleep(delay);
+                    if (superseded()) return;
                 }
-            } catch (err) {
-                // Don't chase a video that's no longer loaded — a concurrent /load
-                // (new or same video) superseded this attempt while it was in flight.
-                if (state.videoId !== videoIdAtSchedule) return;
-                state.lastError = `ffmpeg recovery failed: ${err.message}`;
-                logEvent(state.lastError);
-                scheduleFfmpegRecovery();
+                try {
+                    state.ffmpeg.restartCount++;
+                    state.ffmpeg.lastRestartReason = reason;
+                    logEvent(`ffmpeg restart (${reason}) — re-resolving ${videoIdAtStart}`);
+                    const info = await fetchVideoInfo(videoIdAtStart);
+                    if (superseded()) return;
+                    const selection = selectFormats(info);
+                    if (selection.mode !== 'split' || !findFfmpeg().ffmpegPath) {
+                        logEvent('Split formats no longer available or ffmpeg missing — falling back to proxy-combined');
+                        await stopFfmpegRelay();
+                        await refreshMaster('ffmpeg restart: falling back to combined');
+                        return;
+                    }
+                    await startFfmpegRelay(selection);
+                    // A /load or /stop can arrive during the seconds this took to
+                    // cut over. Without this check the replacement would survive
+                    // its own supersession and leave an ffmpeg process running for
+                    // a video nobody asked for.
+                    if (superseded()) { await stopFfmpegRelay(); return; }
+                    state.lastError = null;
+                    return;
+                } catch (err) {
+                    if (superseded()) return;
+                    state.ffmpeg.consecutiveFailures++;
+                    state.reconnectCount++;
+                    state.lastError = `ffmpeg restart failed: ${err.message}`;
+                    logEvent(state.lastError);
+                    if (state.ffmpeg.consecutiveFailures >= FFMPEG_MAX_FAILURES_BEFORE_FALLBACK && !ffmpegOnAir()) {
+                        logEvent(`ffmpeg restart failed ${state.ffmpeg.consecutiveFailures}x with nothing on air — falling back to proxy-combined`);
+                        try {
+                            await stopFfmpegRelay();
+                            await refreshMaster('ffmpeg restarts exhausted, falling back to combined');
+                            return;
+                        } catch (e2) {
+                            logEvent(`Fallback to proxy-combined also failed: ${e2.message} — will keep retrying ffmpeg`);
+                        }
+                    }
+                }
             }
-        }, delay);
+        })();
+
+        // Held as the guard itself so a second caller awaits the first rather
+        // than starting a competing ffmpeg.
+        state.ffmpeg.restartInFlight = run;
+        run.catch((err) => logEvent(`ffmpeg restart loop aborted: ${err && err.message}`))
+           .finally(() => { state.ffmpeg.restartInFlight = null; });
+        return run;
     }
 
     function rewriteMediaPlaylist(text, baseUrl) {
@@ -602,6 +832,12 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
                     if (state.loadGeneration !== myGeneration) { await stopFfmpegRelay(); return buildReport(); }
                 } catch (err) {
                     logEvent(`ffmpeg split-mux failed to start (${err.message}) — falling back to proxy-combined`);
+                    // startFfmpegRelay() already reaped its own failed process, but
+                    // clear the ffmpeg state explicitly so nothing (watchdog or a
+                    // late close event) can flip the mode back to ffmpeg-split
+                    // after refreshMaster() has moved us to proxy-combined. That
+                    // mode-flapping race is what the old ready-timeout path caused.
+                    await stopFfmpegRelay();
                     await refreshMaster('ffmpeg start failed, falling back to combined');
                 }
             } else {
@@ -639,36 +875,70 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
         state.lastMediaFetchAt = null;
         state.vodSelectedFormat = null;
         state.readyAt = null;
+        state.ffmpeg.refreshDueAt = null;
+        state.ffmpeg.consecutiveFailures = 0;
+        // Nothing is being served any more, so the segment history is dead
+        // weight — drop it and clear the disk.
+        if (ledger) ledger.reset();
         logEvent('Relay stopped (client requested — source hidden, relay disabled, or player destroyed)');
     }
 
     function startWatchdog() {
-        setInterval(async () => {
+        const timer = setInterval(async () => {
             if (state.type !== 'LIVE') return;
             try {
                 if (state.mode === 'ffmpeg-split') {
-                    if (state.ffmpeg.resolvedAt && (Date.now() - state.ffmpeg.resolvedAt) > MASTER_MAX_AGE_MS) {
-                        logEvent('Watchdog: proactively refreshing ffmpeg relay URLs...');
+                    // Never compete with a restart that is already running. This
+                    // guard plus requestFfmpegRestart()'s own single-flight is what
+                    // makes it impossible for two ffmpeg processes to end up
+                    // sharing the output directory.
+                    if (state.ffmpeg.restartInFlight) return;
+
+                    // 1. Liveness. The one signal that actually means "frames are
+                    //    reaching the player": did a new segment appear? Process
+                    //    liveness is not a proxy for it — ffmpeg's -reconnect keeps
+                    //    a wedged pull running forever, and the old watchdog only
+                    //    ever looked at manifest AGE, so a silently dead stream
+                    //    kept reporting a healthy "RELAY LIVE 1920x1080".
+                    const since = ledger ? ledger.msSinceLastSegment() : null;
+                    if (state.ffmpeg.pipelineReady && since !== null && since > FFMPEG_STALL_MS) {
                         state.watchdogRefreshCount++;
-                        const info = await fetchVideoInfo(state.videoId);
-                        const selection = selectFormats(info);
-                        await stopFfmpegRelay();
-                        if (selection.mode === 'split' && findFfmpeg().ffmpegPath) {
-                            await startFfmpegRelay(selection);
-                        } else {
-                            await refreshMaster('watchdog: split gone, falling back to combined');
-                        }
+                        state.lastError = `No new segment for ${Math.round(since / 1000)}s`;
+                        requestFfmpegRestart(`output stalled ${Math.round(since / 1000)}s`);
+                        return;
+                    }
+
+                    // 2. The process vanished without its close event producing a
+                    //    restart (belt and braces — the close handler is the
+                    //    primary path).
+                    if (state.ffmpeg.pipelineReady && state.ffmpeg.pipeline && !state.ffmpeg.pipeline.isRunning()) {
+                        requestFfmpegRestart('ffmpeg process is gone');
+                        return;
+                    }
+
+                    // 3. Scheduled refresh, driven by the source URLs' real expiry
+                    //    rather than a blind 20-minute clock.
+                    if (state.ffmpeg.refreshDueAt && Date.now() >= state.ffmpeg.refreshDueAt) {
+                        state.watchdogRefreshCount++;
+                        requestFfmpegRestart('scheduled URL refresh before signature expiry');
                     }
                 } else if (masterIsStale()) {
-                    await refreshMaster('watchdog: master aged out');
-                    state.watchdogRefreshCount++;
+                    // Routed through kickRefresh, NOT straight to refreshMaster:
+                    // kickRefresh is single-flight and throttled, so the tick can
+                    // be fast (the ffmpeg stall check needs that) without ever
+                    // spawning a second yt-dlp alongside one already resolving.
+                    // Calling refreshMaster directly here raced both the initial
+                    // load and the on-demand /media.m3u8 refresh — observed live
+                    // as two overlapping resolves 400ms apart.
+                    if (kickRefresh('watchdog: master aged out')) state.watchdogRefreshCount++;
                 }
             } catch (err) {
                 state.lastError = err.message;
                 state.reconnectCount++;
-                logEvent(`Watchdog refresh failed (reconnect #${state.reconnectCount}): ${err.message}`);
+                logEvent(`Watchdog failed (reconnect #${state.reconnectCount}): ${err.message}`);
             }
         }, WATCHDOG_INTERVAL_MS);
+        if (timer.unref) timer.unref();
     }
 
     function buildReport() {
@@ -692,8 +962,13 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
             reconnectCount: state.reconnectCount,
             watchdogRefreshCount: state.watchdogRefreshCount,
             vodNote: state.vodSelectedFormat ? state.vodSelectedFormat.note : null,
+            cookiesRejected: !!state.cookiesRejected,
             pipelineReady: state.mode === 'ffmpeg-split' ? state.ffmpeg.pipelineReady : null,
             copyConfirmed: state.mode === 'ffmpeg-split' ? state.ffmpeg.copyConfirmed : null,
+            // A restart is a normal, survivable event now, but the UI should still
+            // be able to say so rather than showing a serenely healthy panel.
+            restarting: state.mode === 'ffmpeg-split' ? !!state.ffmpeg.restartInFlight : false,
+            restartCount: state.mode === 'ffmpeg-split' ? state.ffmpeg.restartCount : null,
         };
     }
 
@@ -729,7 +1004,12 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
         // Same stable URL regardless of mode — LivePlayer.html never needs to
         // know whether it's getting the ffmpeg-mux path or the proxy path.
         if (state.mode === 'ffmpeg-split') {
-            if (!state.ffmpeg.pipelineReady || !state.ffmpeg.selected) {
+            // Gated on the LEDGER having playable segments, not on a pipeline
+            // being up this instant. During a restart the previous run's segments
+            // are still on disk and still valid, so the master must keep
+            // resolving — the old pipelineReady gate turned every restart into a
+            // 503 storm that hls.js escalated to a fatal manifestLoadError.
+            if (!state.ffmpeg.selected || !ledger || !ledger.hasSegments()) {
                 return res.status(503).json({ error: 'ffmpeg relay pipeline not ready yet' });
             }
             res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
@@ -751,13 +1031,28 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
     // separately by buildFfmpegMasterPlaylist above — this only serves the
     // media playlist + fMP4 segments/init that ffmpeg itself writes).
     router.get('/hls/*', (req, res) => {
-        if (state.mode !== 'ffmpeg-split' || !state.ffmpeg.pipelineReady) {
+        if (state.mode !== 'ffmpeg-split' || !ledger) {
             return res.status(404).json({ error: 'ffmpeg relay not active' });
         }
         if (!hlsOutputDir) return res.status(404).json({ error: 'relay HLS output not configured' });
         const decoded = decodeURIComponent(req.params[0] || '');
-        const resolved = path.normalize(path.join(hlsOutputDir, decoded));
-        if (!resolved.startsWith(path.normalize(hlsOutputDir))) return res.status(400).send('bad path');
+
+        // The media playlist is synthesised, never read from disk. ffmpeg's own
+        // per-run playlists stay private precisely because they restart their
+        // numbering from zero; this one is continuous across every run.
+        if (decoded === 'stream.m3u8') {
+            const playlist = ledger.buildMediaPlaylist();
+            if (!playlist) return res.status(503).json({ error: 'no segments available yet' });
+            res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+            res.setHeader('Cache-Control', 'no-cache');
+            return res.send(playlist);
+        }
+
+        const root = path.resolve(hlsOutputDir);
+        const resolved = path.resolve(root, decoded);
+        // The separator matters: a bare startsWith(root) also accepts a sibling
+        // directory whose name merely begins with the root's ("relay_hls_x").
+        if (resolved !== root && !resolved.startsWith(root + path.sep)) return res.status(400).send('bad path');
         fs.readFile(resolved, (err, data) => {
             if (err) return res.status(404).send('not found');
             const ext = path.extname(resolved).toLowerCase();
@@ -766,7 +1061,13 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
                 : ext === '.mp4' ? 'video/mp4'
                 : 'application/octet-stream';
             res.setHeader('Content-Type', mime);
-            if (ext === '.m3u8') res.setHeader('Cache-Control', 'no-cache');
+            // Segment and init filenames now carry the run id and are never
+            // reused, so they are safely immutable. That is not a micro-
+            // optimisation: it is what guarantees a restart's new init segment
+            // can never be answered from a cached copy of the previous run's,
+            // which is exactly how the old fixed "init.mp4" name corrupted
+            // playback after every restart.
+            res.setHeader('Cache-Control', ext === '.m3u8' ? 'no-cache' : 'public, max-age=300, immutable');
             res.send(data);
         });
     });
@@ -847,9 +1148,28 @@ function createRelayRouter({ findYtDlp, findFfmpeg = () => ({ ffmpegPath: null, 
             pipelineReady: state.mode === 'ffmpeg-split' ? state.ffmpeg.pipelineReady : null,
             copyConfirmed: state.mode === 'ffmpeg-split' ? state.ffmpeg.copyConfirmed : null,
             lastError: state.lastError,
+            cookiesRejected: !!state.cookiesRejected,
             segmentFailStreak: state.segmentFailStreak || 0,
             lastSegmentOkAt: state.lastSegmentOkAt || null,
-            segmentsFlowing: !!(state.lastSegmentOkAt && (Date.now() - state.lastSegmentOkAt) < 30000),
+            // segmentsFlowing used to be derived only from state.lastSegmentOkAt,
+            // which is set by the /segment proxy route — a route the ffmpeg-split
+            // path never calls. So it read false forever in ffmpeg mode and the
+            // "no frames are reaching the player" detector simply did not exist
+            // there. In ffmpeg mode the ledger is the authority.
+            segmentsFlowing: state.mode === 'ffmpeg-split'
+                ? ffmpegOnAir()
+                : !!(state.lastSegmentOkAt && (now - state.lastSegmentOkAt) < 30000),
+            ffmpeg: state.mode === 'ffmpeg-split' ? {
+                runId: state.ffmpeg.runId,
+                pid: state.ffmpeg.pid,
+                processAlive: !!(state.ffmpeg.pipeline && state.ffmpeg.pipeline.isRunning()),
+                restarting: !!state.ffmpeg.restartInFlight,
+                restartCount: state.ffmpeg.restartCount,
+                consecutiveFailures: state.ffmpeg.consecutiveFailures,
+                lastRestartReason: state.ffmpeg.lastRestartReason,
+                refreshDueInMs: state.ffmpeg.refreshDueAt ? state.ffmpeg.refreshDueAt - now : null,
+                ledger: ledger ? ledger.stats() : null,
+            } : null,
             recentLog: state.log.slice(-40),
         });
     });

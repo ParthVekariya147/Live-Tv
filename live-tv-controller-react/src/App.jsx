@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useOBS } from './context/OBSContext';
 import { getCurrentDateTimeFormatted, DELAY_PLAYER_EVENT_KEY, LIVE_PLAYER_EVENT_KEY, LOCAL_PLAYER_EVENT_KEY, sendPlayerCommand } from './utils/core-utils';
 import { logVideoEnd, logVideoError } from './utils/logger';
+import { subscribePlayerEvents } from './utils/playerEventBus';
 import OBSControlPanel from './components/OBSControlPanel';
 import PlayerManager from './components/PlayerManager';
 import MonitorManager from './components/MonitorManager';
@@ -87,56 +88,54 @@ function App() {
     return () => ws.close();
   }, []);
 
-  // Global storage event listener for video ended events — uses ref so this never re-registers
+  // Global video-ended/error handoff — uses ref so this never re-registers.
+  // Events arrive through playerEventBus, which merges the same-browser localStorage
+  // path with the server WebSocket bridge; in the OBS deployment only the latter fires.
   useEffect(() => {
-    const handleStorageEvent = (event) => {
+    const handleDelayEvent = (data) => {
       const ss = sourceStateRef.current;
-
-      if (event.key === DELAY_PLAYER_EVENT_KEY && event.newValue) {
-        try {
-          const data = JSON.parse(event.newValue);
-          if (data.playerType === 'delay' && (data.event === 'videoEnded' || data.event === 'videoError')) {
-            sendPlayerCommand('delayLivePlayerCommand', 'pause');
-            const nextAction = !ss["Live Player"] ? 'switch_to_loop' : 'hide_delay';
-            if (data.event === 'videoEnded') {
-              logVideoEnd('Delay Live', data.videoId || 'unknown', nextAction);
-            } else {
-              logVideoError('Delay Live', data.videoId || 'unknown', data.errorCode, 'Video error', nextAction);
-            }
-            // 'auto_handoff', not the default 'manual' — this is the delay player
-            // reaching the end of its video and handing the screen on by itself.
-            // The trigger is what decides which notification the operator gets, so
-            // mislabelling it here would report an automatic switch as one they made.
-            if (!ss["Live Player"]) {
-              setSourceVisibility("Loop Player", true, 'auto_handoff');
-            } else {
-              setSourceVisibility("Delay Live", false, 'auto_handoff');
-            }
+      try {
+        if (data.playerType === 'delay' && (data.event === 'videoEnded' || data.event === 'videoError')) {
+          sendPlayerCommand('delayLivePlayerCommand', 'pause');
+          const nextAction = !ss["Live Player"] ? 'switch_to_loop' : 'hide_delay';
+          if (data.event === 'videoEnded') {
+            logVideoEnd('Delay Live', data.videoId || 'unknown', nextAction);
+          } else {
+            logVideoError('Delay Live', data.videoId || 'unknown', data.errorCode, 'Video error', nextAction);
           }
-        } catch (e) {
-          console.error('Error parsing DelayPlayer event:', e);
-        }
-      }
-
-      if (event.key === LIVE_PLAYER_EVENT_KEY && event.newValue) {
-        try {
-          const data = JSON.parse(event.newValue);
-          if (data.event === 'videoEnded' || data.event === 'videoError') {
-            if (data.event === 'videoEnded') {
-              logVideoEnd('Live Player', data.videoId || 'unknown', 'switch_to_loop');
-            } else {
-              logVideoError('Live Player', data.videoId || 'unknown', data.errorCode, 'Video error', 'switch_to_loop');
-            }
+          // 'auto_handoff', not the default 'manual' — this is the delay player
+          // reaching the end of its video and handing the screen on by itself.
+          // The trigger is what decides which notification the operator gets, so
+          // mislabelling it here would report an automatic switch as one they made.
+          if (!ss["Live Player"]) {
             setSourceVisibility("Loop Player", true, 'auto_handoff');
+          } else {
+            setSourceVisibility("Delay Live", false, 'auto_handoff');
           }
-        } catch (e) {
-          console.error('Error parsing LivePlayer event:', e);
         }
+      } catch (e) {
+        console.error('Error handling DelayPlayer event:', e);
       }
     };
 
-    window.addEventListener('storage', handleStorageEvent);
-    return () => window.removeEventListener('storage', handleStorageEvent);
+    const handleLiveEvent = (data) => {
+      try {
+        if (data.event === 'videoEnded' || data.event === 'videoError') {
+          if (data.event === 'videoEnded') {
+            logVideoEnd('Live Player', data.videoId || 'unknown', 'switch_to_loop');
+          } else {
+            logVideoError('Live Player', data.videoId || 'unknown', data.errorCode, 'Video error', 'switch_to_loop');
+          }
+          setSourceVisibility("Loop Player", true, 'auto_handoff');
+        }
+      } catch (e) {
+        console.error('Error handling LivePlayer event:', e);
+      }
+    };
+
+    const unsubDelay = subscribePlayerEvents(DELAY_PLAYER_EVENT_KEY, handleDelayEvent);
+    const unsubLive = subscribePlayerEvents(LIVE_PLAYER_EVENT_KEY, handleLiveEvent);
+    return () => { unsubDelay(); unsubLive(); };
   }, [setSourceVisibility]); // setSourceVisibility is stable; sourceState read via ref
 
   const toggleMonitor1 = () => {

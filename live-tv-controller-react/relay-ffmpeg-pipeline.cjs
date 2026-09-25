@@ -16,11 +16,32 @@
 // sidesteps this proactively — relay-service.cjs already knows the selected
 // format's resolution/bitrate from yt-dlp's metadata and synthesizes the
 // master playlist itself (see buildFfmpegMasterPlaylist in relay-service.cjs).
+//
+// ONE RUN = ONE PROCESS = ONE PRIVATE NAMESPACE
+// ---------------------------------------------
+// A pipeline no longer owns the output directory, and it NEVER deletes
+// anything. It writes to filenames stamped with its own runId
+// (init_<runId>.mp4, seg_<runId>_NNNNN.m4s, run_<runId>.m3u8) and its
+// playlist is private — relay-hls-ledger.cjs tails it and synthesises the
+// single continuous playlist the player consumes. That is what makes a
+// restart survivable: the old run's segments stay on disk and stay served
+// while the new run spins up beside it, and the two can never collide.
+//
+// The previous design did the opposite (wiped the directory on every start,
+// reused seg_00000/init.mp4 for every run) which reset #EXT-X-MEDIA-SEQUENCE
+// to 0 and swapped the init segment under the player's feet — a guaranteed
+// fatal hls.js error roughly every 20 minutes.
 
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const { EventEmitter } = require('events');
+
+let runCounter = 0;
+function nextRunId() {
+    runCounter = (runCounter + 1) % 100000;
+    return `${Date.now().toString(36)}${runCounter.toString(36)}`;
+}
 
 function headerString(httpHeaders) {
     const h = httpHeaders || {};
@@ -34,11 +55,19 @@ function reconnectFlags() {
     // Best-effort network resilience for long-lived HTTP(S) reads. Older
     // ffmpeg builds may not know every flag; unknown input options on some
     // builds are just ignored with a warning rather than a hard failure.
+    //
+    // -rw_timeout matters as much as the reconnect flags: without it a dead
+    // socket leaves ffmpeg blocked in read() forever. The process stays alive
+    // and healthy-looking while producing nothing, which is precisely the
+    // failure the old code could not see (its only health signal was process
+    // exit). With it, a wedged read becomes an exit, and the ledger's
+    // no-new-segment watchdog catches whatever slips through.
     return [
         '-reconnect', '1',
         '-reconnect_streamed', '1',
         '-reconnect_delay_max', '5',
         '-reconnect_on_network_error', '1',
+        '-rw_timeout', '15000000', // 15s, microseconds
     ];
 }
 
@@ -59,13 +88,15 @@ function inputBlock(format) {
 // ffmpeg-poc). The fix: spawn ffmpeg with cwd set to outDir (see start()
 // below) and use bare relative filenames here, so there's no
 // path-separator to misparse.
-function buildArgs(selected) {
-    const m3u8Path = 'stream.m3u8';
-    const segPath = 'seg_%05d.m4s';
+function buildArgs(selected, runId) {
+    const names = runFilenames(runId);
 
-    // LIVE relay always uses a rolling window (bounded list, old segments
-    // deleted) — the player only ever needs to join near the live edge.
-    const hlsFlags = ['-hls_list_size', '8', '-hls_flags', 'independent_segments+delete_segments+append_list'];
+    // hls_list_size 0 keeps every entry in this run's PRIVATE playlist and
+    // delete_segments is gone entirely: retention is the ledger's job now, and
+    // it keeps files well past the point they leave the advertised window. A
+    // run is bounded (it is replaced long before its source URLs expire), so
+    // the private playlist stays a few hundred lines at most.
+    const hlsFlags = ['-hls_list_size', '0', '-hls_flags', 'independent_segments'];
 
     // YouTube Live's HLS variants (mode 'combined', consumed via ffmpeg's own
     // HLS demuxer) deliver AAC as raw ADTS inside MPEG-TS segments. Muxing
@@ -88,9 +119,9 @@ function buildArgs(selected) {
         '-hls_time', '4',
         ...hlsFlags,
         '-hls_segment_type', 'fmp4',
-        '-hls_fmp4_init_filename', 'init.mp4',
-        '-hls_segment_filename', segPath,
-        m3u8Path,
+        '-hls_fmp4_init_filename', names.initFile,
+        '-hls_segment_filename', names.segmentPattern,
+        names.playlistFile,
     ];
 
     let inputArgs;
@@ -104,6 +135,14 @@ function buildArgs(selected) {
     }
 
     return ['-hide_banner', '-loglevel', 'info', '-y', ...inputArgs, ...mapArgs, ...outputOpts];
+}
+
+function runFilenames(runId) {
+    return {
+        initFile: `init_${runId}.mp4`,
+        playlistFile: `run_${runId}.m3u8`,
+        segmentPattern: `seg_${runId}_%05d.m4s`,
+    };
 }
 
 // Scans ffmpeg's stderr for the "Stream mapping" confirmation that every
@@ -121,18 +160,22 @@ class FfmpegPipeline extends EventEmitter {
         super();
         this.ffmpegPath = ffmpegPath;
         this.outDir = outDir;
+        this.runId = nextRunId();
+        Object.assign(this, runFilenames(this.runId));
         this.proc = null;
         this.stderrBuf = '';
         this._stopping = false;
+        this._exited = false;
+        this._readyTimer = null;
     }
 
     start(selected) {
         fs.mkdirSync(this.outDir, { recursive: true });
-        for (const f of fs.readdirSync(this.outDir)) {
-            fs.rmSync(path.join(this.outDir, f), { force: true });
-        }
+        // Deliberately NOT cleaned. Everything already in here belongs to the
+        // previous run and is still being served to the player while this one
+        // starts; relay-hls-ledger.cjs owns retention.
 
-        const args = buildArgs(selected);
+        const args = buildArgs(selected, this.runId);
         this.stderrBuf = '';
         this._stopping = false;
         this.proc = spawn(this.ffmpegPath, args, { cwd: this.outDir, stdio: ['ignore', 'ignore', 'pipe'] });
@@ -145,49 +188,75 @@ class FfmpegPipeline extends EventEmitter {
         });
 
         this.proc.on('error', (err) => {
+            this._clearReadyTimer();
             this.emit('error', err);
         });
 
         this.proc.on('close', (code, signal) => {
+            this._clearReadyTimer();
+            this._exited = true;
             const copyConfirmed = scanCopyConfirmation(this.stderrBuf);
             const wasIntentional = this._stopping;
-            this.emit('close', { code, signal, copyConfirmed, wasIntentional, stderrTail: this.stderrBuf.slice(-2000) });
+            this.emit('close', { code, signal, copyConfirmed, wasIntentional, runId: this.runId, stderrTail: this.stderrBuf.slice(-2000) });
         });
 
         this._pollReady();
 
-        return { pid: this.proc.pid, args };
+        return { pid: this.proc.pid, runId: this.runId, args };
     }
 
+    _clearReadyTimer() {
+        if (this._readyTimer) { clearTimeout(this._readyTimer); this._readyTimer = null; }
+    }
+
+    // Ready = this run has produced at least one complete, listed segment.
+    // ffmpeg writes the playlist entry only after closing the segment file, so
+    // an entry is proof of a fetchable segment, never a partial one.
     _pollReady(elapsedMs = 0) {
-        if (!this.proc || this.proc.killed) return;
-        const m3u8Path = path.join(this.outDir, 'stream.m3u8');
-        if (fs.existsSync(m3u8Path)) {
-            const text = fs.readFileSync(m3u8Path, 'utf8');
+        this._readyTimer = null;
+        if (!this.proc || this.proc.killed || this._stopping) return;
+        try {
+            const text = fs.readFileSync(path.join(this.outDir, this.playlistFile), 'utf8');
             if (text.includes('.m4s')) {
                 this.emit('ready');
                 return;
             }
-        }
+        } catch (_) { /* not written yet */ }
         if (elapsedMs > 30000) {
             this.emit('ready-timeout');
             return;
         }
-        setTimeout(() => this._pollReady(elapsedMs + 250), 250);
+        this._readyTimer = setTimeout(() => this._pollReady(elapsedMs + 250), 250);
+        if (this._readyTimer.unref) this._readyTimer.unref();
     }
 
     stop() {
+        this._clearReadyTimer();
         if (!this.proc) return;
         this._stopping = true;
         try { this.proc.kill('SIGTERM'); } catch { /* noop */ }
+        // SIGTERM is a request. A wedged ffmpeg can ignore it indefinitely, and
+        // the old code awaited a 'close' that might never arrive — which stalled
+        // loadVideo() and stopRelay() behind a process that was never going to
+        // exit. Escalate on a timer so shutdown is bounded.
+        const hardKill = setTimeout(() => {
+            try { if (!this._exited) this.proc.kill('SIGKILL'); } catch { /* noop */ }
+        }, 5000);
+        if (hardKill.unref) hardKill.unref();
+        this.once('close', () => clearTimeout(hardKill));
     }
 
     // Forceful kill that does NOT mark the stop as intentional — used when the
     // process is unresponsive. The resulting 'close' event is treated as a
     // crash, triggering recovery.
     kill() {
+        this._clearReadyTimer();
         if (!this.proc) return;
         try { this.proc.kill('SIGKILL'); } catch { /* noop */ }
+    }
+
+    isRunning() {
+        return !!(this.proc && !this._exited);
     }
 
     getCopyConfirmation() {
@@ -195,4 +264,4 @@ class FfmpegPipeline extends EventEmitter {
     }
 }
 
-module.exports = { FfmpegPipeline, buildArgs };
+module.exports = { FfmpegPipeline, buildArgs, runFilenames };

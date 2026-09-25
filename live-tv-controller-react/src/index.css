@@ -1889,3 +1889,115 @@ input[type="number"]:focus {
   text-align: center;
   word-break: break-all;
 }
+
+/* ============================================================
+   Video ID chip — the currently-playing identifier shown inside
+   each player card. Click the value or the 📋 button to copy;
+   the toast beside it confirms. See components/common/VideoIdChip.jsx
+   ============================================================ */
+.video-id-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 0 6px;
+  padding: 3px 6px;
+  border: 1px solid rgba(0, 173, 181, 0.28);
+  border-radius: 6px;
+  background: rgba(0, 173, 181, 0.07);
+  font-size: 0.72rem;
+  line-height: 1.3;
+  min-height: 26px;
+  box-sizing: border-box;
+}
+
+.video-id-chip__label {
+  color: #7b8794;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+
+.video-id-chip__value {
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.74rem;
+  color: #00d9e3;
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  min-width: 0;
+  text-align: left;
+  word-break: break-all;
+  transition: color 0.12s, text-shadow 0.12s;
+}
+
+.video-id-chip__value--truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl; /* keep the filename visible, clip the leading folders */
+  text-align: right;
+}
+
+.video-id-chip__value:hover {
+  color: #6ff3fa;
+  text-shadow: 0 0 6px rgba(0, 217, 227, 0.4);
+}
+
+.video-id-chip__value:active {
+  color: #ffffff;
+}
+
+.video-id-chip__btn {
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.video-id-chip__btn:hover {
+  background: rgba(0, 173, 181, 0.25);
+  border-color: rgba(0, 173, 181, 0.55);
+}
+
+/* Reserves its own width whether or not it is showing, so confirming a copy
+   never reflows the chip (and the ID under the cursor never shifts away). */
+.video-id-chip__toast {
+  flex-shrink: 0;
+  width: 72px;
+  color: #48bb78;
+  font-weight: 600;
+  font-size: 0.68rem;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+}
+
+.video-id-chip__toast--show {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.video-id-chip__toast--error {
+  color: #fc8181;
+}
+
+@media (max-width: 640px) {
+  .video-id-chip {
+    font-size: 0.68rem;
+  }
+
+  .video-id-chip__toast {
+    width: 64px;
+  }
+}

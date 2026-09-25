@@ -9,6 +9,7 @@ import { logVideoLoad, logVideoPlay } from '../utils/logger';
 import { setStateValue } from '../utils/state-api';
 import PlayerControlBtn from './common/PlayerControlBtn';
 import ThumbnailLoader from './common/ThumbnailLoader';
+import VideoIdChip from './common/VideoIdChip';
 
 const LOCAL_API_BASE = import.meta.env.VITE_LOCAL_API_BASE || "http://localhost:3000";
 
@@ -399,6 +400,7 @@ const DelayPlayerCard = () => {
             <h3>Delay Live Player</h3>
             <ThumbnailLoader src={videoThumbnail} alt="Delay Player Thumbnail" loading={thumbLoading} />
             <p className="video-title">{thumbLoading ? 'Loading...' : (videoTitle || 'No video loaded')}</p>
+            <VideoIdChip value={videoId} label="Video ID" title="Click to copy this video ID" />
             <p className="video-time-display">{timeInfo.currentTime} / {timeInfo.remainingTime}</p>
 
             <input

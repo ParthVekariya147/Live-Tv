@@ -40,16 +40,26 @@ export function migrateLegacyEndGroup(legacyGroupId) {
 // Picks which rule applies to an ended live stream's title — keyword rules are tried first
 // (case-insensitive substring match, comma-separated keywords per row, same convention as the
 // Loop Player Group "Live event" trigger uses), the row marked Default is the fallback when
-// nothing matches or the title is unknown. Returns null if nothing applies (do nothing, same
-// as leaving the old dropdown on "None").
+// nothing matches or the title is unknown. Returns null only when NO rule applies at all
+// (empty list, or a title that matches nothing and no Default row) — that is still "do
+// nothing", same as leaving the old dropdown on "None".
+//
+// A matching rule with no Group chosen is a MATCH, not a miss. It used to be filtered out by
+// an `r.groupId &&` guard on both the keyword and the default lookup, which meant a rule
+// saved before any Loop Automation Group existed (groupId: "") could never resolve — so the
+// handoff to Loop Player never happened either, because the caller treats null as "do
+// nothing". That is the entire "stream ended and it never switched to Loop Player" bug: the
+// two decisions were fused, so not knowing WHICH playlist to start also cancelled the switch.
+// They are now separate — the target says where to switch, and groupId is null when there is
+// simply no playlist to start on arrival.
 export function resolveLiveEndTarget(rules, title) {
     if (!Array.isArray(rules) || rules.length === 0) return null;
     const t = (title || '').toLowerCase().trim();
     if (t) {
-        const match = rules.find(r => r.groupId && (r.keywords || '').trim() !== ''
+        const match = rules.find(r => (r.keywords || '').trim() !== ''
             && r.keywords.split(',').map(s => s.trim().toLowerCase()).filter(Boolean).some(k => t.includes(k)));
-        if (match) return { groupId: match.groupId, listId: match.listId || null, matchedBy: 'keyword' };
+        if (match) return { groupId: match.groupId || null, listId: match.listId || null, matchedBy: 'keyword' };
     }
-    const fallback = rules.find(r => r.isDefault && r.groupId);
-    return fallback ? { groupId: fallback.groupId, listId: fallback.listId || null, matchedBy: 'default' } : null;
+    const fallback = rules.find(r => r.isDefault);
+    return fallback ? { groupId: fallback.groupId || null, listId: fallback.listId || null, matchedBy: 'default' } : null;
 }

@@ -445,7 +445,6 @@ class SchedulerService {
             title: schedule.title,
             time: schedule.time,
             triggerKey: triggerKey,
-            skipIfLivePlaying: schedule.skipIfLivePlaying === true,
             error: error,
             attempts: attempts + 1,
             addedAt: new Date().toISOString(),
@@ -492,8 +491,7 @@ class SchedulerService {
                         time: item.time,
                         triggerKey: item.triggerKey,
                         reason: 'retry',
-                        retryAttempt: item.attempts + 1,
-                        skipIfLivePlaying: item.skipIfLivePlaying === true
+                        retryAttempt: item.attempts + 1
                     });
 
                     // Success!
@@ -640,11 +638,7 @@ class SchedulerService {
                     title: schedule.title,
                     time: schedule.time,
                     triggerKey: triggerKey,
-                    reason: reason,
-                    // Per-schedule "don't interrupt the live broadcast" opt-in. The frontend
-                    // needs it on the trigger itself — it only ever sees this payload, not
-                    // the stored schedule (see Scheduler.jsx handleServerTrigger).
-                    skipIfLivePlaying: schedule.skipIfLivePlaying === true
+                    reason: reason
                 });
 
                 const executionTime = Date.now() - startTime;
@@ -832,10 +826,6 @@ class SchedulerService {
             scheduledDay: scheduleData.scheduledDay,
             title: scheduleData.title || '',
             enabled: scheduleData.enabled !== false,
-            // Opt-in: hold this event back while the Live Player is on air. Whitelisted
-            // here explicitly — this builder drops any field it doesn't name, so without
-            // it the flag never survived the round-trip from the UI.
-            skipIfLivePlaying: scheduleData.skipIfLivePlaying === true,
             lastTriggered: null,
             lastTriggeredAt: null,
             createdAt: new Date().toISOString()
@@ -947,7 +937,9 @@ class SchedulerService {
                     source: schedule.source,
                     action: schedule.action,
                     nextTrigger: nextTrigger,
-                    delay: nextTrigger.getTime() - now.getTime()
+                    delay: nextTrigger.getTime() - now.getTime(),
+                    skipUntil: schedule.skipUntil || null,
+                    nextFireAfterSkip: schedule.nextFireAfterSkip || null
                 });
             }
         }

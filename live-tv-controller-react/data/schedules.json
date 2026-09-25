@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "lastModified": "2026-08-22T12:07:21.097Z",
+  "lastModified": "2026-08-25T07:10:56.881Z",
   "schedulerEnabled": true,
   "schedules": [
     {
@@ -12,8 +12,8 @@
       "days": [],
       "title": "Refresh Katha Content",
       "enabled": true,
-      "lastTriggered": null,
-      "lastTriggeredAt": null,
+      "lastTriggered": "2026-08-24-20:55",
+      "lastTriggeredAt": "2026-08-24T18:04:31.392Z",
       "createdAt": "2026-08-06T06:42:59.056Z",
       "skipIfLivePlaying": false
     },
@@ -26,8 +26,8 @@
       "days": [],
       "title": "Load Katha to Delay Player",
       "enabled": true,
-      "lastTriggered": null,
-      "lastTriggeredAt": null,
+      "lastTriggered": "2026-08-24-20:58",
+      "lastTriggeredAt": "2026-08-24T18:04:31.562Z",
       "createdAt": "2026-08-06T06:43:51.471Z",
       "skipIfLivePlaying": false
     },
@@ -41,8 +41,8 @@
       "scheduledDay": null,
       "title": "Test",
       "enabled": true,
-      "lastTriggered": "2026-08-22-12:18",
-      "lastTriggeredAt": "2026-08-22T11:26:43.416Z",
+      "lastTriggered": "2026-08-24-12:18",
+      "lastTriggeredAt": "2026-08-24T12:48:37.888Z",
       "createdAt": "2026-08-06T06:45:46.616Z"
     },
     {
@@ -62,8 +62,8 @@
       ],
       "title": "Loop: AM",
       "enabled": true,
-      "lastTriggered": "2026-08-22-05:00",
-      "lastTriggeredAt": "2026-08-22T11:26:43.520Z",
+      "lastTriggered": "2026-08-25-05:00",
+      "lastTriggeredAt": "2026-08-25T05:47:30.680Z",
       "createdAt": "2026-08-06T11:22:08.455Z"
     },
     {
@@ -83,8 +83,8 @@
       ],
       "title": "Loop: PM",
       "enabled": true,
-      "lastTriggered": "2026-08-22-12:00",
-      "lastTriggeredAt": "2026-08-22T11:26:43.638Z",
+      "lastTriggered": "2026-08-24-12:00",
+      "lastTriggeredAt": "2026-08-24T12:48:38.097Z",
       "createdAt": "2026-08-06T11:26:21.647Z"
     },
     {
@@ -104,60 +104,12 @@
       ],
       "title": "Loop: Podhaniya",
       "enabled": true,
-      "lastTriggered": null,
-      "lastTriggeredAt": null,
+      "lastTriggered": "2026-08-24-22:00",
+      "lastTriggeredAt": "2026-08-24T18:04:31.850Z",
       "createdAt": "2026-08-06T11:30:33.616Z"
     }
   ],
   "executionHistory": [
-    {
-      "id": 1785048921782,
-      "timestamp": "2026-07-26T06:55:21.782Z",
-      "scheduleId": 1782763892475,
-      "source": "Live Player",
-      "action": "show",
-      "title": "",
-      "status": "success",
-      "reason": "catch-up",
-      "executionTimeMs": 243,
-      "error": null
-    },
-    {
-      "id": 1785048922200,
-      "timestamp": "2026-07-26T06:55:22.200Z",
-      "scheduleId": 1782764455026,
-      "source": "Local Player",
-      "action": "show",
-      "title": "",
-      "status": "success",
-      "reason": "catch-up",
-      "executionTimeMs": 254,
-      "error": null
-    },
-    {
-      "id": 1785048922621,
-      "timestamp": "2026-07-26T06:55:22.621Z",
-      "scheduleId": 1782765702582,
-      "source": "Loop Player",
-      "action": "show",
-      "title": "",
-      "status": "success",
-      "reason": "catch-up",
-      "executionTimeMs": 256,
-      "error": null
-    },
-    {
-      "id": 1785048923029,
-      "timestamp": "2026-07-26T06:55:23.029Z",
-      "scheduleId": 1782767295560,
-      "source": "Delay Live",
-      "action": "show",
-      "title": "",
-      "status": "success",
-      "reason": "catch-up",
-      "executionTimeMs": 252,
-      "error": null
-    },
     {
       "id": 1785048923429,
       "timestamp": "2026-07-26T06:55:23.429Z",
@@ -1308,6 +1260,54 @@
       "status": "success",
       "reason": "scheduled",
       "executionTimeMs": 76,
+      "error": null
+    },
+    {
+      "id": 1787575717951,
+      "timestamp": "2026-08-24T12:48:37.951Z",
+      "scheduleId": 1785998746616,
+      "source": "Delay Live",
+      "action": "show",
+      "title": "Test",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 62,
+      "error": null
+    },
+    {
+      "id": 1787575718061,
+      "timestamp": "2026-08-24T12:48:38.061Z",
+      "scheduleId": "pa_id-lbq18hebe_1786015328452_8c0z",
+      "source": "Playlist Automation",
+      "action": "playlist_automation",
+      "title": "Loop: AM",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 70,
+      "error": null
+    },
+    {
+      "id": 1787594671492,
+      "timestamp": "2026-08-24T18:04:31.492Z",
+      "scheduleId": 1785998579056,
+      "source": "Katha Refresh",
+      "action": "katha_refresh",
+      "title": "Refresh Katha Content",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 93,
+      "error": null
+    },
+    {
+      "id": 1787594671751,
+      "timestamp": "2026-08-24T18:04:31.751Z",
+      "scheduleId": 1785998631471,
+      "source": "Katha Player",
+      "action": "katha_player",
+      "title": "Load Katha to Delay Player",
+      "status": "success",
+      "reason": "catch-up",
+      "executionTimeMs": 164,
       "error": null
     }
   ]

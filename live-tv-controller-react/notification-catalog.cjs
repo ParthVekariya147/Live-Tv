@@ -84,12 +84,17 @@ const EVENTS = [
         tag: 'scheduler-alert',
         defaultEnabled: true,
         clientEmit: false,
+        // The alert's own message is the only field that is always populated. retryCount
+        // exists solely on retry-exhaustion alerts, so the old '"{scheduleName}" failed
+        // {retries} times' body rendered as '"OBS Disconnected" failed  times' for every
+        // other alert kind — 38 such notifications in this install's history, all of them
+        // grammatically broken AND missing the one detail that explained the alert.
         vars: [
-            { name: 'scheduleName', sample: 'Morning Katha', hint: 'Name of the schedule row' },
-            { name: 'retries',      sample: '3',             hint: 'How many attempts failed' },
+            { name: 'scheduleName', sample: 'OBS Disconnected', hint: 'What the alert is about' },
+            { name: 'detail',       sample: 'OBS has been unreachable since 14:48', hint: 'The alert message' },
         ],
         title: 'Scheduler Alert',
-        body:  '"{scheduleName}" failed {retries} times',
+        body:  '{scheduleName}\n{detail}',
     },
 
     // ── Manual changes ──────────────────────────────────────────────────────

@@ -31,6 +31,45 @@
     let player; // Declare player globally
     const PLAYER_KEY = "loopPlayerCommand"; // Unique key for this player in localStorage (for incoming commands from Controller.html)
     const PLAYER_EVENT_KEY = "loopPlayerEvent"; // Unique key for sending events to Controller.html
+
+    // ── Controller event bridge ───────────────────────────────────────────────
+    // Every event this page reports goes out two ways: the original localStorage
+    // write (picked up by a controller open in the SAME browser, via the "storage"
+    // event) AND a POST to /api/player-event, which the server re-broadcasts over
+    // the WebSocket every controller is already connected to.
+    //
+    // The POST is what makes this work in the real deployment: this page runs inside
+    // UnifiedPlayer.html in OBS's embedded browser, while the controller is open in
+    // Chrome or on a phone. Those are separate browsers with separate localStorage,
+    // so the "storage" event never crossed over and events like videoEnded were
+    // dropped on the floor — which is why Live Player's Stream-End Rules never fired.
+    // eventId lets the controller ignore the duplicate when both paths do land.
+    function publishPlayerEvent(key, payload) {
+      var data = Object.assign(
+        { eventId: Date.now().toString(36) + Math.random().toString(36).slice(2, 8) },
+        payload || {}
+      );
+      try {
+        localStorage.setItem(key, JSON.stringify(data));
+        setTimeout(function () { localStorage.removeItem(key); }, 100);
+      } catch (e) { /* storage unavailable — the POST below still reaches the controller */ }
+      try {
+        var body = JSON.stringify(Object.assign({ key: key }, data));
+        var sent = false;
+        if (navigator.sendBeacon) {
+          sent = navigator.sendBeacon("/api/player-event", new Blob([body], { type: "application/json" }));
+        }
+        if (!sent) {
+          fetch("/api/player-event", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: body,
+            keepalive: true
+          }).catch(function () {});
+        }
+      } catch (e) { /* server unreachable — the localStorage path above still applies */ }
+    }
+
     let isLoadingVideo = false; // Flag to prevent videoEnded during loading
     let timeUpdateInterval = null; // 24/7 Reliability: Track interval for cleanup
     // A freshly-constructed YT.Player doesn't have its control methods (playVideo,
@@ -387,14 +426,8 @@
           state = "ended";
           // Only report videoEnded if not in loading state
           if (!isLoadingVideo) {
-            // Notify Controller.html that video has ended
-            localStorage.setItem(
-              PLAYER_EVENT_KEY,
-              JSON.stringify({ playerType: "loop", event: "videoEnded" })
-            );
-            setTimeout(() => {
-              localStorage.removeItem(PLAYER_EVENT_KEY);
-            }, 100);
+            // Notify the controller that the video has ended
+            publishPlayerEvent(PLAYER_EVENT_KEY, { playerType: "loop", event: "videoEnded" });
           } else {
             console.log("LoopPlayer: Ignoring ENDED state during video loading.");
           }
@@ -453,17 +486,11 @@
         event.data
       );
       // Notify Controller.html that the video failed to load/play
-      localStorage.setItem(
-        PLAYER_EVENT_KEY,
-        JSON.stringify({
-          playerType: "loop",
-          event: "videoError",
-          errorCode: event.data,
-        })
-      );
-      setTimeout(() => {
-        localStorage.removeItem(PLAYER_EVENT_KEY); // Clear the item after a short delay
-      }, 100);
+      publishPlayerEvent(PLAYER_EVENT_KEY, {
+        playerType: "loop",
+        event: "videoError",
+        errorCode: event.data,
+      });
     }
     function reportEvent(eventName, data = {}) {
       const eventData = {
@@ -472,11 +499,7 @@
         timestamp: Date.now(),
         ...data,
       };
-      localStorage.setItem(PLAYER_EVENT_KEY, JSON.stringify(eventData));
-      // Clear the item after a short delay to ensure the 'storage' event fires cleanly
-      setTimeout(() => {
-        localStorage.removeItem(PLAYER_EVENT_KEY);
-      }, 100);
+      publishPlayerEvent(PLAYER_EVENT_KEY, eventData);
     }
 
     // 24/7 Reliability: Store interval ID for cleanup

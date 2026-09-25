@@ -3,9 +3,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useOBS } from '../context/OBSContext';
 import { sendPlayerCommand, LOCAL_PLAYER_EVENT_KEY, timeHMToSeconds } from '../utils/core-utils';
 import { usePlayerTime } from '../utils/usePlayerHooks';
+import { subscribePlayerEvents } from '../utils/playerEventBus';
 import { logSourceChange, logVideoEnd } from '../utils/logger';
 import { setStateValue } from '../utils/state-api';
 import PlayerControlBtn from './common/PlayerControlBtn';
+import VideoIdChip from './common/VideoIdChip';
 import { LOOP_AUTOMATION_LOCAL_KEY } from './LoopPlaylistAutomation';
 
 // Derive a readable label when a playlist item has no clean `name` (e.g. typed/pasted path) —
@@ -330,25 +332,22 @@ const LocalPlayerCard = () => {
         }
     }, [isVisible]);
 
+    // Via playerEventBus so the playlist still advances (and the day's end action still
+    // runs) when LocalPCPlayer.html is inside OBS's browser rather than this one.
     useEffect(() => {
-        const handleStorageEvent = (event) => {
-            if (event.key !== LOCAL_PLAYER_EVENT_KEY || !event.newValue) return;
-            try {
-                const data = JSON.parse(event.newValue);
-                if (data.playerType !== 'local') return;
-                if (data.event === 'videoEnded') {
-                    advanceToNextRef.current?.();
-                } else if (data.event === 'videoError') {
-                    // Load failed — show error then skip to next enabled video
-                    // Don't advance if the player was intentionally stopped
-                    if (isStoppedRef.current) return;
-                    setStatusText(`Load failed: ${data.message || 'unknown error'} — skipping...`);
-                    advanceToNextRef.current?.();
-                }
-            } catch (e) {}
+        const handlePlayerEvent = (data) => {
+            if (data.playerType !== 'local') return;
+            if (data.event === 'videoEnded') {
+                advanceToNextRef.current?.();
+            } else if (data.event === 'videoError') {
+                // Load failed — show error then skip to next enabled video
+                // Don't advance if the player was intentionally stopped
+                if (isStoppedRef.current) return;
+                setStatusText(`Load failed: ${data.message || 'unknown error'} — skipping...`);
+                advanceToNextRef.current?.();
+            }
         };
-        window.addEventListener('storage', handleStorageEvent);
-        return () => window.removeEventListener('storage', handleStorageEvent);
+        return subscribePlayerEvents(LOCAL_PLAYER_EVENT_KEY, handlePlayerEvent);
     }, []);
 
     // Core advance logic — shared by videoEnded and videoError.
@@ -1000,6 +999,14 @@ const LocalPlayerCard = () => {
             <p className="video-info-display">
                 {playlist.length > 0 ? `Video ${currentIndex + 1} of ${playlist.length} (${enabledCount} enabled)` : ''}
             </p>
+            {/* Local Player plays files off this PC, so its identifier is the path
+                rather than a YouTube video ID — same click-to-copy behaviour. */}
+            <VideoIdChip
+                value={playlist[currentIndex]?.path || playlist[currentIndex]?.name || ''}
+                label="File"
+                title="Click to copy the playing file's path"
+                truncate
+            />
 
             {/* AUTO-SCAN VIDEOS FOLDER */}
             <div className="w-full mt-2">

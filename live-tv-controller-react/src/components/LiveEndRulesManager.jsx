@@ -97,6 +97,25 @@ const LiveEndRulesManager = () => {
                 </div>
 
                 <div className="p-4 space-y-2">
+                    {/* A rule saved with no Group used to look complete and do nothing at all.
+                        It now still hands off to Loop Player — that is the fix — but it cannot
+                        start a playlist, and there is no way to tell from the row itself, so
+                        say it here. The "no Groups exist yet" case is called out separately
+                        because then the Group dropdown is simply empty and picking one is
+                        impossible until a Group is created in Loop Player → ⚙ Playlists. */}
+                    {automationGroups.length === 0 && (
+                        <p className="text-xs text-amber-400 bg-amber-950/30 border border-amber-800/40 rounded px-2 py-1.5 leading-snug">
+                            ⚠ No Playlist Automation Groups exist yet, so the Group column below has nothing
+                            to offer. These rules will still switch to Loop Player when the stream ends —
+                            they just won't start a playlist. Create a Group in Loop Player → ⚙ Playlists first.
+                        </p>
+                    )}
+                    {automationGroups.length > 0 && rows.some(r => !r.groupId) && (
+                        <p className="text-xs text-amber-400 bg-amber-950/30 border border-amber-800/40 rounded px-2 py-1.5 leading-snug">
+                            ⚠ {rows.filter(r => !r.groupId).length} rule(s) have no Group picked. They will switch
+                            to Loop Player when the stream ends, but won't start a playlist.
+                        </p>
+                    )}
                     {rows.length === 0 && (
                         <div className="text-center py-10 text-gray-500">
                             <p>No rules configured yet.</p>

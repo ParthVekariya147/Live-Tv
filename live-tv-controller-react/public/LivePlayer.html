@@ -43,6 +43,45 @@
     let player;
     const PLAYER_KEY = "livePlayerCommand"; // Unique key for this player in localStorage
     const LIVE_PLAYER_EVENT_KEY = 'livePlayerEvent';
+
+    // ── Controller event bridge ───────────────────────────────────────────────
+    // Every event this page reports goes out two ways: the original localStorage
+    // write (picked up by a controller open in the SAME browser, via the "storage"
+    // event) AND a POST to /api/player-event, which the server re-broadcasts over
+    // the WebSocket every controller is already connected to.
+    //
+    // The POST is what makes this work in the real deployment: this page runs inside
+    // UnifiedPlayer.html in OBS's embedded browser, while the controller is open in
+    // Chrome or on a phone. Those are separate browsers with separate localStorage,
+    // so the "storage" event never crossed over and events like videoEnded were
+    // dropped on the floor — which is why Live Player's Stream-End Rules never fired.
+    // eventId lets the controller ignore the duplicate when both paths do land.
+    function publishPlayerEvent(key, payload) {
+      var data = Object.assign(
+        { eventId: Date.now().toString(36) + Math.random().toString(36).slice(2, 8) },
+        payload || {}
+      );
+      try {
+        localStorage.setItem(key, JSON.stringify(data));
+        setTimeout(function () { localStorage.removeItem(key); }, 100);
+      } catch (e) { /* storage unavailable — the POST below still reaches the controller */ }
+      try {
+        var body = JSON.stringify(Object.assign({ key: key }, data));
+        var sent = false;
+        if (navigator.sendBeacon) {
+          sent = navigator.sendBeacon("/api/player-event", new Blob([body], { type: "application/json" }));
+        }
+        if (!sent) {
+          fetch("/api/player-event", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: body,
+            keepalive: true
+          }).catch(function () {});
+        }
+      } catch (e) { /* server unreachable — the localStorage path above still applies */ }
+    }
+
     let isLoadingVideo = false; // Flag to prevent videoEnded during loading
     let timeUpdateInterval = null; // 24/7 Reliability: Track interval for cleanup
     // Manual quality override from the controller's "Quality" dropdown ("setQuality"
@@ -77,8 +116,64 @@
     let relayStartWallClock = null;
     let relayHealthCheckTick = 0;
 
+    // ---- relay error budget -------------------------------------------------
+    // A single fatal hls.js error used to kill relay mode permanently. That was
+    // wrong twice over: the server now restarts ffmpeg deliberately (URL refresh,
+    // crash recovery), which the player must ride out, and a transient network
+    // blip is not a reason to abandon a 24/7 broadcast for the rest of the day.
+    // Fatal errors are instead worked through the standard hls.js recovery
+    // ladder, and only a sustained burst of them — errors that recovery itself
+    // cannot clear — falls back to the YouTube iframe.
+    const RELAY_MAX_NETWORK_RETRIES = 8;   // per burst
+    const RELAY_MAX_MEDIA_RECOVERIES = 4;  // per burst
+    const RELAY_HEALTHY_MS = 30000;        // uninterrupted playback that clears the budget
+    // A player sitting on a frozen frame with no error at all is the failure the
+    // old code could not see. Nudge to the live edge, then give up on the run.
+    const RELAY_STALL_LIMIT_TICKS = 20;    // ~20s of currentTime not advancing
+    let relayNetRetries = 0;
+    let relayMediaRecoveries = 0;
+    let relayLastHealthyAt = 0;
+    let relayStallTicks = 0;
+    let relayLastMediaTime = -1;
+    let relayNudges = 0;
+    let relayReconnectingShown = false;
+
+    function resetRelayErrorBudget() {
+      relayNetRetries = 0;
+      relayMediaRecoveries = 0;
+      relayLastHealthyAt = Date.now();
+      relayStallTicks = 0;
+      relayLastMediaTime = -1;
+      relayNudges = 0;
+    }
+
     function getRelayVideoEl() {
-      if (!relayVideoEl) relayVideoEl = document.getElementById("relayVideo");
+      if (!relayVideoEl) {
+        relayVideoEl = document.getElementById("relayVideo");
+        // Stream-end detection for relay mode. While the relay is on air the YouTube
+        // iframe behind it is deliberately paused (see activateRelayUI), and a paused
+        // player can never reach YT.PlayerState.ENDED — which was the only thing that
+        // ever reported videoEnded. So with Direct Relay ON, the end of a broadcast was
+        // invisible to the controller and Stream-End Rules could not fire at all.
+        // When a broadcast actually finishes YouTube closes the HLS playlist with
+        // #EXT-X-ENDLIST, hls.js plays it out, and the media element fires "ended" —
+        // that is the relay path's equivalent signal. Report it, then fall back to the
+        // iframe. The controller ignores a repeat videoEnded for the same video id, so
+        // the iframe resuming and reaching ENDED a moment later is harmless.
+        if (relayVideoEl) {
+          relayVideoEl.addEventListener("ended", function () {
+            if (!relayActive) return;
+            QLOG("RELAY_STREAM_ENDED", { videoId: currentVideoId });
+            publishPlayerEvent(LIVE_PLAYER_EVENT_KEY, {
+              playerType: "live",
+              event: "videoEnded",
+              videoId: currentVideoId,
+              source: "relay",
+            });
+            stopRelayCompletely("stream ended");
+          });
+        }
+      }
       return relayVideoEl;
     }
 
@@ -96,12 +191,14 @@
       if (patch.mode !== undefined) lastRelayStatus.mode = patch.mode;
       if (patch.resolution !== undefined) lastRelayStatus.resolution = patch.resolution;
       if (patch.reconnectCount !== undefined) lastRelayStatus.reconnectCount = patch.reconnectCount;
+      if (patch.cookiesRejected !== undefined) lastRelayStatus.cookiesRejected = patch.cookiesRejected;
       reportEvent("relayStatus", {
         active: !!patch.active,
         mode: patch.mode !== undefined ? patch.mode : lastRelayStatus.mode,
         resolution: patch.resolution !== undefined ? patch.resolution : lastRelayStatus.resolution,
         reason: patch.reason ?? null,
         lastError: patch.lastError ?? null,
+        cookiesRejected: patch.cookiesRejected ?? lastRelayStatus.cookiesRejected ?? false,
         reconnectCount: patch.reconnectCount !== undefined ? patch.reconnectCount : lastRelayStatus.reconnectCount,
         videoId: patch.videoId !== undefined ? patch.videoId : currentVideoId,
       });
@@ -120,7 +217,10 @@
         if (!data.success || data.report.type !== "LIVE") {
           const reason = data.success ? data.report.type : data.error;
           QLOG("RELAY_LOAD_SKIPPED", { videoId, reason });
-          pushRelayStatus({ active: false, mode: null, resolution: null, reason, videoId });
+          pushRelayStatus({
+            active: false, mode: null, resolution: null, reason, videoId,
+            cookiesRejected: !!(data.report && data.report.cookiesRejected),
+          });
           return; // stay on the YouTube iframe — safe fallback, nothing to undo
         }
         QLOG("RELAY_LOAD_RESOLVED", { videoId, report: data.report });
@@ -139,8 +239,64 @@
         pushRelayStatus({ active: false, mode: null, resolution: null, reason: "hls.js not supported in this browser", videoId });
         return;
       }
-      hlsInstance = new Hls({ lowLatencyMode: true });
+      resetRelayErrorBudget();
+      hlsInstance = new Hls({
+        // The relay emits plain 4s CMAF segments, never LL-HLS parts, so
+        // lowLatencyMode bought no actual latency reduction — all it did was park
+        // the player on the live edge with a couple of seconds of buffer, which
+        // is why any server-side hiccup was instantly fatal. Sitting a few
+        // segments back costs nothing a viewer can perceive on a 24/7 channel and
+        // buys enough buffer to ride straight through a relay restart.
+        lowLatencyMode: false,
+        liveSyncDurationCount: 4,
+        liveMaxLatencyDurationCount: 12,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 120,
+        backBufferLength: 30,
+        // The server signals a relay restart as an #EXT-X-DISCONTINUITY with a
+        // new #EXT-X-MAP. Give the player room to step over the seam rather than
+        // stalling on the timestamp jump.
+        maxBufferHole: 1,
+        nudgeMaxRetry: 10,
+        // Keep retrying playlists and fragments across a restart instead of
+        // escalating to fatal on the first few failures.
+        manifestLoadPolicy: {
+          default: {
+            maxTimeToFirstByteMs: 15000, maxLoadTimeMs: 30000,
+            timeoutRetry: { maxNumRetry: 4, retryDelayMs: 1000, maxRetryDelayMs: 4000 },
+            errorRetry: { maxNumRetry: 6, retryDelayMs: 1000, maxRetryDelayMs: 8000 },
+          },
+        },
+        playlistLoadPolicy: {
+          default: {
+            maxTimeToFirstByteMs: 15000, maxLoadTimeMs: 30000,
+            timeoutRetry: { maxNumRetry: 4, retryDelayMs: 1000, maxRetryDelayMs: 4000 },
+            errorRetry: { maxNumRetry: 8, retryDelayMs: 1000, maxRetryDelayMs: 8000 },
+          },
+        },
+        fragLoadPolicy: {
+          default: {
+            maxTimeToFirstByteMs: 20000, maxLoadTimeMs: 60000,
+            timeoutRetry: { maxNumRetry: 4, retryDelayMs: 500, maxRetryDelayMs: 4000 },
+            errorRetry: { maxNumRetry: 8, retryDelayMs: 500, maxRetryDelayMs: 8000 },
+          },
+        },
+      });
       el.muted = mutedState;
+
+      // Evidence of real health — used to expire the error budget so a stream
+      // that runs fine for hours between two unrelated blips is never judged by
+      // their sum.
+      hlsInstance.on(Hls.Events.FRAG_BUFFERED, () => {
+        // A buffered fragment is proof the recovery worked — clear the
+        // "reconnecting" banner immediately, rather than leaving the controller
+        // showing a warning about a problem that is already over.
+        if (relayReconnectingShown) {
+          relayReconnectingShown = false;
+          pushRelayStatus({ active: true, videoId, reason: null, lastError: null });
+        }
+        if (Date.now() - relayLastHealthyAt > RELAY_HEALTHY_MS) resetRelayErrorBudget();
+      });
       hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
         if (token !== relayLoadToken) return;
         // Mute the still-playing YouTube iframe BEFORE the relay video makes any
@@ -161,12 +317,76 @@
         });
       });
       hlsInstance.on(Hls.Events.ERROR, (event, data) => {
-        if (!data.fatal) return;
+        if (token !== relayLoadToken || !hlsInstance) return;
+
+        // Non-fatal errors are hls.js's normal operating noise (a retried
+        // fragment, a buffer nudge). The one worth acting on is a stall the
+        // player has stopped nudging itself out of.
+        if (!data.fatal) {
+          if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) nudgeToLiveEdge("buffer stalled");
+          return;
+        }
+
         QLOG("RELAY_FATAL_ERROR", { videoId, type: data.type, details: data.details });
-        if (token === relayLoadToken) stopRelayCompletely("hls fatal error: " + data.details);
+
+        // The standard hls.js recovery ladder. Each rung is tried a bounded
+        // number of times per burst; the budget resets after a stretch of clean
+        // playback, so a restart every few hours never accumulates towards a
+        // shutdown.
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          if (relayNetRetries < RELAY_MAX_NETWORK_RETRIES) {
+            relayNetRetries++;
+            const delay = Math.min(1000 * relayNetRetries, 5000);
+            QLOG("RELAY_RECOVER_NETWORK", { videoId, attempt: relayNetRetries, details: data.details, delay });
+            relayReconnectingShown = true;
+            pushRelayStatus({ active: true, videoId, reason: null, lastError: "reconnecting: " + data.details });
+            setTimeout(() => {
+              if (token !== relayLoadToken || !hlsInstance) return;
+              // startLoad() resumes from the live edge, which is where a relay
+              // that has just restarted is publishing again.
+              safeCall(() => hlsInstance.startLoad(-1));
+            }, delay);
+            return;
+          }
+        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          if (relayMediaRecoveries < RELAY_MAX_MEDIA_RECOVERIES) {
+            relayMediaRecoveries++;
+            QLOG("RELAY_RECOVER_MEDIA", { videoId, attempt: relayMediaRecoveries, details: data.details });
+            // First rung re-appends from the current position; if that keeps
+            // failing the codec itself is the suspect (a discontinuity across two
+            // ffmpeg runs can legitimately change the audio configuration).
+            safeCall(() => hlsInstance.recoverMediaError());
+            if (relayMediaRecoveries >= 2) safeCall(() => hlsInstance.swapAudioCodec());
+            return;
+          }
+        }
+
+        QLOG("RELAY_RECOVERY_EXHAUSTED", {
+          videoId, type: data.type, details: data.details,
+          netRetries: relayNetRetries, mediaRecoveries: relayMediaRecoveries,
+        });
+        stopRelayCompletely("hls fatal error after recovery attempts: " + data.details);
       });
       hlsInstance.loadSource("/api/relay/live.m3u8?t=" + Date.now());
       hlsInstance.attachMedia(el);
+    }
+
+    // Jump forward to where the relay is actually publishing. Used both for a
+    // reported buffer stall and for the silent freeze the tick watchdog detects —
+    // after a relay restart the live edge has moved on, and a player parked on a
+    // frozen frame will never get there on its own.
+    function nudgeToLiveEdge(why) {
+      if (!hlsInstance || !relayActive) return;
+      if (relayNudges >= 30) return; // something is structurally wrong; stop poking it
+      relayNudges++;
+      const el = getRelayVideoEl();
+      const target = hlsInstance.liveSyncPosition;
+      QLOG("RELAY_NUDGE", { why, target: target ?? null, currentTime: el ? el.currentTime : null });
+      safeCall(() => {
+        if (typeof target === "number" && isFinite(target) && target > 0) el.currentTime = target;
+        else if (el.buffered.length) el.currentTime = el.buffered.end(el.buffered.length - 1);
+      });
+      safeCall(() => el.play());
     }
 
     function activateRelayUI(videoId, report) {
@@ -177,6 +397,7 @@
       if (player) { safeCall(() => player.pauseVideo()); safeCall(() => player.mute()); }
       pushRelayStatus({
         active: true,
+        cookiesRejected: report ? !!report.cookiesRejected : false,
         mode: report ? (report.mode ?? null) : null,
         resolution: report ? (report.selectedResolution ?? null) : null,
         reason: null,
@@ -620,13 +841,11 @@
           state = "ended";
           // Only report videoEnded if not in loading state
           if (!isLoadingVideo) {
-            localStorage.setItem(
-              LIVE_PLAYER_EVENT_KEY,
-              JSON.stringify({ playerType: "live", event: "videoEnded" })
-            );
-            setTimeout(() => {
-              localStorage.removeItem(LIVE_PLAYER_EVENT_KEY);
-            }, 100);
+            publishPlayerEvent(LIVE_PLAYER_EVENT_KEY, {
+              playerType: "live",
+              event: "videoEnded",
+              videoId: currentVideoId,
+            });
           } else {
             console.log("LivePlayer: Ignoring ENDED state during video loading.");
           }
@@ -682,13 +901,12 @@
         event.data
       );
       // Report videoError so controller can switch to another player
-      localStorage.setItem(
-        LIVE_PLAYER_EVENT_KEY,
-        JSON.stringify({ playerType: "live", event: "videoError", errorCode: event.data })
-      );
-      setTimeout(() => {
-        localStorage.removeItem(LIVE_PLAYER_EVENT_KEY);
-      }, 100);
+      publishPlayerEvent(LIVE_PLAYER_EVENT_KEY, {
+        playerType: "live",
+        event: "videoError",
+        errorCode: event.data,
+        videoId: currentVideoId,
+      });
     }
 
     // Function to report events back to the main controller
@@ -699,11 +917,7 @@
         timestamp: Date.now(),
         ...data,
       };
-      localStorage.setItem(LIVE_PLAYER_EVENT_KEY, JSON.stringify(eventData));
-      // Clear the item after a short delay to ensure the 'storage' event fires cleanly
-      setTimeout(() => {
-        localStorage.removeItem(LIVE_PLAYER_EVENT_KEY);
-      }, 100);
+      publishPlayerEvent(LIVE_PLAYER_EVENT_KEY, eventData);
     }
     // 24/7 Reliability: Store interval ID for cleanup
     timeUpdateInterval = setInterval(() => {
@@ -718,6 +932,29 @@
         if (el && !el.paused && relayStartWallClock) {
           const elapsed = (Date.now() - relayStartWallClock) / 1000;
           reportEvent("timeUpdate", { currentTime: elapsed, duration: elapsed, remainingTime: 0 });
+        }
+
+        // Silent-freeze watchdog. The worst failure mode is the one that raises
+        // no error at all: the <video> stops advancing while hls.js sits happily
+        // idle, and the reported elapsed time above (deliberately wall-clock) goes
+        // right on ticking as though nothing were wrong. Watch the media element's
+        // OWN clock instead, and jump to the live edge when it flatlines.
+        if (el && !el.paused && !el.ended) {
+          if (el.currentTime === relayLastMediaTime) {
+            relayStallTicks++;
+            if (relayStallTicks === RELAY_STALL_LIMIT_TICKS) {
+              nudgeToLiveEdge("playback frozen for " + RELAY_STALL_LIMIT_TICKS + "s");
+            } else if (relayStallTicks >= RELAY_STALL_LIMIT_TICKS * 3) {
+              // Nudging did not help — the run is unrecoverable, hand back to the
+              // YouTube iframe rather than showing a still frame indefinitely.
+              QLOG("RELAY_FROZEN", { videoId: currentVideoId, seconds: relayStallTicks });
+              stopRelayCompletely("relay playback frozen for " + relayStallTicks + "s");
+              return;
+            }
+          } else {
+            relayStallTicks = 0;
+            relayLastMediaTime = el.currentTime;
+          }
         }
         // Not every "stream ended" is a fatal hls.js error (a graceful end can just
         // stop publishing new segments without ever erroring) — the YT iframe is

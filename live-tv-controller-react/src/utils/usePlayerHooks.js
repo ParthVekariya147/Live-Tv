@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { secondsToHMS } from './core-utils';
+import { subscribePlayerEvents } from './playerEventBus';
 
 /**
  * Custom hook to receive and format video time updates from player HTML pages.
@@ -22,55 +23,46 @@ export function usePlayerTime(playerEventKey, playerType) {
     const hasReceivedUpdate = useRef(false);
 
     useEffect(() => {
-        const handleStorageEvent = (event) => {
-            if (event.key !== playerEventKey || !event.newValue) return;
+        const handlePlayerEvent = (data) => {
+            if (playerType && data.playerType && data.playerType !== playerType) return;
 
-            try {
-                const data = JSON.parse(event.newValue);
-
-                if (playerType && data.playerType && data.playerType !== playerType) return;
-
-                if (data.event === 'durationUpdate') {
-                    const dur = typeof data.duration === 'number' && isFinite(data.duration) && data.duration > 0
-                        ? data.duration
-                        : 0;
-                    setTimeInfo(prev => ({
-                        ...prev,
-                        duration: secondsToHMS(dur),
-                        durationSeconds: dur,
-                        currentSeconds: 0,
-                        currentTime: '00:00',
-                        remainingTime: secondsToHMS(dur),
-                        remainingSeconds: dur,
-                    }));
-                    return;
-                }
-
-                // Only process timeUpdate events beyond this point
-                if (data.event !== 'timeUpdate') return;
-
-                hasReceivedUpdate.current = true;
-
-                // Calculate duration from currentTime + remainingTime if not provided directly
-                const currentSeconds = data.currentTime || 0;
-                const remainingSeconds = data.remainingTime || 0;
-                const durationSeconds = data.duration || (currentSeconds + remainingSeconds);
-
-                setTimeInfo({
-                    currentTime: secondsToHMS(currentSeconds),
-                    remainingTime: secondsToHMS(remainingSeconds),
-                    duration: secondsToHMS(durationSeconds),
-                    currentSeconds,
-                    remainingSeconds,
-                    durationSeconds
-                });
-            } catch (e) {
-                // Ignore parse errors
+            if (data.event === 'durationUpdate') {
+                const dur = typeof data.duration === 'number' && isFinite(data.duration) && data.duration > 0
+                    ? data.duration
+                    : 0;
+                setTimeInfo(prev => ({
+                    ...prev,
+                    duration: secondsToHMS(dur),
+                    durationSeconds: dur,
+                    currentSeconds: 0,
+                    currentTime: '00:00',
+                    remainingTime: secondsToHMS(dur),
+                    remainingSeconds: dur,
+                }));
+                return;
             }
+
+            // Only process timeUpdate events beyond this point
+            if (data.event !== 'timeUpdate') return;
+
+            hasReceivedUpdate.current = true;
+
+            // Calculate duration from currentTime + remainingTime if not provided directly
+            const currentSeconds = data.currentTime || 0;
+            const remainingSeconds = data.remainingTime || 0;
+            const durationSeconds = data.duration || (currentSeconds + remainingSeconds);
+
+            setTimeInfo({
+                currentTime: secondsToHMS(currentSeconds),
+                remainingTime: secondsToHMS(remainingSeconds),
+                duration: secondsToHMS(durationSeconds),
+                currentSeconds,
+                remainingSeconds,
+                durationSeconds
+            });
         };
 
-        window.addEventListener('storage', handleStorageEvent);
-        return () => window.removeEventListener('storage', handleStorageEvent);
+        return subscribePlayerEvents(playerEventKey, handlePlayerEvent);
     }, [playerEventKey, playerType]);
 
     return timeInfo;
@@ -86,28 +78,19 @@ export function usePlayerTime(playerEventKey, playerType) {
  */
 export function usePlayerEvents(playerEventKey, playerType, onVideoEnded, onVideoError) {
     useEffect(() => {
-        const handleStorageEvent = (event) => {
-            if (event.key !== playerEventKey || !event.newValue) return;
+        const handlePlayerEvent = (data) => {
+            // Filter by player type if specified
+            if (playerType && data.playerType && data.playerType !== playerType) return;
 
-            try {
-                const data = JSON.parse(event.newValue);
-
-                // Filter by player type if specified
-                if (playerType && data.playerType && data.playerType !== playerType) return;
-
-                if (data.event === 'videoEnded' && onVideoEnded) {
-                    onVideoEnded(data);
-                }
-                if (data.event === 'videoError' && onVideoError) {
-                    onVideoError(data);
-                }
-            } catch (e) {
-                // Ignore parse errors
+            if (data.event === 'videoEnded' && onVideoEnded) {
+                onVideoEnded(data);
+            }
+            if (data.event === 'videoError' && onVideoError) {
+                onVideoError(data);
             }
         };
 
-        window.addEventListener('storage', handleStorageEvent);
-        return () => window.removeEventListener('storage', handleStorageEvent);
+        return subscribePlayerEvents(playerEventKey, handlePlayerEvent);
     }, [playerEventKey, playerType, onVideoEnded, onVideoError]);
 }
 
@@ -128,38 +111,31 @@ export function usePlayerRelayStatus(playerEventKey, playerType) {
         resolution: null,
         reason: null,
         lastError: null,
+        cookiesRejected: false,
         reconnectCount: 0,
         videoId: null,
         updatedAt: null,
     });
 
     useEffect(() => {
-        const handleStorageEvent = (event) => {
-            if (event.key !== playerEventKey || !event.newValue) return;
+        const handlePlayerEvent = (data) => {
+            if (playerType && data.playerType && data.playerType !== playerType) return;
+            if (data.event !== 'relayStatus') return;
 
-            try {
-                const data = JSON.parse(event.newValue);
-
-                if (playerType && data.playerType && data.playerType !== playerType) return;
-                if (data.event !== 'relayStatus') return;
-
-                setRelayStatus({
-                    active: !!data.active,
-                    mode: data.mode ?? null,
-                    resolution: data.resolution ?? null,
-                    reason: data.reason ?? null,
-                    lastError: data.lastError ?? null,
-                    reconnectCount: data.reconnectCount ?? 0,
-                    videoId: data.videoId ?? null,
-                    updatedAt: Date.now(),
-                });
-            } catch {
-                // Ignore parse errors
-            }
+            setRelayStatus({
+                active: !!data.active,
+                mode: data.mode ?? null,
+                resolution: data.resolution ?? null,
+                reason: data.reason ?? null,
+                lastError: data.lastError ?? null,
+                cookiesRejected: !!data.cookiesRejected,
+                reconnectCount: data.reconnectCount ?? 0,
+                videoId: data.videoId ?? null,
+                updatedAt: Date.now(),
+            });
         };
 
-        window.addEventListener('storage', handleStorageEvent);
-        return () => window.removeEventListener('storage', handleStorageEvent);
+        return subscribePlayerEvents(playerEventKey, handlePlayerEvent);
     }, [playerEventKey, playerType]);
 
     return relayStatus;

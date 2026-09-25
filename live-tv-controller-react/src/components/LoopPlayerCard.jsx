@@ -3,11 +3,13 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useOBS } from '../context/OBSContext';
 import { sendPlayerCommand, PLAYER_EVENT_KEY, parseIdsFromText, extractVideoId } from '../utils/core-utils';
 import { usePlayerTime } from '../utils/usePlayerHooks';
+import { subscribePlayerEvents } from '../utils/playerEventBus';
 import { useVideoInfo } from '../hooks/useVideoInfo';
 import { logVideoLoad, logVideoPlay, logPlaylistAction } from '../utils/logger';
 import { setStateValue } from '../utils/state-api';
 import PlayerControlBtn from './common/PlayerControlBtn';
 import ThumbnailLoader from './common/ThumbnailLoader';
+import VideoIdChip from './common/VideoIdChip';
 import ErrorBoundary from './common/ErrorBoundary';
 import LoopPlaylistAutomation from './LoopPlaylistAutomation';
 
@@ -194,30 +196,26 @@ const LoopPlayerCard = () => {
         }
     };
 
-    // Listen to player events (time update, ended) — uses refs to avoid stale closure
+    // Listen to player events (time update, ended) — uses refs to avoid stale closure.
+    // Via playerEventBus so this also works when the player page is in OBS's browser
+    // rather than this one (see utils/playerEventBus.js).
     useEffect(() => {
-        const handleStorage = (e) => {
-            if (e.key === PLAYER_EVENT_KEY && e.newValue) {
-                try {
-                    const data = JSON.parse(e.newValue);
-                    if (data.playerType === 'loop' && (data.event === 'videoEnded' || data.event === 'videoError')) {
-                        // Playlist Automation owns advancement while it's driving playback —
-                        // it listens to this same event independently and decides what plays
-                        // next (including cross-list/cross-group chaining). Don't also wrap here.
-                        if (automationModeRef.current) return;
-                        const ci = currentIndexRef.current;
-                        const pl = playlistRef.current;
-                        let nextIdx = ci + 1;
-                        if (nextIdx >= pl.length) nextIdx = 0;
-                        setCurrentIndex(nextIdx);
-                        const vid = pl[nextIdx];
-                        if (vid) sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
-                    }
-                } catch (err) { }
-            }
+        const handlePlayerEvent = (data) => {
+            if (data.playerType !== 'loop') return;
+            if (data.event !== 'videoEnded' && data.event !== 'videoError') return;
+            // Playlist Automation owns advancement while it's driving playback —
+            // it listens to this same event independently and decides what plays
+            // next (including cross-list/cross-group chaining). Don't also wrap here.
+            if (automationModeRef.current) return;
+            const ci = currentIndexRef.current;
+            const pl = playlistRef.current;
+            let nextIdx = ci + 1;
+            if (nextIdx >= pl.length) nextIdx = 0;
+            setCurrentIndex(nextIdx);
+            const vid = pl[nextIdx];
+            if (vid) sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
         };
-        window.addEventListener('storage', handleStorage);
-        return () => window.removeEventListener('storage', handleStorage);
+        return subscribePlayerEvents(PLAYER_EVENT_KEY, handlePlayerEvent);
     }, []); // refs always have latest values — no stale closure
 
     // Receive a video list + start position from the Playlist Automation manager.
@@ -525,6 +523,7 @@ const LoopPlayerCard = () => {
             <p className="video-title">{thumbLoading ? 'Loading...' : (videoTitle || 'No video loaded')}</p>
             <p className="video-time-display">{timeInfo.currentTime} / {timeInfo.remainingTime}</p>
             <p className="video-info-display">{playlist.length > 0 ? `Video ${currentIndex + 1} of ${playlist.length}` : ''}</p>
+            <VideoIdChip value={currentVideoId} label="Video ID" title="Click to copy the playing video's ID" />
 
             <input
                 type="text"

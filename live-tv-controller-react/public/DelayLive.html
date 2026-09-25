@@ -30,6 +30,45 @@
     let player;
     const PLAYER_KEY = "delayLivePlayerCommand"; // Unique key for this player in localStorage
     const EVENT_REPORT_KEY = "delayLivePlayerEvent"; // Key to report events back to controller
+
+    // ── Controller event bridge ───────────────────────────────────────────────
+    // Every event this page reports goes out two ways: the original localStorage
+    // write (picked up by a controller open in the SAME browser, via the "storage"
+    // event) AND a POST to /api/player-event, which the server re-broadcasts over
+    // the WebSocket every controller is already connected to.
+    //
+    // The POST is what makes this work in the real deployment: this page runs inside
+    // UnifiedPlayer.html in OBS's embedded browser, while the controller is open in
+    // Chrome or on a phone. Those are separate browsers with separate localStorage,
+    // so the "storage" event never crossed over and events like videoEnded were
+    // dropped on the floor — which is why Live Player's Stream-End Rules never fired.
+    // eventId lets the controller ignore the duplicate when both paths do land.
+    function publishPlayerEvent(key, payload) {
+      var data = Object.assign(
+        { eventId: Date.now().toString(36) + Math.random().toString(36).slice(2, 8) },
+        payload || {}
+      );
+      try {
+        localStorage.setItem(key, JSON.stringify(data));
+        setTimeout(function () { localStorage.removeItem(key); }, 100);
+      } catch (e) { /* storage unavailable — the POST below still reaches the controller */ }
+      try {
+        var body = JSON.stringify(Object.assign({ key: key }, data));
+        var sent = false;
+        if (navigator.sendBeacon) {
+          sent = navigator.sendBeacon("/api/player-event", new Blob([body], { type: "application/json" }));
+        }
+        if (!sent) {
+          fetch("/api/player-event", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: body,
+            keepalive: true
+          }).catch(function () {});
+        }
+      } catch (e) { /* server unreachable — the localStorage path above still applies */ }
+    }
+
     let durationTimer; // To manage the end time of playback
     let timeUpdateInterval = null; // 24/7 Reliability: Track interval for cleanup
     // Store current start/end seconds in variables (not from localStorage on each play)
@@ -269,11 +308,7 @@
         timestamp: Date.now(),
         ...data,
       };
-      localStorage.setItem(EVENT_REPORT_KEY, JSON.stringify(eventData));
-      // Clear the item after a short delay to ensure the 'storage' event fires cleanly
-      setTimeout(() => {
-        localStorage.removeItem(EVENT_REPORT_KEY);
-      }, 100);
+      publishPlayerEvent(EVENT_REPORT_KEY, eventData);
     }
 
     // Event listener for changes in localStorage
