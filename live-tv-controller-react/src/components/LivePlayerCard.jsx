@@ -14,6 +14,10 @@ import {
     LIVE_END_RULES_LOCAL_KEY, LIVE_END_RULES_SERVER_KEY, LIVE_END_RULES_UPDATED_EVENT,
     resolveLiveEndTarget, migrateLegacyEndGroup,
 } from '../utils/liveEndRules';
+import {
+    PLAYBACK_MODE, newPlaybackSessionId, shouldAcceptPlayerEvent,
+    allowsStreamEndRules, allowsStreamExtraction, describePlayback,
+} from '../utils/playback-mode';
 
 const DEFAULT_LIVE_VIDEO_ID = "T3wvnwSSw8g";
 const API_BASE = '';
@@ -28,6 +32,27 @@ const LivePlayerCard = () => {
     useEffect(() => { videoIdRef.current = videoId; }, [videoId]);
     const videoTitleRef = useRef('');
     const [priority, setPriority] = useState("matchSearchTerms");
+
+    // ── Playback mode ─────────────────────────────────────────────────────────
+    // What the operator says this video IS, chosen explicitly rather than inferred
+    // from which player is selected or from yt-dlp/ffmpeg happening to be installed.
+    // 'live'   — an actual YouTube live event. The relay (yt-dlp + cookies.txt +
+    //            ffmpeg), the Live Monitor's auto-load and the Stream-End Rules all
+    //            apply, exactly as before. This stays the default so nothing about
+    //            the existing live workflow changes.
+    // 'normal' — an ordinary Video ID. It plays through the YouTube IFrame player
+    //            and nothing else: no relay, no yt-dlp, no cookies, no live-event
+    //            takeover, no Stream-End Rules. The player selected by the operator
+    //            still decides WHERE it is shown — mode only decides what the
+    //            playback SOURCE is allowed to do.
+    const [playbackMode, setPlaybackMode] = useState(PLAYBACK_MODE.LIVE);
+    const playbackModeRef = useRef(playbackMode);
+    useEffect(() => { playbackModeRef.current = playbackMode; }, [playbackMode]);
+
+    // Token minted on every load. Events coming back from LivePlayer.html carry the
+    // token of the load they belong to, so a delayed videoEnded from the previous
+    // video can no longer be read as "the current video finished".
+    const playbackSessionRef = useRef(null);
 
     // "Stream-End Rules" — when the live stream goes offline (YouTube reports ENDED), match
     // its ended title against saved keyword rules and hand off to Loop Player, starting
@@ -169,6 +194,10 @@ const LivePlayerCard = () => {
                 setIsStopped(parsed.isStopped ?? false);
                 setDesiredQuality(parsed.desiredQuality || "auto");
                 setUseRelay(parsed.useRelay ?? false);
+                // Absent in state saved before modes existed — 'live' is what those
+                // setups have always meant, so they carry on unchanged.
+                setPlaybackMode(parsed.playbackMode === PLAYBACK_MODE.NORMAL
+                    ? PLAYBACK_MODE.NORMAL : PLAYBACK_MODE.LIVE);
                 migrateLegacyEndGroup(parsed.endGroupId);
             } catch { /* ignore malformed localStorage */ }
         }
@@ -178,17 +207,17 @@ const LivePlayerCard = () => {
     // Save state to localStorage and server
     useEffect(() => {
         if (!isInitialized.current) return;
-        const state = { videoId, priority, isPlaying, isMuted, isStopped, desiredQuality, useRelay };
+        const state = { videoId, priority, isPlaying, isMuted, isStopped, desiredQuality, useRelay, playbackMode };
         localStorage.setItem('livePlayerState', JSON.stringify(state));
         setStateValue('player.live', state);
-    }, [videoId, priority, isPlaying, isMuted, isStopped, desiredQuality, useRelay]);
+    }, [videoId, priority, isPlaying, isMuted, isStopped, desiredQuality, useRelay, playbackMode]);
 
     // Always-current ref to flush current state on demand (pre-backup / pre-export)
     const flushStateRef = useRef(null);
     useEffect(() => {
         flushStateRef.current = () => {
             if (!isInitialized.current) return;
-            const state = { videoId, priority, isPlaying, isMuted, isStopped, desiredQuality, useRelay };
+            const state = { videoId, priority, isPlaying, isMuted, isStopped, desiredQuality, useRelay, playbackMode };
             localStorage.setItem('livePlayerState', JSON.stringify(state));
             setStateValue('player.live', state);
         };
@@ -339,6 +368,15 @@ const LivePlayerCard = () => {
         }
     }, [stopStatusPoll]);
 
+    // Every load goes through here so exactly one place mints the session token and
+    // stamps the mode onto the command. LivePlayer.html echoes both back on every
+    // event it publishes, which is what lets the handlers below reject stale ones.
+    const beginPlayback = useCallback((mode) => {
+        const sessionId = newPlaybackSessionId();
+        playbackSessionRef.current = sessionId;
+        return { mode, playbackSessionId: sessionId };
+    }, []);
+
     // Listen for auto-load events from MonitorManager
     useEffect(() => {
         // [FIX Bug4] Stop active recording before switching to a new video via auto-load
@@ -351,7 +389,16 @@ const LivePlayerCard = () => {
                     await stopRecording();
                 }
                 setVideoId(newVideoId);
-                sendPlayerCommand('livePlayerCommand', 'loadVideo', newVideoId);
+                // A stream the Live Monitor detected is a live event by definition —
+                // this path always declares 'live', whatever the card was set to.
+                setPlaybackMode(PLAYBACK_MODE.LIVE);
+                playbackModeRef.current = PLAYBACK_MODE.LIVE;
+                console.log(describePlayback({
+                    mode: PLAYBACK_MODE.LIVE, videoId: newVideoId,
+                    playerId: 'Live Player', event: 'LOAD', source: 'monitor_autoload',
+                }));
+                sendPlayerCommand('livePlayerCommand', 'loadVideo', newVideoId, null, null, null,
+                    beginPlayback(PLAYBACK_MODE.LIVE));
                 sendPlayerCommand('livePlayerCommand', 'setQuality', null, null, null, null, { quality: desiredQualityRef.current });
                 sendPlayerCommand('livePlayerCommand', 'setRelayMode', null, null, null, null, { useRelay: useRelayRef.current });
                 sendPlayerCommand('livePlayerCommand', 'play');
@@ -365,7 +412,7 @@ const LivePlayerCard = () => {
 
         window.addEventListener('livePlayerAutoLoad', handleAutoLoad);
         return () => window.removeEventListener('livePlayerAutoLoad', handleAutoLoad);
-    }, [stopRecording]);
+    }, [stopRecording, beginPlayback]);
 
     // Refs so the videoEnded handler below always sees the latest OBS state/setter without
     // being recreated on every OBS poll tick (same pattern as Local/Delay Player cards).
@@ -387,9 +434,45 @@ const LivePlayerCard = () => {
     // and tell the automation engine which Group to start, if one was picked below.
     const handleLiveVideoEnded = useCallback((data) => {
         const endedId = data?.videoId || videoIdRef.current || null;
+
+        // Stale-event gate. An event only speaks for the load that produced it: if it
+        // carries a different session token (or a different video id) than the one
+        // currently loaded, it belongs to a playback that has already been replaced.
+        // This is what stops video A's delayed ENDED from acting on video B.
+        if (!shouldAcceptPlayerEvent(data || {}, {
+            playbackSessionId: playbackSessionRef.current,
+            videoId: videoIdRef.current,
+        })) {
+            console.log(describePlayback({
+                mode: playbackModeRef.current, videoId: endedId, eventId: data?.eventId,
+                playerId: 'Live Player', event: 'ENDED_IGNORED', source: data?.source || 'youtube_iframe',
+                reason: 'stale event from a superseded playback session',
+            }));
+            return;
+        }
+
+        // Mode gate. Stream-End Rules exist to react to a BROADCAST finishing — they
+        // hide this player, show Loop Player and start a playlist Group. An ordinary
+        // video reaching its natural end is not that event, and a Default rule matches
+        // any title, so without this check every normal video ended by jumping the
+        // operator to a completely different player and playlist.
+        if (!allowsStreamEndRules(playbackModeRef.current)) {
+            console.log(describePlayback({
+                mode: playbackModeRef.current, videoId: endedId, eventId: data?.eventId,
+                playerId: 'Live Player', event: 'ENDED', source: data?.source || 'youtube_iframe',
+                reason: 'normal mode — Stream-End Rules not applied, staying on this player',
+            }));
+            setStatusText("Video finished — stayed on Live Player (normal video)");
+            return;
+        }
+
         if (endedId && endHandledForVideoIdRef.current === endedId) return;
         endHandledForVideoIdRef.current = endedId;
 
+        console.log(describePlayback({
+            mode: playbackModeRef.current, videoId: endedId, eventId: data?.eventId,
+            playerId: 'Live Player', event: 'ENDED', source: data?.source || 'youtube_iframe',
+        }));
         const target = resolveLiveEndTarget(liveEndRulesRef.current, videoTitleRef.current);
         if (!target) {
             setStatusText("Stream ended — no End Rule matched, stayed on Live Player");
@@ -410,13 +493,43 @@ const LivePlayerCard = () => {
             setStatusText("Stream ended — switched to Loop Player (rule has no Group, nothing to start)");
         }
     }, [setSourceVisibility]);
-    usePlayerEvents(LIVE_PLAYER_EVENT_KEY, 'live', handleLiveVideoEnded);
+    // An error is NOT an end. It never runs the Stream-End Rules and never changes
+    // what is on air — it is reported so a normal-video failure is distinguishable
+    // from a live-stream extraction failure, and then playback stays where it is.
+    const handleLiveVideoError = useCallback((data) => {
+        if (!shouldAcceptPlayerEvent(data || {}, {
+            playbackSessionId: playbackSessionRef.current,
+            videoId: videoIdRef.current,
+        })) return;
+        const reason = data?.errorCode === 101 || data?.errorCode === 150
+            ? 'embedding disabled for this video'
+            : data?.errorCode === 100 ? 'video not found or private'
+            : data?.errorCode === 2 ? 'invalid video id'
+            : `youtube error ${data?.errorCode}`;
+        console.warn(describePlayback({
+            mode: playbackModeRef.current, videoId: data?.videoId || videoIdRef.current,
+            eventId: data?.eventId, playerId: 'Live Player', event: 'ERROR',
+            source: 'youtube_iframe', reason,
+        }));
+        setStatusText(`Playback error — ${reason}`);
+        logError(
+            LogType.PLAYER_ERROR,
+            LogCategory.VIDEO,
+            { mode: playbackModeRef.current, videoId: data?.videoId || videoIdRef.current, errorCode: data?.errorCode, playerId: 'Live Player' },
+            `Live Player playback error: ${reason}`
+        );
+    }, []);
+    usePlayerEvents(LIVE_PLAYER_EVENT_KEY, 'live', handleLiveVideoEnded, handleLiveVideoError);
 
     // Resume playback when OBS visibility changes
     const resumePlayback = () => {
         const vid = videoIdRef.current;
         if (vid) {
-            sendPlayerCommand('livePlayerCommand', 'loadVideo', vid);
+            // Same video, same declared mode — but a fresh session, because the page
+            // is reloading the video and anything still in flight from before it
+            // belongs to a playback that no longer exists.
+            sendPlayerCommand('livePlayerCommand', 'loadVideo', vid, null, null, null,
+                beginPlayback(playbackModeRef.current));
             sendPlayerCommand('livePlayerCommand', 'setQuality', null, null, null, null, { quality: desiredQualityRef.current });
             sendPlayerCommand('livePlayerCommand', 'setRelayMode', null, null, null, null, { useRelay: useRelayRef.current });
             sendPlayerCommand('livePlayerCommand', 'play');
@@ -507,7 +620,12 @@ const LivePlayerCard = () => {
         }
 
         if (isVisible) {
-            sendPlayerCommand('livePlayerCommand', 'loadVideo', videoId);
+            console.log(describePlayback({
+                mode: playbackMode, videoId, playerId: 'Live Player',
+                event: 'LOAD', source: 'manual',
+            }));
+            sendPlayerCommand('livePlayerCommand', 'loadVideo', videoId, null, null, null,
+                beginPlayback(playbackMode));
             sendPlayerCommand('livePlayerCommand', 'setQuality', null, null, null, null, { quality: desiredQualityRef.current });
             sendPlayerCommand('livePlayerCommand', 'setRelayMode', null, null, null, null, { useRelay: useRelayRef.current });
             sendPlayerCommand('livePlayerCommand', 'play');
@@ -589,7 +707,11 @@ const LivePlayerCard = () => {
     // 500ms guard window expires.
     useEffect(() => {
         const timer = setTimeout(() => {
-            if (autoRecordRef.current && isVisible && !isRecordingRef.current) {
+            // allowsStreamExtraction: auto-record spawns a server-side yt-dlp process,
+            // so it belongs to the live pipeline. A normal video is never recorded
+            // automatically — the manual Record button still works in either mode.
+            if (autoRecordRef.current && isVisible && !isRecordingRef.current
+                && allowsStreamExtraction(playbackModeRef.current)) {
                 wasAutoStartedRef.current = true;
                 setWasAutoStarted(true);
                 startRecording(videoIdRef.current, videoTitleRef.current);
@@ -608,8 +730,10 @@ const LivePlayerCard = () => {
         if (timeSinceMount < 500) return; // ignore on initial mount
 
         if (isVisible) {
-            // Live Player just became visible — auto-start if switch is ON and not already recording
-            if (autoRecordRef.current && !isRecordingRef.current) {
+            // Live Player just became visible — auto-start if switch is ON and not already
+            // recording. Gated on live mode: yt-dlp is live-pipeline machinery.
+            if (autoRecordRef.current && !isRecordingRef.current
+                && allowsStreamExtraction(playbackModeRef.current)) {
                 const vid = videoIdRef.current;
                 const t = videoTitleRef.current;
                 wasAutoStartedRef.current = true;
@@ -733,24 +857,67 @@ const LivePlayerCard = () => {
                 </select>
             </div>
 
+            {/* Playback mode — declared, never inferred. It decides what the playback
+                SOURCE may do (relay / yt-dlp / cookies / Stream-End Rules / monitor
+                takeover), not where playback is shown; the OBS source selection still
+                owns that independently. */}
+            <div className="w-full mt-2 flex items-center gap-2">
+                <span className="text-xs text-gray-400 flex-shrink-0">Mode:</span>
+                <div className="flex rounded-lg overflow-hidden border border-gray-600/60">
+                    <button
+                        type="button"
+                        onClick={() => setPlaybackMode(PLAYBACK_MODE.LIVE)}
+                        title="This Video ID is an actual YouTube live event. Direct Relay, auto-record, Live Monitor auto-load and Stream-End Rules all apply."
+                        className={`px-3 py-1 text-xs font-semibold transition-colors ${
+                            playbackMode === PLAYBACK_MODE.LIVE
+                                ? 'bg-red-600 text-white'
+                                : 'bg-gray-800/60 text-gray-400 hover:text-white'
+                        }`}
+                    >
+                        Live event
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setPlaybackMode(PLAYBACK_MODE.NORMAL)}
+                        title="This Video ID is an ordinary YouTube video. It plays through the YouTube player only — no relay, no yt-dlp, no cookies, and the Live Monitor will not replace it."
+                        className={`px-3 py-1 text-xs font-semibold transition-colors ${
+                            playbackMode === PLAYBACK_MODE.NORMAL
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-gray-800/60 text-gray-400 hover:text-white'
+                        }`}
+                    >
+                        Normal video
+                    </button>
+                </div>
+                <span className="text-xs text-gray-500 truncate">
+                    {playbackMode === PLAYBACK_MODE.NORMAL
+                        ? 'YouTube player only'
+                        : 'live pipeline enabled'}
+                </span>
+            </div>
+
             <div
                 className={`w-full mt-2 px-3 py-2 rounded-lg border flex items-center justify-between gap-2 select-none transition-all ${
-                    !isVisible ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                    !isVisible || playbackMode === PLAYBACK_MODE.NORMAL ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
                 } ${
                     useRelay
                         ? 'bg-blue-900/40 border-blue-500/60'
                         : 'bg-gray-800/60 border-gray-600/60'
                 }`}
-                onClick={() => { if (isVisible) setUseRelay(v => !v); }}
+                onClick={() => { if (isVisible && playbackMode !== PLAYBACK_MODE.NORMAL) setUseRelay(v => !v); }}
                 title={!isVisible
                     ? "Only available while Live Player is the active OBS source — switch to it first"
+                    : playbackMode === PLAYBACK_MODE.NORMAL
+                    ? "Only applies to a live event — this video is set to Normal video, so it plays through the YouTube player and no stream is pulled via yt-dlp"
                     : "Bypasses the YouTube iframe player's quality controls (setPlaybackQuality etc. do nothing — confirmed deprecated by YouTube since ~2018) by pulling the actual stream via yt-dlp and playing it directly. Only takes effect while the video is actually LIVE right now; otherwise LivePlayer.html silently stays on the normal YouTube player, so it's safe to leave on."}
             >
                 <div className="flex items-center gap-2">
                     <span className={`w-3 h-3 rounded-full flex-shrink-0 ${useRelay ? 'bg-blue-400' : 'bg-gray-500'}`} />
                     <span className="text-sm font-semibold text-white">Direct Relay</span>
                     <span className="text-xs text-gray-400">
-                        {!isVisible ? '— Live Player not active' : useRelay ? '— max quality, live only' : '— disabled'}
+                        {!isVisible ? '— Live Player not active'
+                            : playbackMode === PLAYBACK_MODE.NORMAL ? '— live events only'
+                            : useRelay ? '— max quality, live only' : '— disabled'}
                     </span>
                 </div>
                 <span className={`text-xs font-bold px-2 py-0.5 rounded ${useRelay ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>

@@ -4,6 +4,11 @@ import { useOBS } from '../context/OBSContext';
 import { sendPlayerCommand, PLAYER_EVENT_KEY, parseIdsFromText, extractVideoId } from '../utils/core-utils';
 import { usePlayerTime } from '../utils/usePlayerHooks';
 import { subscribePlayerEvents } from '../utils/playerEventBus';
+import {
+    PLAYBACK_MODE, newPlaybackSessionId, shouldAcceptPlayerEvent,
+    isEndOfPlayback, isUnplayableVideoError, isRunawayAdvance,
+    MAX_ADVANCES_WITHOUT_PLAYBACK, describePlayback,
+} from '../utils/playback-mode';
 import { useVideoInfo } from '../hooks/useVideoInfo';
 import { logVideoLoad, logVideoPlay, logPlaylistAction } from '../utils/logger';
 import { setStateValue } from '../utils/state-api';
@@ -47,6 +52,38 @@ const LoopPlayerCard = () => {
     const [automationInfo, setAutomationInfo] = useState(null);
 
     const currentVideoId = playlist[currentIndex] || '';
+
+    // ── Playback identity ─────────────────────────────────────────────────────
+    // The Loop Player only ever plays ordinary Video IDs, so its mode is always
+    // 'normal': no live-stream machinery is reachable from this card at all.
+    // What it does need is identity — which video/session a player event belongs
+    // to — because without it a delayed videoEnded from the previous video skipped
+    // the video that had already replaced it.
+    const loadedVideoIdRef = useRef(null);
+    const playbackSessionRef = useRef(null);
+    // Automatic advances since a video last actually played. Reset by any timeUpdate
+    // (proof something is really on screen); past the limit the card stops advancing
+    // instead of tearing through the whole playlist one entry per second.
+    const advancesWithoutPlaybackRef = useRef(0);
+
+    // Single funnel for every loadVideo this card sends (manual Load, Next, Prev,
+    // Jump, resume, automation) so the identity can never drift from what is
+    // actually loaded.
+    const loadLoopVideo = useCallback((vid, source) => {
+        if (!vid) return;
+        // Any load the operator or automation asks for directly is a fresh start —
+        // only self-inflicted auto-advances accumulate towards the breaker.
+        if (source && !source.startsWith('auto_advance')) advancesWithoutPlaybackRef.current = 0;
+        const sessionId = newPlaybackSessionId();
+        loadedVideoIdRef.current = vid;
+        playbackSessionRef.current = sessionId;
+        console.log(describePlayback({
+            mode: PLAYBACK_MODE.NORMAL, videoId: vid, playerId: 'Loop Player',
+            event: 'LOAD', source: source || 'manual',
+        }));
+        sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid, null, null, null,
+            { mode: PLAYBACK_MODE.NORMAL, playbackSessionId: sessionId });
+    }, []);
     const { title: videoTitle, thumbnail: videoThumbnail, loading: thumbLoading } = useVideoInfo(currentVideoId);
     const [statusText, setStatusText] = useState("Not loaded");
 
@@ -186,7 +223,7 @@ const LoopPlayerCard = () => {
         if (pl.length > 0) {
             const vid = pl[ci] || pl[0];
             if (vid) {
-                sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
+                loadLoopVideo(vid, 'resume');
                 sendPlayerCommand('loopPlayerCommand', 'play');
                 sendPlayerCommand('loopPlayerCommand', 'unmute');
                 setIsPlaying(true);
@@ -202,21 +239,79 @@ const LoopPlayerCard = () => {
     useEffect(() => {
         const handlePlayerEvent = (data) => {
             if (data.playerType !== 'loop') return;
+            // A time update is proof a video is genuinely playing — it clears the
+            // runaway counter, so a list with the odd bad entry never trips the breaker.
+            if (data.event === 'timeUpdate') { advancesWithoutPlaybackRef.current = 0; return; }
             if (data.event !== 'videoEnded' && data.event !== 'videoError') return;
             // Playlist Automation owns advancement while it's driving playback —
             // it listens to this same event independently and decides what plays
             // next (including cross-list/cross-group chaining). Don't also wrap here.
             if (automationModeRef.current) return;
+
+            // Stale-event gate. The player page stamps every event with the video and
+            // session of the load it came from; anything that doesn't match the load
+            // this card last sent belongs to a playback that has been replaced, and
+            // must not move the playlist on. This is the "video A's late ENDED skips
+            // video B" bug.
+            if (!shouldAcceptPlayerEvent(data, {
+                playbackSessionId: playbackSessionRef.current,
+                videoId: loadedVideoIdRef.current,
+            })) {
+                console.log(describePlayback({
+                    mode: PLAYBACK_MODE.NORMAL, videoId: data.videoId, eventId: data.eventId,
+                    playerId: 'Loop Player', event: `${data.event}_IGNORED`, source: 'youtube_iframe',
+                    reason: 'stale event from a superseded playback session',
+                }));
+                return;
+            }
+
+            // An error is not an end. Only a code that means the video can NEVER play
+            // here moves the playlist past the entry — the long-standing behavior that
+            // keeps a 24/7 loop from wedging on a dead ID. A transient player error
+            // (code 5) leaves playback exactly where it is instead of silently skipping.
+            if (!isEndOfPlayback(data.event)) {
+                if (!isUnplayableVideoError(data.errorCode)) {
+                    console.warn(describePlayback({
+                        mode: PLAYBACK_MODE.NORMAL, videoId: data.videoId, eventId: data.eventId,
+                        playerId: 'Loop Player', event: 'ERROR', source: 'youtube_iframe',
+                        reason: `transient youtube error ${data.errorCode} — staying on this video`,
+                    }));
+                    return;
+                }
+                console.warn(describePlayback({
+                    mode: PLAYBACK_MODE.NORMAL, videoId: data.videoId, eventId: data.eventId,
+                    playerId: 'Loop Player', event: 'ERROR', source: 'youtube_iframe',
+                    reason: `unplayable (youtube error ${data.errorCode}) — advancing past this entry`,
+                }));
+            }
+
+            // Circuit breaker — this is the one-advance-per-second storm seen in the
+            // field. Nothing has actually played for several advances in a row, so
+            // advancing again only burns through the rest of the list (and spams
+            // /api/log and /api/notifications/emit while it does).
+            if (isRunawayAdvance(advancesWithoutPlaybackRef.current)) {
+                console.error(describePlayback({
+                    mode: PLAYBACK_MODE.NORMAL, videoId: data.videoId, eventId: data.eventId,
+                    playerId: 'Loop Player', event: 'ADVANCE_HALTED', source: 'youtube_iframe',
+                    reason: `${advancesWithoutPlaybackRef.current} advances with no playback — halted to avoid running through the playlist`,
+                }));
+                setStatusText(`Playback stalled — ${MAX_ADVANCES_WITHOUT_PLAYBACK} videos in a row did not play. Advancing stopped; check the video IDs.`);
+                return;
+            }
+
             const ci = currentIndexRef.current;
             const pl = playlistRef.current;
             let nextIdx = ci + 1;
             if (nextIdx >= pl.length) nextIdx = 0;
             setCurrentIndex(nextIdx);
             const vid = pl[nextIdx];
-            if (vid) sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
+            if (vid) {
+                advancesWithoutPlaybackRef.current += 1;
+                loadLoopVideo(vid, data.event === 'videoEnded' ? 'auto_advance' : 'auto_advance_after_error');
+            }
         };
         return subscribePlayerEvents(PLAYER_EVENT_KEY, handlePlayerEvent);
-    }, []); // refs always have latest values — no stale closure
+    }, [loadLoopVideo]); // refs always have latest values — no stale closure
 
     // Receive a video list + start position from the Playlist Automation manager.
     // Mirrors handleLoadAndPlay/handleJump but is triggered externally (by a schedule,
@@ -240,7 +335,7 @@ const LoopPlayerCard = () => {
             // holds the intent until it goes on air. Gating here instead meant the intent
             // never reached it: automation activates while the source is still switching,
             // so isVisible was stale-false, the video got cued, and nothing ever played it.
-            sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
+            loadLoopVideo(vid, 'automation');
             sendPlayerCommand('loopPlayerCommand', 'play');
             sendPlayerCommand('loopPlayerCommand', 'unmute');
             logVideoLoad('Loop Player', vid, videoTitle, 'automation', { playlistIndex: idx, playlistSize: videoIds.length });
@@ -306,7 +401,7 @@ const LoopPlayerCard = () => {
             if (vid) {
                 setLoadingAction(true);
 
-                sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
+                loadLoopVideo(vid, 'manual');
                 sendPlayerCommand('loopPlayerCommand', 'play');
                 sendPlayerCommand('loopPlayerCommand', 'unmute');
                 setIsPlaying(true);
@@ -359,7 +454,7 @@ const LoopPlayerCard = () => {
         setCurrentIndex(nextIdx);
         const vid = playlist[nextIdx];
         if (vid) {
-            sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
+            loadLoopVideo(vid, 'manual_next');
             sendPlayerCommand('loopPlayerCommand', 'play');
             setIsPlaying(true);
             setIsStopped(false);
@@ -374,7 +469,7 @@ const LoopPlayerCard = () => {
         setCurrentIndex(prevIdx);
         const vid = playlist[prevIdx];
         if (vid) {
-            sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
+            loadLoopVideo(vid, 'manual_prev');
             sendPlayerCommand('loopPlayerCommand', 'play');
             setIsPlaying(true);
             setIsStopped(false);
@@ -393,7 +488,7 @@ const LoopPlayerCard = () => {
         setCurrentIndex(targetIdx);
         const vid = playlist[targetIdx];
         if (vid) {
-            sendPlayerCommand('loopPlayerCommand', 'loadVideo', vid);
+            loadLoopVideo(vid, 'manual_jump');
             sendPlayerCommand('loopPlayerCommand', 'play');
             setIsPlaying(true);
             setIsStopped(false);

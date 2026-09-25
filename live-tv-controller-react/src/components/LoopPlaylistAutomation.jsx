@@ -4,6 +4,11 @@ import { PLAYER_EVENT_KEY, parseIdsFromText, extractVideoId } from '../utils/cor
 import { getStateValue, setStateValue } from '../utils/state-api';
 import { readActiveSourceNow } from '../utils/player-switching';
 import { subscribePlayerEvents } from '../utils/playerEventBus';
+import {
+    PLAYBACK_MODE, shouldAcceptPlayerEvent, isEndOfPlayback,
+    isUnplayableVideoError, isRunawayAdvance, MAX_ADVANCES_WITHOUT_PLAYBACK,
+    describePlayback,
+} from '../utils/playback-mode';
 import { notifyEvent } from '../utils/notify';
 import { useOBS } from '../context/OBSContext';
 import {
@@ -214,6 +219,14 @@ export default function LoopPlaylistAutomation() {
     // Frozen at run activation — playCount math must stay stable for the whole run even
     // though advanceResumePointer() is mutating list.startIndex in state as we go.
     const runStartIdx0Ref = useRef(0);
+    // The video this engine last asked the Loop Player to play. Player events are
+    // matched against it so an event from a video the run has already moved past
+    // cannot advance the list a second time and skip what is actually on screen.
+    const expectedVideoIdRef = useRef(null);
+    // Advances since a video last actually played. Cleared by any timeUpdate; past the
+    // limit the run is stopped rather than cycling the list one entry per second — the
+    // storm seen in the field (a state save, two log writes and a push per second).
+    const advancesWithoutPlaybackRef = useRef(0);
     const lastLiveVideoIdRef = useRef(null);
     // Ref (not state) so the WS/event listeners below can read the latest value without being
     // recreated on every OBS poll update — same pattern MonitorManager uses for sourceState.
@@ -416,6 +429,11 @@ export default function LoopPlaylistAutomation() {
         }
         // groupName/listName ride along so the Loop Player card can show what's driving it
         // ("Group → List") without reaching into this component's state.
+        // Remember which video this engine just asked for, so a player event can be
+        // matched against it — an event for any other video belongs to a playback
+        // this run has already moved past and must not advance the list again.
+        expectedVideoIdRef.current = list.videoIds[startIdx0] || null;
+        advancesWithoutPlaybackRef.current = 0;
         window.dispatchEvent(new CustomEvent('loopPlayerLoadPlaylist', {
             detail: { videoIds: list.videoIds, startIndex: startIdx0, groupName: runInfo.groupName, listName: runInfo.listName },
         }));
@@ -474,7 +492,34 @@ export default function LoopPlaylistAutomation() {
         const handlePlayerEvent = (data) => {
             const run = activeRunRef.current;
             if (!run) return;
-            if (data.playerType !== 'loop' || (data.event !== 'videoEnded' && data.event !== 'videoError')) return;
+            if (data.playerType !== 'loop') return;
+            // Proof a video is genuinely playing — clears the runaway counter, so a
+            // list with the odd bad entry never trips the breaker below.
+            if (data.event === 'timeUpdate') { advancesWithoutPlaybackRef.current = 0; return; }
+            if (data.event !== 'videoEnded' && data.event !== 'videoError') return;
+
+            // Stale-event gate — see the same check in LoopPlayerCard. Without it a
+            // delayed event from the video this run has already moved past advanced
+            // the list a second time, skipping the video actually on screen.
+            if (!shouldAcceptPlayerEvent(data, { videoId: expectedVideoIdRef.current })) {
+                console.log(describePlayback({
+                    mode: PLAYBACK_MODE.NORMAL, videoId: data.videoId, eventId: data.eventId,
+                    playerId: 'Loop Player', event: `${data.event}_IGNORED`, source: 'playlist_automation',
+                    reason: 'stale event from a superseded playback session',
+                }));
+                return;
+            }
+
+            // An error is not an end: only a video that can never play here is skipped
+            // past, and a transient player error leaves the run exactly where it is.
+            if (!isEndOfPlayback(data.event) && !isUnplayableVideoError(data.errorCode)) {
+                console.warn(describePlayback({
+                    mode: PLAYBACK_MODE.NORMAL, videoId: data.videoId, eventId: data.eventId,
+                    playerId: 'Loop Player', event: 'ERROR', source: 'playlist_automation',
+                    reason: `transient youtube error ${data.errorCode} — run holding position`,
+                }));
+                return;
+            }
 
             const group = groupsRef.current.find(g => g.id === run.groupId);
             const list = group?.lists.find(l => l.id === run.listId);
@@ -487,11 +532,26 @@ export default function LoopPlaylistAutomation() {
             const maxAvailable = list.videoIds.length - startIdx0;
             const effectiveCount = Math.min(parseInt(list.playCount, 10) || 1, Math.max(maxAvailable, 0));
 
+            // Circuit breaker — several advances in a row with nothing ever playing is a
+            // fault, not a playlist. Stop the run and say so instead of tearing through
+            // the rest of it (and pushing a PLAYLIST_VIDEO_CHANGED for each step).
+            if (isRunawayAdvance(advancesWithoutPlaybackRef.current)) {
+                console.error(describePlayback({
+                    mode: PLAYBACK_MODE.NORMAL, videoId: data.videoId, eventId: data.eventId,
+                    playerId: 'Loop Player', event: 'ADVANCE_HALTED', source: 'playlist_automation',
+                    reason: `${advancesWithoutPlaybackRef.current} advances with no playback`,
+                }));
+                stopAutomation(`${MAX_ADVANCES_WITHOUT_PLAYBACK} videos in a row did not play — stopped to avoid running through the playlist`);
+                return;
+            }
+            advancesWithoutPlaybackRef.current += 1;
+
             playedInListRef.current += 1;
 
             if (playedInListRef.current < effectiveCount) {
                 const nextIdx = startIdx0 + playedInListRef.current;
                 advanceResumePointer(group.id, list.id, nextIdx, list.videoIds.length);
+                expectedVideoIdRef.current = list.videoIds[nextIdx] || null;
                 window.dispatchEvent(new CustomEvent('loopPlayerLoadPlaylist', {
                     detail: {
                         videoIds: list.videoIds, startIndex: nextIdx,

@@ -32,6 +32,31 @@
     const PLAYER_KEY = "loopPlayerCommand"; // Unique key for this player in localStorage (for incoming commands from Controller.html)
     const PLAYER_EVENT_KEY = "loopPlayerEvent"; // Unique key for sending events to Controller.html
 
+    // ── Playback mode & session ───────────────────────────────────────────────
+    // The Loop Player only ever plays ordinary YouTube Video IDs, so its mode is
+    // 'normal' and no live-stream machinery (yt-dlp / cookies / ffmpeg / HLS relay)
+    // is reachable from here at all. The SESSION token is what matters on this page:
+    // every event carries the token and video id of the load it belongs to, so a
+    // delayed ENDED (or ERROR) from the previous video can no longer advance the
+    // playlist past the video that is actually on screen.
+    // Mirrors src/utils/playback-mode.js — keep the two in step.
+    var currentMode = "normal";
+    var currentPlaybackSessionId = null;
+    var currentVideoId = null;
+
+    function newPlaybackSessionId() {
+      return "pb-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+    }
+    // Structured playback line — see src/utils/playback-mode.js describePlayback().
+    function PLOG(event, source, reason) {
+      console.log("[Playback] mode=" + currentMode
+        + " videoId=" + (currentVideoId || "-")
+        + " playerId=Loop Player"
+        + " event=" + event
+        + " source=" + source
+        + (reason ? " reason=" + reason : ""));
+    }
+
     // ── Controller event bridge ───────────────────────────────────────────────
     // Every event this page reports goes out two ways: the original localStorage
     // write (picked up by a controller open in the SAME browser, via the "storage"
@@ -46,7 +71,15 @@
     // eventId lets the controller ignore the duplicate when both paths do land.
     function publishPlayerEvent(key, payload) {
       var data = Object.assign(
-        { eventId: Date.now().toString(36) + Math.random().toString(36).slice(2, 8) },
+        {
+          eventId: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+          // Identity of the load this event belongs to — without it the controller
+          // had no way to tell a stale event from a current one, which is exactly
+          // how a finished video could skip the video that replaced it.
+          playbackSessionId: currentPlaybackSessionId,
+          videoId: currentVideoId,
+          mode: currentMode,
+        },
         payload || {}
       );
       try {
@@ -193,6 +226,10 @@
       if (data.command === "loadVideo" && data.videoId) {
         isLoadingVideo = true;
         lastVideoId = data.videoId;
+        currentVideoId = data.videoId;
+        currentMode = data.mode === "live" ? "live" : "normal";
+        currentPlaybackSessionId = data.playbackSessionId || newPlaybackSessionId();
+        PLOG("LOAD", "youtube_iframe");
         playIntent = true; // a load always means "play this" — see applyCommand's loadVideo case
         if (!player) { createPlayer(data.videoId); return; }
         if (!playerReady) { pendingCommands.push(data); return; }
@@ -225,6 +262,8 @@
         return;
       }
       console.log(`LoopPlayer: Creating new player for video ID: ${videoId}`);
+      currentVideoId = videoId;
+      if (!currentPlaybackSessionId) currentPlaybackSessionId = newPlaybackSessionId();
       playerReady = false;
       pendingCommands = [];
       stalledTicks = 0;
@@ -426,6 +465,7 @@
           state = "ended";
           // Only report videoEnded if not in loading state
           if (!isLoadingVideo) {
+            PLOG("ENDED", "youtube_iframe");
             // Notify the controller that the video has ended
             publishPlayerEvent(PLAYER_EVENT_KEY, { playerType: "loop", event: "videoEnded" });
           } else {
@@ -485,7 +525,10 @@
         "Error code:",
         event.data
       );
-      // Notify Controller.html that the video failed to load/play
+      PLOG("ERROR", "youtube_iframe", errorMessage + " (code " + event.data + ")");
+      // Notify the controller that the video failed to load/play. This is an ERROR,
+      // not an end: the controller only moves past the entry when the code means the
+      // video can never play here (see isUnplayableVideoError in playback-mode.js).
       publishPlayerEvent(PLAYER_EVENT_KEY, {
         playerType: "loop",
         event: "videoError",

@@ -5,6 +5,7 @@ import UpcomingEventMonitor from './UpcomingEventMonitor';
 import { logLiveMonitorEvent, logVideoLoad } from '../utils/logger';
 import { notifyEvent } from '../utils/notify';
 import { useOBS } from '../context/OBSContext';
+import { PLAYBACK_MODE, allowsLiveEventTakeover, describePlayback } from '../utils/playback-mode';
 
 const LIVE_DETAILS_POLL_INTERVAL_MS = 20000;
 const RETRY_DELAY_MS = 10000; // retry after 10s on failure
@@ -132,11 +133,20 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled, channelOptions, sele
             const savedState = localStorage.getItem('livePlayerState');
             let livePlayerPriority = 'matchSearchTerms';
             let currentLoadedId = null;
+            // The Live Player's declared playback mode. Auto-load is live-event
+            // machinery: it exists to put a detected broadcast on air, and it replaces
+            // whatever the Live Player currently holds. When the operator has declared
+            // the loaded video a NORMAL video, that is an explicit statement that this
+            // is not a live event — so the takeover is skipped rather than overwriting
+            // their video (and forcing the source on air) on the very next 20s poll.
+            let livePlaybackMode = PLAYBACK_MODE.LIVE;
             try {
                 if (savedState) {
                     const parsed = JSON.parse(savedState);
                     livePlayerPriority = parsed.priority || 'matchSearchTerms';
                     currentLoadedId = parsed.videoId || null;
+                    livePlaybackMode = parsed.playbackMode === PLAYBACK_MODE.NORMAL
+                        ? PLAYBACK_MODE.NORMAL : PLAYBACK_MODE.LIVE;
                 }
             } catch { /* ignore */ }
 
@@ -159,7 +169,14 @@ const MonitorManager = ({ monitor1Enabled, monitor2Enabled, channelOptions, sele
             // gated on "have we already auto-loaded this id before", since the Live
             // Player can drift away from the match (manual override, restart, etc.)
             // while the matched id itself stays the same, and it needs to resync.
-            if (videoIdToAutoLoad && videoIdToAutoLoad !== currentLoadedId) {
+            if (videoIdToAutoLoad && videoIdToAutoLoad !== currentLoadedId
+                && !allowsLiveEventTakeover(livePlaybackMode)) {
+                console.log(describePlayback({
+                    mode: livePlaybackMode, videoId: currentLoadedId, playerId: 'Live Player',
+                    event: 'AUTOLOAD_SKIPPED', source: 'monitor',
+                    reason: `normal video is loaded — not replacing it with live event ${videoIdToAutoLoad}`,
+                }));
+            } else if (videoIdToAutoLoad && videoIdToAutoLoad !== currentLoadedId) {
                 const videoTitle = combinedLiveEvents.find(e => e.videoId === videoIdToAutoLoad)?.title || 'Unknown';
                 const channelName = combinedLiveEvents.find(e => e.videoId === videoIdToAutoLoad)?.channelName || '';
                 logLiveMonitorEvent(1, videoIdToAutoLoad, videoTitle, channelName);

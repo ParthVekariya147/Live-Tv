@@ -44,6 +44,35 @@
     const PLAYER_KEY = "livePlayerCommand"; // Unique key for this player in localStorage
     const LIVE_PLAYER_EVENT_KEY = 'livePlayerEvent';
 
+    // ── Playback mode & session ───────────────────────────────────────────────
+    // MODE says what this video IS, and is the ONLY thing that may unlock the
+    // live-stream machinery (yt-dlp, cookies.txt, ffmpeg, the HLS relay). The mere
+    // presence of those binaries never does. A command that carries no mode is
+    // treated as 'live', because that is exactly what every caller meant before
+    // modes existed — normal-video callers opt in explicitly.
+    // SESSION is a token minted per load. Every event this page publishes carries
+    // the token (and video id) of the load it belongs to, so a delayed ENDED from
+    // the previous video can no longer be mistaken for the current one ending.
+    // Mirrors src/utils/playback-mode.js — keep the two in step.
+    var currentMode = "live";
+    var currentPlaybackSessionId = null;
+
+    function normalizeMode(mode) { return mode === "normal" ? "normal" : "live"; }
+    function allowsStreamExtraction() { return currentMode === "live"; }
+    function newPlaybackSessionId() {
+      return "pb-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+    }
+    // Structured playback line — normal-video failures must be distinguishable from
+    // live-stream extraction failures. Never logs cookie values or any other secret.
+    function PLOG(event, source, reason) {
+      console.log("[Playback] mode=" + currentMode
+        + " videoId=" + (currentVideoId || "-")
+        + " playerId=Live Player"
+        + " event=" + event
+        + " source=" + source
+        + (reason ? " reason=" + reason : ""));
+    }
+
     // ── Controller event bridge ───────────────────────────────────────────────
     // Every event this page reports goes out two ways: the original localStorage
     // write (picked up by a controller open in the SAME browser, via the "storage"
@@ -58,7 +87,15 @@
     // eventId lets the controller ignore the duplicate when both paths do land.
     function publishPlayerEvent(key, payload) {
       var data = Object.assign(
-        { eventId: Date.now().toString(36) + Math.random().toString(36).slice(2, 8) },
+        {
+          eventId: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+          // Identity of the load this event belongs to. The controller drops any
+          // event whose session/video doesn't match what it last loaded, which is
+          // what makes a stale ENDED from the previous video harmless.
+          playbackSessionId: currentPlaybackSessionId,
+          videoId: currentVideoId,
+          mode: currentMode,
+        },
         payload || {}
       );
       try {
@@ -580,8 +617,12 @@
             console.log("[LivePlayer][Relay] Desired relay mode set to:", desiredUseRelay);
             if (!desiredUseRelay) {
               stopRelayCompletely("manual override off");
-            } else if (currentVideoId) {
+            } else if (currentVideoId && allowsStreamExtraction()) {
               tryActivateRelay(currentVideoId, ++relayLoadToken);
+            } else if (currentVideoId) {
+              // Normal video: the toggle is remembered for the next live load, but
+              // no yt-dlp/cookies resolution is spent on an ordinary video id.
+              PLOG("RELAY_SKIPPED", "youtube_iframe", "normal mode");
             }
           }
           break;
@@ -612,9 +653,20 @@
           // video switch after the first; suggestedQuality is the documented
           // field for this call and the one YouTube actually reads.
           currentVideoId = data.videoId;
+          currentMode = normalizeMode(data.mode);
+          // A new session per load — everything the previous video still has in
+          // flight (a late ENDED, a resolving relay) is invalidated by this alone.
+          currentPlaybackSessionId = data.playbackSessionId || newPlaybackSessionId();
           const myRelayToken = ++relayLoadToken; // supersede any relay resolution for the previous video
-          if (desiredUseRelay) tryActivateRelay(data.videoId, myRelayToken);
-          else if (relayActive) stopRelayCompletely("new video loaded, relay mode off");
+          PLOG("LOAD", "youtube_iframe");
+          if (desiredUseRelay && allowsStreamExtraction()) {
+            tryActivateRelay(data.videoId, myRelayToken);
+          } else {
+            // Normal video ID: straight to the YouTube IFrame player. No relay, no
+            // yt-dlp, no cookies.txt, no live manifest — regardless of the toggle.
+            if (relayActive) stopRelayCompletely(desiredUseRelay ? "normal video loaded" : "new video loaded, relay mode off");
+            if (desiredUseRelay) PLOG("RELAY_SKIPPED", "youtube_iframe", "normal mode");
+          }
           const suggestedQuality = (desiredQuality !== "auto") ? desiredQuality : "hd1080";
           const beforeLoad = snapshotPlayer(player, "before-loadVideoById");
           QLOG("LOAD_VIDEO_BY_ID", { videoId: data.videoId, suggestedQuality, beforeQuality: beforeLoad.quality, beforeAvailable: beforeLoad.availableLevels });
@@ -673,7 +725,7 @@
               console.log("[LivePlayer][Relay] Desired relay mode set to:", desiredUseRelay);
               if (!desiredUseRelay) {
                 stopRelayCompletely("manual override off");
-              } else if (currentVideoId) {
+              } else if (currentVideoId && allowsStreamExtraction()) {
                 tryActivateRelay(currentVideoId, ++relayLoadToken);
               }
             }
@@ -697,8 +749,12 @@
               playerReady = false;
               pendingCommands = [];
               currentVideoId = data.videoId;
+              currentMode = normalizeMode(data.mode);
+              currentPlaybackSessionId = data.playbackSessionId || newPlaybackSessionId();
               const myRelayToken = ++relayLoadToken;
-              if (desiredUseRelay) tryActivateRelay(data.videoId, myRelayToken);
+              PLOG("LOAD", "youtube_iframe");
+              if (desiredUseRelay && allowsStreamExtraction()) tryActivateRelay(data.videoId, myRelayToken);
+              else if (desiredUseRelay) PLOG("RELAY_SKIPPED", "youtube_iframe", "normal mode");
               // vq only accepts YouTube's quality-tier tokens (small/medium/large/
               // hd720/hd1080/highres) — 'auto' isn't one, so fall back to the hd1080
               // hint in that case, same as before manual override existed.
@@ -841,6 +897,7 @@
           state = "ended";
           // Only report videoEnded if not in loading state
           if (!isLoadingVideo) {
+            PLOG("ENDED", relayActive ? "relay" : "youtube_iframe");
             publishPlayerEvent(LIVE_PLAYER_EVENT_KEY, {
               playerType: "live",
               event: "videoEnded",
@@ -900,7 +957,9 @@
         "Error code:",
         event.data
       );
-      // Report videoError so controller can switch to another player
+      PLOG("ERROR", "youtube_iframe", errorMessage + " (code " + event.data + ")");
+      // Report videoError so the controller can surface it. It is deliberately NOT a
+      // "video ended": the Stream-End Rules and the playlist advance both ignore it.
       publishPlayerEvent(LIVE_PLAYER_EVENT_KEY, {
         playerType: "live",
         event: "videoError",
