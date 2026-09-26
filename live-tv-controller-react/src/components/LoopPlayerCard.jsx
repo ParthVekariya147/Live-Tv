@@ -6,8 +6,7 @@ import { usePlayerTime } from '../utils/usePlayerHooks';
 import { subscribePlayerEvents } from '../utils/playerEventBus';
 import {
     PLAYBACK_MODE, newPlaybackSessionId, shouldAcceptPlayerEvent,
-    isEndOfPlayback, isUnplayableVideoError, isRunawayAdvance,
-    MAX_ADVANCES_WITHOUT_PLAYBACK, describePlayback,
+    isEndOfPlayback, isUnplayableVideoError, describePlayback,
 } from '../utils/playback-mode';
 import { useVideoInfo } from '../hooks/useVideoInfo';
 import { logVideoLoad, logVideoPlay, logPlaylistAction } from '../utils/logger';
@@ -17,9 +16,16 @@ import ThumbnailLoader from './common/ThumbnailLoader';
 import VideoIdChip from './common/VideoIdChip';
 import ErrorBoundary from './common/ErrorBoundary';
 import LoopPlaylistAutomation from './LoopPlaylistAutomation';
+import PlaybackFailoverManager from './PlaybackFailoverManager';
+import { shouldFailover } from '../utils/playbackFailover';
+import { usePlaybackFailover } from '../hooks/usePlaybackFailover';
 
 const LoopPlayerCard = () => {
     const { sourceState } = useOBS();
+    // Owns what happens when playback keeps failing: which player takes over, which
+    // playlist starts there, and the emergency push. Shared with the automation engine
+    // so one run of failures produces exactly one handover.
+    const { configRef: failoverConfigRef, triggerFailover } = usePlaybackFailover();
     const isVisible = sourceState["Loop Player"];
     const isInitialized = useRef(false);
     const hasUserData = useRef(false); // Track if we have actual user data to save
@@ -288,14 +294,29 @@ const LoopPlayerCard = () => {
             // Circuit breaker — this is the one-advance-per-second storm seen in the
             // field. Nothing has actually played for several advances in a row, so
             // advancing again only burns through the rest of the list (and spams
-            // /api/log and /api/notifications/emit while it does).
-            if (isRunawayAdvance(advancesWithoutPlaybackRef.current)) {
+            // /api/log and /api/notifications/emit while it does). Stop advancing, hand
+            // over to the operator's configured failover player, and raise the
+            // emergency push so a black screen never goes unnoticed.
+            const skipped = advancesWithoutPlaybackRef.current;
+            if (shouldFailover(skipped, failoverConfigRef.current)) {
                 console.error(describePlayback({
                     mode: PLAYBACK_MODE.NORMAL, videoId: data.videoId, eventId: data.eventId,
                     playerId: 'Loop Player', event: 'ADVANCE_HALTED', source: 'youtube_iframe',
-                    reason: `${advancesWithoutPlaybackRef.current} advances with no playback — halted to avoid running through the playlist`,
+                    reason: `${skipped} advances with no playback — halted to avoid running through the playlist`,
                 }));
-                setStatusText(`Playback stalled — ${MAX_ADVANCES_WITHOUT_PLAYBACK} videos in a row did not play. Advancing stopped; check the video IDs.`);
+                const outcome = triggerFailover({
+                    player: 'Loop Player',
+                    skipped,
+                    videoId: data.videoId,
+                    reason: data.errorCode ? `youtube error ${data.errorCode}` : 'video did not start',
+                    source: 'loop_player_card',
+                });
+                // Reset so a later genuine failure can fail over again rather than being
+                // permanently suppressed by a counter that never came down.
+                advancesWithoutPlaybackRef.current = 0;
+                setStatusText(outcome?.switchedTo
+                    ? `Playback failed — ${skipped} videos in a row did not play. Switched to ${outcome.switchedTo}.`
+                    : `Playback stalled — ${skipped} videos in a row did not play. Advancing stopped; check the video IDs.`);
                 return;
             }
 
@@ -311,7 +332,7 @@ const LoopPlayerCard = () => {
             }
         };
         return subscribePlayerEvents(PLAYER_EVENT_KEY, handlePlayerEvent);
-    }, [loadLoopVideo]); // refs always have latest values — no stale closure
+    }, [loadLoopVideo, triggerFailover, failoverConfigRef]); // refs always have latest values — no stale closure
 
     // Receive a video list + start position from the Playlist Automation manager.
     // Mirrors handleLoadAndPlay/handleJump but is triggered externally (by a schedule,
@@ -587,9 +608,14 @@ const LoopPlayerCard = () => {
         <div className="player-control-card">
             <div className="flex items-center justify-between w-full gap-2">
                 <h3>Loop Player</h3>
-                <ErrorBoundary label="Playlist Automation">
-                    <LoopPlaylistAutomation />
-                </ErrorBoundary>
+                <div className="flex items-center gap-2">
+                    <ErrorBoundary label="Playback Failover">
+                        <PlaybackFailoverManager />
+                    </ErrorBoundary>
+                    <ErrorBoundary label="Playlist Automation">
+                        <LoopPlaylistAutomation />
+                    </ErrorBoundary>
+                </div>
             </div>
             {/* What's playing right now, in Playlist Automation terms — always on screen, and
                 restored on refresh from the persisted loop state / automation's own saved run. */}

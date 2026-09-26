@@ -6,9 +6,10 @@ import { readActiveSourceNow } from '../utils/player-switching';
 import { subscribePlayerEvents } from '../utils/playerEventBus';
 import {
     PLAYBACK_MODE, shouldAcceptPlayerEvent, isEndOfPlayback,
-    isUnplayableVideoError, isRunawayAdvance, MAX_ADVANCES_WITHOUT_PLAYBACK,
-    describePlayback,
+    isUnplayableVideoError, describePlayback,
 } from '../utils/playback-mode';
+import { shouldFailover } from '../utils/playbackFailover';
+import { usePlaybackFailover } from '../hooks/usePlaybackFailover';
 import { notifyEvent } from '../utils/notify';
 import { useOBS } from '../context/OBSContext';
 import {
@@ -212,6 +213,9 @@ export default function LoopPlaylistAutomation() {
     const [loaded, setLoaded] = useState(false);
     const fileInputRef = useRef(null);
     const { sourceState, setSourceVisibility } = useOBS();
+    // Shared with LoopPlayerCard — both watch the same event stream, and the hook
+    // de-duplicates so one run of failures produces exactly one handover and one push.
+    const { configRef: failoverConfigRef, triggerFailover } = usePlaybackFailover();
 
     const groupsRef = useRef(groups);
     const activeRunRef = useRef(activeRun);
@@ -533,15 +537,27 @@ export default function LoopPlaylistAutomation() {
             const effectiveCount = Math.min(parseInt(list.playCount, 10) || 1, Math.max(maxAvailable, 0));
 
             // Circuit breaker — several advances in a row with nothing ever playing is a
-            // fault, not a playlist. Stop the run and say so instead of tearing through
-            // the rest of it (and pushing a PLAYLIST_VIDEO_CHANGED for each step).
-            if (isRunawayAdvance(advancesWithoutPlaybackRef.current)) {
+            // fault, not a playlist. Stop the run instead of tearing through the rest of
+            // it (and pushing a PLAYLIST_VIDEO_CHANGED for each step), hand over to the
+            // configured failover player, and raise the emergency push.
+            const skipped = advancesWithoutPlaybackRef.current;
+            if (shouldFailover(skipped, failoverConfigRef.current)) {
                 console.error(describePlayback({
                     mode: PLAYBACK_MODE.NORMAL, videoId: data.videoId, eventId: data.eventId,
                     playerId: 'Loop Player', event: 'ADVANCE_HALTED', source: 'playlist_automation',
-                    reason: `${advancesWithoutPlaybackRef.current} advances with no playback`,
+                    reason: `${skipped} advances with no playback`,
                 }));
-                stopAutomation(`${MAX_ADVANCES_WITHOUT_PLAYBACK} videos in a row did not play — stopped to avoid running through the playlist`);
+                advancesWithoutPlaybackRef.current = 0;
+                // Stop the run FIRST: the failover may start a different Group on this
+                // same player, and that new run must not be torn down by this one ending.
+                stopAutomation(`${skipped} videos in a row did not play — stopped to avoid running through the playlist`);
+                triggerFailover({
+                    player: 'Loop Player',
+                    skipped,
+                    videoId: data.videoId,
+                    reason: data.errorCode ? `youtube error ${data.errorCode}` : 'video did not start',
+                    source: 'playlist_automation',
+                });
                 return;
             }
             advancesWithoutPlaybackRef.current += 1;
@@ -577,7 +593,7 @@ export default function LoopPlaylistAutomation() {
             }
         };
         return subscribePlayerEvents(PLAYER_EVENT_KEY, handlePlayerEvent);
-    }, [activateRun, stopAutomation, advanceResumePointer, applySkips, tryStartDefaultGroup]);
+    }, [activateRun, stopAutomation, advanceResumePointer, applySkips, tryStartDefaultGroup, triggerFailover, failoverConfigRef]);
 
     // ---- Engine: idle fallback — start the ★ default Group when Loop Player becomes visible
     // with nothing already running (fresh page load, or the source shown manually with no

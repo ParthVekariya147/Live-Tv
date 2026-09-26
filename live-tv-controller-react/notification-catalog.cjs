@@ -181,6 +181,27 @@ const EVENTS = [
         body:  '{trigger} — "{list}" from "{group}" at {time}',
     },
     {
+        key: 'PLAYBACK_FAILOVER',
+        label: 'Playback failed — emergency failover',
+        group: 'playlist',
+        hint: 'Several videos in a row did not play (bad IDs, embedding disabled, removed videos). '
+            + 'Advancing was halted and the configured failover player was put on air. '
+            + 'This is the one to leave ON — it is how a silent screen reaches a phone.',
+        tag: 'playback-failover',
+        defaultEnabled: true,
+        clientEmit: true,
+        vars: [
+            { name: 'player',     sample: 'Loop Player',   hint: 'The player that was failing' },
+            { name: 'skipped',    sample: '5',             hint: 'Videos skipped in a row with nothing playing' },
+            { name: 'switchedTo', sample: 'Local Player',  hint: 'Player put on air instead (or "nothing" if none was configured)' },
+            { name: 'startedList', sample: 'Backup Set',   hint: 'Playlist started on arrival, if one was configured' },
+            { name: 'videoId',    sample: 'dQw4w9WgXcQ',   hint: 'Last video that failed' },
+            { name: 'reason',     sample: 'embedding disabled', hint: 'Why the last video failed' },
+        ],
+        title: '🚨 Playback failed on {player}',
+        body:  '{skipped} videos in a row did not play (last: {videoId} — {reason}). Switched to {switchedTo} at {time}.',
+    },
+    {
         key: 'PLAYLIST_VIDEO_CHANGED',
         label: 'Playlist moved to next video',
         group: 'playlist',
